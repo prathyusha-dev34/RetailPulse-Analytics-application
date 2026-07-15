@@ -1,48 +1,39 @@
-export const registerCompany = async (_data: any) => {
-  return Promise.resolve({
-    data: {
-      message: "Company registered successfully",
-    },
-  });
+import api from "./axios";
+
+/* ===========================
+   AUTH
+=========================== */
+
+export const registerCompany = (data: any) => {
+  return api.post("/auth/register-company", data);
 };
 
-export const login = async (_data: any) => {
-  return Promise.resolve({
-    data: {
-      access_token: "demo-access-token",
-      refresh_token: "demo-refresh-token",
-    },
-  });
+export const login = (data: any) => {
+  return api.post("/auth/login", data);
 };
 
-export const logout = async () => {
-  return Promise.resolve({ data: {} });
+export const logout = () => {
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("refreshToken");
+  return Promise.resolve();
 };
 
-export const getProfile = async () => {
-  return Promise.resolve({
-    data: {
-      name: "Praveen",
-      email: "admin@test.com",
-      role: "Company Admin",
-      company: "RetailPulse",
-      last_login: new Date().toLocaleString(),
-      status: "Active",
-    },
-  });
+/* ===========================
+   PROFILE
+=========================== */
+
+export const getProfile = () => {
+  return api.get("/auth/profile");
 };
 
-export const changePassword = async () => {
-  return Promise.resolve({ data: {} });
+export const changePassword = (data: any) => {
+  return api.post("/auth/change-password", data);
 };
 
-export const getAdminDashboard = async () => {
-  return Promise.resolve({
-    data: {
-      totalUsers: 25,
-      totalProducts: 120,
-      totalSales: 450,
-      totalRevenue: 125000,
-    },
-  });
+/* ===========================
+   ADMIN DASHBOARD
+=========================== */
+
+export const getAdminDashboard = () => {
+  return api.get("/admin/dashboard");
 };

@@ -45,28 +45,31 @@ export default function Login() {
   } = useForm<LoginForm>();
 
   const onSubmit = async (data: LoginForm) => {
-    setError("");
+  setError("");
 
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const response = await login(data);
+    const response = await login(data);
 
-      await authLogin(
-        response.data.access_token,
-        response.data.refresh_token
-      );
+    console.log("LOGIN RESPONSE:", response.data);
 
-      navigate("/dashboard");
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.detail || "Invalid email or password"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+    await authLogin(
+      response.data.access_token,
+      response.data.refresh_token
+    );
 
+    navigate("/dashboard");
+  } catch (err: any) {
+    console.log("LOGIN ERROR:", err.response?.data);
+
+    setError(
+      err?.response?.data?.detail || "Invalid email or password"
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   return (
   <Box
     sx={{

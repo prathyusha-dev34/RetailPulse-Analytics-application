@@ -1,154 +1,196 @@
 import {
-  Drawer,
-  Toolbar,
+  Avatar,
+  Box,
+  Divider,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
   Typography,
-  Box,
 } from "@mui/material";
 
-import DashboardIcon from "@mui/icons-material/Dashboard";
-import PersonIcon from "@mui/icons-material/Person";
-import BusinessIcon from "@mui/icons-material/Business";
-import LogoutIcon from "@mui/icons-material/Logout";
+import {
+  Dashboard,
+  People,
+  Inventory2,
+  Assessment,
+  Analytics,
+  Settings,
+  Logout,
+  Business,
+} from "@mui/icons-material";
 
 import { useLocation, useNavigate } from "react-router-dom";
-
 import { useAuth } from "../context/AuthContext";
-import { logoutUser } from "../api/authApi";
 
-interface SidebarProps {
-  mobileOpen: boolean;
-  drawerWidth: number;
-  onClose: () => void;
-}
-
-export default function Sidebar({
-  mobileOpen,
-  drawerWidth,
-  onClose,
-}: SidebarProps) {
+export default function Sidebar() {
   const navigate = useNavigate();
-
   const location = useLocation();
+  const { logoutUser, user } = useAuth();
 
-  const { logout } = useAuth();
-
-  const menuItems = [
+  const menu = [
     {
       text: "Dashboard",
-      icon: <DashboardIcon />,
+      icon: <Dashboard />,
       path: "/dashboard",
     },
     {
-      text: "Profile",
-      icon: <PersonIcon />,
-      path: "/profile",
+      text: "Users",
+      icon: <People />,
+      path: "/users",
     },
     {
-      text: "Company",
-      icon: <BusinessIcon />,
-      path: "/company",
+      text: "Products",
+      icon: <Inventory2 />,
+      path: "/products",
+    },
+    {
+      text: "Reports",
+      icon: <Assessment />,
+      path: "/reports",
+    },
+    {
+      text: "Analytics",
+      icon: <Analytics />,
+      path: "/analytics",
+    },
+    {
+      text: "Settings",
+      icon: <Settings />,
+      path: "/profile",
     },
   ];
 
-  const handleLogout = async () => {
-    try {
-      await logoutUser();
-    } catch {}
+  return (
+    <Box
+      sx={{
+        width: 260,
+        height: "100vh",
+        bgcolor: "#111827",
+        color: "#fff",
+        display: "flex",
+        flexDirection: "column",
+        borderRight: "1px solid #1F2937",
+        position: "fixed",
+        left: 0,
+        top: 0,
+      }}
+    >
+      {/* Logo */}
 
-    logout();
-
-    navigate("/login");
-  };
-
-  const drawer = (
-    <>
-      <Toolbar>
-        <Typography
-          variant="h5"
-          fontWeight="bold"
-          color="primary"
+      <Box
+        sx={{
+          p: 3,
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+        }}
+      >
+        <Avatar
+          sx={{
+            bgcolor: "#2563EB",
+            width: 52,
+            height: 52,
+          }}
         >
-          RetailPulse
-        </Typography>
-      </Toolbar>
+          <Business />
+        </Avatar>
 
-      <Box sx={{ mt: 2 }}>
-        <List>
-          {menuItems.map((item) => (
-            <ListItemButton
-              key={item.text}
-              selected={location.pathname === item.path}
-              onClick={() => {
-                navigate(item.path);
-                onClose();
+        <Box>
+          <Typography fontWeight={700} fontSize={20}>
+            RetailPulse
+          </Typography>
+
+          <Typography
+            fontSize={12}
+            color="#9CA3AF"
+          >
+            Analytics
+          </Typography>
+        </Box>
+      </Box>
+
+      <Divider sx={{ borderColor: "#374151" }} />
+
+      {/* Menu */}
+
+      <List sx={{ mt: 2, px: 1 }}>
+        {menu.map((item) => (
+          <ListItemButton
+            key={item.text}
+            selected={location.pathname === item.path}
+            onClick={() => navigate(item.path)}
+            sx={{
+              borderRadius: 3,
+              mb: 1,
+
+              "&.Mui-selected": {
+                bgcolor: "#2563EB",
+              },
+
+              "&.Mui-selected:hover": {
+                bgcolor: "#2563EB",
+              },
+
+              "&:hover": {
+                bgcolor: "#1F2937",
+              },
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                color: "#fff",
+                minWidth: 42,
               }}
             >
-              <ListItemIcon>{item.icon}</ListItemIcon>
-
-              <ListItemText primary={item.text} />
-            </ListItemButton>
-          ))}
-
-          <ListItemButton onClick={handleLogout}>
-            <ListItemIcon>
-              <LogoutIcon color="error" />
+              {item.icon}
             </ListItemIcon>
 
-            <ListItemText
-              primary="Logout"
-              primaryTypographyProps={{
-                color: "error",
-              }}
-            />
+            <ListItemText primary={item.text} />
           </ListItemButton>
-        </List>
+        ))}
+      </List>
+
+      <Box sx={{ flexGrow: 1 }} />
+
+      <Divider sx={{ borderColor: "#374151" }} />
+
+      {/* User */}
+
+      <Box sx={{ p: 3 }}>
+        <Typography fontWeight={600}>
+          {user?.name}
+        </Typography>
+
+        <Typography
+          color="#9CA3AF"
+          fontSize={13}
+        >
+          {user?.role}
+        </Typography>
+
+        <ListItemButton
+          onClick={async () => {
+            await logoutUser();
+            navigate("/login");
+          }}
+          sx={{
+            mt: 2,
+            borderRadius: 2,
+            bgcolor: "#DC2626",
+
+            "&:hover": {
+              bgcolor: "#B91C1C",
+            },
+          }}
+        >
+          <ListItemIcon sx={{ color: "#fff" }}>
+            <Logout />
+          </ListItemIcon>
+
+          <ListItemText primary="Logout" />
+        </ListItemButton>
       </Box>
-    </>
-  );
-
-  return (
-    <>
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={onClose}
-        ModalProps={{
-          keepMounted: true,
-        }}
-        sx={{
-          display: {
-            xs: "block",
-            md: "none",
-          },
-          "& .MuiDrawer-paper": {
-            width: drawerWidth,
-          },
-        }}
-      >
-        {drawer}
-      </Drawer>
-
-      <Drawer
-        variant="permanent"
-        open
-        sx={{
-          display: {
-            xs: "none",
-            md: "block",
-          },
-          "& .MuiDrawer-paper": {
-            width: drawerWidth,
-            boxSizing: "border-box",
-            borderRight: "1px solid #e5e7eb",
-          },
-        }}
-      >
-        {drawer}
-      </Drawer>
-    </>
+    </Box>
   );
 }

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import Base, engine
 
@@ -19,7 +20,21 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="RetailPulse Analytics API",
     version="1.0.0",
-    description="Multi-Tenant Retail Analytics Platform API"
+    description="Multi-Tenant Retail Analytics Platform API",
+)
+
+# =========================
+# CORS
+# =========================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register Routes
@@ -36,7 +51,7 @@ def root():
     return {
         "message": "RetailPulse Analytics API is running",
         "version": "1.0.0",
-        "status": "success"
+        "status": "success",
     }
 
 
@@ -44,5 +59,5 @@ def root():
 def health_check():
     return {
         "status": "healthy",
-        "application": "RetailPulse Analytics API"
+        "application": "RetailPulse Analytics API",
     }

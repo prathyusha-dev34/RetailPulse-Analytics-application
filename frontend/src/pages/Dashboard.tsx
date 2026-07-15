@@ -1,260 +1,502 @@
+import { useEffect, useState } from "react";
+
 import {
-  Avatar,
   Box,
-  Button,
-  Card,
-  CardContent,
   Container,
-  Grid,
   Paper,
-  Stack,
   Typography,
 } from "@mui/material";
+
+import Grid from "@mui/material/Grid";
+
 import {
   People,
-  Inventory2,
-  ShoppingCart,
-  Assessment,
-  Analytics,
-  Visibility,
-  ArrowForward,
+  Business,
+  AdminPanelSettings,
+  VerifiedUser,
+  History,
+  Security,
 } from "@mui/icons-material";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+
+import Sidebar from "../components/Sidebar";
+import Topbar from "../components/Topbar";
+import StatCard from "../components/StatCard";
 
 import { getAdminDashboard } from "../api/authApi";
 import { useAuth } from "../context/AuthContext";
 
 interface DashboardData {
-  total_users?: number;
-  total_products?: number;
-  total_sales?: number;
-  total_reports?: number;
-  total_analysts?: number;
-  total_viewers?: number;
+  total_companies: number;
+  total_users: number;
+  active_users: number;
+  admin_users: number;
+  total_audit_logs: number;
+  total_refresh_tokens: number;
+  user: string;
+  role: string;
 }
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [dashboard, setDashboard] = useState<DashboardData>({});
+  const [dashboard, setDashboard] =
+    useState<DashboardData>({
+      total_companies: 0,
+      total_users: 0,
+      active_users: 0,
+      admin_users: 0,
+      total_audit_logs: 0,
+      total_refresh_tokens: 0,
+      user: "",
+      role: "",
+    });
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadDashboard();
   }, []);
 
-  const loadDashboard = async () => {
+  async function loadDashboard() {
     try {
       const res = await getAdminDashboard();
       setDashboard(res.data);
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.log(error);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   if (loading) {
     return (
-      <Container sx={{ mt: 10 }}>
-        <Typography variant="h5" textAlign="center">
-          Loading Dashboard...
-        </Typography>
-      </Container>
+      <Typography
+        sx={{
+          mt: 10,
+          textAlign: "center",
+          color: "white",
+        }}
+      >
+        Loading Dashboard...
+      </Typography>
     );
   }
 
   const cards = [
     {
-      title: "Users",
-      value: dashboard.total_users ?? 0,
-      icon: <People sx={{ fontSize: 35 }} />,
+      title: "Companies",
+      value: dashboard.total_companies,
       color: "#2563EB",
+      icon: <Business />,
     },
     {
-      title: "Products",
-      value: dashboard.total_products ?? 0,
-      icon: <Inventory2 sx={{ fontSize: 35 }} />,
-      color: "#16A34A",
+      title: "Users",
+      value: dashboard.total_users,
+      color: "#22C55E",
+      icon: <People />,
     },
     {
-      title: "Sales",
-      value: dashboard.total_sales ?? 0,
-      icon: <ShoppingCart sx={{ fontSize: 35 }} />,
-      color: "#EA580C",
+      title: "Active Users",
+      value: dashboard.active_users,
+      color: "#F59E0B",
+      icon: <VerifiedUser />,
     },
     {
-      title: "Reports",
-      value: dashboard.total_reports ?? 0,
-      icon: <Assessment sx={{ fontSize: 35 }} />,
-      color: "#7C3AED",
+      title: "Admins",
+      value: dashboard.admin_users,
+      color: "#EC4899",
+      icon: <AdminPanelSettings />,
     },
     {
-      title: "Analysts",
-      value: dashboard.total_analysts ?? 0,
-      icon: <Analytics sx={{ fontSize: 35 }} />,
-      color: "#DB2777",
+      title: "Audit Logs",
+      value: dashboard.total_audit_logs,
+      color: "#8B5CF6",
+      icon: <History />,
     },
     {
-      title: "Viewers",
-      value: dashboard.total_viewers ?? 0,
-      icon: <Visibility sx={{ fontSize: 35 }} />,
-      color: "#0891B2",
+      title: "Refresh Tokens",
+      value: dashboard.total_refresh_tokens,
+      color: "#06B6D4",
+      icon: <Security />,
     },
+  ];
+
+  const monthlyData = [
+    { month: "Jan", value: 2 },
+    { month: "Feb", value: 3 },
+    { month: "Mar", value: 4 },
+    { month: "Apr", value: 5 },
+    { month: "May", value: dashboard.total_users },
+  ];
+
+  const pieData = [
+    {
+      name: "Active",
+      value: dashboard.active_users,
+    },
+    {
+      name: "Inactive",
+      value:
+        dashboard.total_users -
+        dashboard.active_users,
+    },
+  ];
+
+  const COLORS = [
+    "#2563EB",
+    "#22C55E",
   ];
 
   return (
     <Box
+  sx={{
+    display: "flex",
+    minHeight: "100vh",
+    bgcolor: "#0F172A",
+  }}
+>
+  <Sidebar />
+
+  <Box
+    sx={{
+      flex: 1,
+      ml: "260px",
+    }}
+  >
+    <Topbar />
+
+    <Container
+      maxWidth="xl"
       sx={{
-        minHeight: "100vh",
-        background: "#F5F7FB",
-        py: 5,
+        mt: 12,
+        pb: 5,
       }}
     >
-      <Container maxWidth="xl">
+      <Paper
+        elevation={0}
+        sx={{
+          p: 4,
+          mb: 4,
+          borderRadius: 4,
+          background:
+            "linear-gradient(135deg,#2563EB,#4F46E5)",
+          color: "#fff",
+        }}
+      >
+        <Typography
+          variant="h4"
+          fontWeight={700}
+        >
+          Welcome Back, {user?.name} 👋
+        </Typography>
 
-        {/* Header */}
-
-        <Paper
-          elevation={0}
+        <Typography
           sx={{
-            mb: 5,
-            p: 4,
-            borderRadius: 4,
-            background:
-              "linear-gradient(135deg,#2563EB,#4F46E5)",
-            color: "#fff",
+            mt: 1,
+            opacity: 0.9,
           }}
         >
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
+          Manage your RetailPulse Analytics Platform
+          from one modern dashboard.
+        </Typography>
+      </Paper>
+
+      <Grid
+        container
+        spacing={3}
+      >
+        {cards.map((card) => (
+          <Grid
+            key={card.title}
+            size={{
+              xs: 12,
+              sm: 6,
+              md: 4,
+            }}
           >
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Avatar
-                sx={{
-                  width: 64,
-                  height: 64,
-                  bgcolor: "#fff",
-                  color: "#2563EB",
-                  fontWeight: 700,
-                  fontSize: 28,
-                }}
-              >
-                {user?.name?.charAt(0)}
-              </Avatar>
+            <StatCard
+              title={card.title}
+              value={card.value}
+              color={card.color}
+              icon={card.icon}
+            />
+          </Grid>
+        ))}
+      </Grid>
 
-              <Box>
-                <Typography variant="h4" fontWeight={700}>
-                  Welcome, {user?.name}
-                </Typography>
-
-                <Typography sx={{ opacity: 0.9 }}>
-                  RetailPulse Analytics Dashboard
-                </Typography>
-              </Box>
-            </Stack>
-
-            <Button
-              variant="contained"
-              endIcon={<ArrowForward />}
-              onClick={() => navigate("/profile")}
-              sx={{
-                bgcolor: "#fff",
-                color: "#2563EB",
-                borderRadius: 3,
-                px: 3,
-                fontWeight: 600,
-                "&:hover": {
-                  bgcolor: "#EEF2FF",
-                },
-              }}
+      <Grid
+        container
+        spacing={3}
+        sx={{ mt: 1 }}
+      >
+        <Grid
+          size={{
+            xs: 12,
+            md: 8,
+          }}
+        >
+          <Paper
+            elevation={0}
+            sx={{
+              p: 4,
+              borderRadius: 4,
+              bgcolor: "#1E293B",
+              color: "#fff",
+              border: "1px solid #334155",
+            }}
+          >
+            <Typography
+              variant="h5"
+              fontWeight={700}
+              mb={3}
             >
-              My Profile
-            </Button>
-          </Stack>
-        </Paper>
+              Company Summary
+            </Typography>
 
-        {/* Cards */}
+            <Grid container spacing={3}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography color="#94A3B8">
+                  Logged In User
+                </Typography>
 
-        <Grid container spacing={3}>
-          {cards.map((card) => (
-            <Grid item xs={12} sm={6} md={4} key={card.title}>
-              <Card
-                sx={{
-                  borderRadius: 4,
-                  transition: "0.3s",
-                  "&:hover": {
-                    transform: "translateY(-6px)",
-                    boxShadow: 8,
-                  },
-                }}
-              >
-                <CardContent>
-                  <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                  >
-                    <Box>
-                      <Typography
-                        color="text.secondary"
-                        gutterBottom
-                      >
-                        {card.title}
-                      </Typography>
+                <Typography variant="h6">
+                  {dashboard.user}
+                </Typography>
+              </Grid>
 
-                      <Typography
-                        variant="h3"
-                        fontWeight={700}
-                      >
-                        {card.value}
-                      </Typography>
-                    </Box>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography color="#94A3B8">
+                  Role
+                </Typography>
 
-                    <Avatar
-                      sx={{
-                        bgcolor: card.color,
-                        width: 60,
-                        height: 60,
-                      }}
-                    >
-                      {card.icon}
-                    </Avatar>
-                  </Stack>
-                </CardContent>
-              </Card>
+                <Typography variant="h6">
+                  {dashboard.role}
+                </Typography>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography color="#94A3B8">
+                  Total Companies
+                </Typography>
+
+                <Typography variant="h6">
+                  {dashboard.total_companies}
+                </Typography>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <Typography color="#94A3B8">
+                  Active Users
+                </Typography>
+
+                <Typography
+                  variant="h6"
+                  color="#22C55E"
+                >
+                  {dashboard.active_users}
+                </Typography>
+              </Grid>
             </Grid>
-          ))}
+          </Paper>
         </Grid>
 
-        {/* Bottom Welcome Card */}
-
-        <Paper
-          sx={{
-            mt: 5,
-            p: 4,
-            borderRadius: 4,
+        <Grid
+          size={{
+            xs: 12,
+            md: 4,
           }}
         >
-          <Typography
-            variant="h5"
-            fontWeight={700}
-            gutterBottom
+          <Paper
+            elevation={0}
+            sx={{
+              p: 4,
+              borderRadius: 4,
+              bgcolor: "#1E293B",
+              color: "#fff",
+              border: "1px solid #334155",
+            }}
           >
-            Welcome to RetailPulse 🚀
-          </Typography>
+            <Typography
+              variant="h5"
+              fontWeight={700}
+              mb={3}
+            >
+              Recent Activity
+            </Typography>
 
-          <Typography color="text.secondary">
-            Monitor users, products, sales, reports and analytics from
-            one modern dashboard. This panel gives you a quick overview
-            of your platform activity.
-          </Typography>
-        </Paper>
-      </Container>
-    </Box>
-  );
+            <Typography sx={{ mb: 2 }}>
+              ✅ Company Registered
+            </Typography>
+
+            <Typography sx={{ mb: 2 }}>
+              🔐 User Login Successful
+            </Typography>
+
+            <Typography sx={{ mb: 2 }}>
+              🛡 JWT Authentication Verified
+            </Typography>
+
+            <Typography sx={{ mb: 2 }}>
+              📊 Dashboard Loaded
+            </Typography>
+
+            <Typography>
+              🟢 PostgreSQL Connected
+            </Typography>
+          </Paper>
+        </Grid>
+        </Grid>
+              <Grid
+        container
+        spacing={3}
+        sx={{ mt: 1 }}
+      >
+        <Grid
+          size={{
+            xs: 12,
+            lg: 8,
+          }}
+        >
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              borderRadius: 4,
+              bgcolor: "#1E293B",
+            }}
+          >
+            <Typography
+              color="white"
+              variant="h6"
+              fontWeight={700}
+              mb={2}
+            >
+              User Growth
+            </Typography>
+
+            <ResponsiveContainer
+              width="100%"
+              height={320}
+            >
+              <LineChart data={monthlyData}>
+                <CartesianGrid stroke="#334155" />
+
+                <XAxis dataKey="month" />
+
+                <YAxis />
+
+                <Tooltip />
+
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#3B82F6"
+                  strokeWidth={3}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Paper>
+        </Grid>
+
+        <Grid
+          size={{
+            xs: 12,
+            lg: 4,
+          }}
+        >
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              borderRadius: 4,
+              bgcolor: "#1E293B",
+            }}
+          >
+            <Typography
+              color="white"
+              variant="h6"
+              fontWeight={700}
+              mb={2}
+            >
+              Active Users
+            </Typography>
+
+            <ResponsiveContainer
+              width="100%"
+              height={320}
+            >
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  outerRadius={100}
+                  label
+                >
+                  {pieData.map((_, index) => (
+                    <Cell
+                      key={index}
+                      fill={COLORS[index]}
+                    />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      <Paper
+        elevation={0}
+        sx={{
+          mt: 4,
+          p: 4,
+          borderRadius: 4,
+          background:
+            "linear-gradient(135deg,#1E3A8A,#2563EB)",
+          color: "#fff",
+        }}
+      >
+        <Typography
+          variant="h5"
+          fontWeight={700}
+          gutterBottom
+        >
+          RetailPulse Analytics
+        </Typography>
+
+        <Typography
+          sx={{
+            lineHeight: 1.8,
+            opacity: 0.9,
+          }}
+        >
+          Secure Multi-Tenant Retail Analytics Platform with
+          JWT Authentication, PostgreSQL, Role-Based Access,
+          Company Isolation, Audit Logging and Interactive
+          Analytics Dashboard.
+        </Typography>
+      </Paper>
+
+    </Container>
+
+  </Box>
+
+</Box>
+
+);
 }
+
+

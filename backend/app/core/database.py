@@ -7,6 +7,10 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+print("=" * 60)
+print("DATABASE_URL:", DATABASE_URL)
+print("=" * 60)
+
 engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
