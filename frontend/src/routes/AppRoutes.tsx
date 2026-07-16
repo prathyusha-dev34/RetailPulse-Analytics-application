@@ -4,6 +4,7 @@ import Login from "../pages/Login";
 import RegisterCompany from "../pages/RegisterCompany";
 import Dashboard from "../pages/Dashboard";
 import Profile from "../pages/Profile";
+import ForgotPassword from "../pages/ForgotPassword";
 
 import ProtectedRoute from "../components/ProtectedRoute";
 
@@ -15,6 +16,11 @@ export default function AppRoutes() {
       <Route path="/login" element={<Login />} />
 
       <Route path="/register" element={<RegisterCompany />} />
+
+      <Route
+        path="/forgot-password"
+        element={<ForgotPassword />}
+      />
 
       <Route
         path="/dashboard"

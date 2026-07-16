@@ -43,16 +43,13 @@ export default function Login() {
     handleSubmit,
     formState: { errors },
   } = useForm<LoginForm>();
-
-  const onSubmit = async (data: LoginForm) => {
+ const onSubmit = async (data: LoginForm) => {
   setError("");
 
   try {
     setLoading(true);
 
     const response = await login(data);
-
-    console.log("LOGIN RESPONSE:", response.data);
 
     await authLogin(
       response.data.access_token,
@@ -61,8 +58,6 @@ export default function Login() {
 
     navigate("/dashboard");
   } catch (err: any) {
-    console.log("LOGIN ERROR:", err.response?.data);
-
     setError(
       err?.response?.data?.detail || "Invalid email or password"
     );
@@ -249,29 +244,47 @@ export default function Login() {
           </Button>
 
         </form>
-
         <Typography
-          align="center"
-          sx={{
-            mt: 4,
-            color: "#8b949e",
-            fontSize: 15,
-          }}
-        >
-          Don't have a company account?{" "}
+  align="right"
+  sx={{
+    mt: 2,
+    fontSize: 14,
+  }}
+>
+  <Link
+    to="/forgot-password"
+    style={{
+      color: "#58a6ff",
+      textDecoration: "none",
+      fontWeight: 600,
+    }}
+  >
+    Forgot Password?
+  </Link>
+</Typography>
 
-          <Link
-            to="/register"
-            style={{
-              color: "#58a6ff",
-              textDecoration: "none",
-              fontWeight: 700,
-            }}
-          >
-            Register Company
-          </Link>
-        </Typography>
-      </Paper>
+<Typography
+  align="center"
+  sx={{
+    mt: 4,
+    color: "#8b949e",
+    fontSize: 15,
+  }}
+>
+  Don't have a company account?{" "}
+
+  <Link
+    to="/register"
+    style={{
+      color: "#58a6ff",
+      textDecoration: "none",
+      fontWeight: 700,
+    }}
+  >
+    Register Company
+  </Link>
+</Typography>
+ </Paper>
     </Container>
   </Box>
 );

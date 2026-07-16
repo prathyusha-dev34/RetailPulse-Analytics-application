@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.schemas.company import CompanyRegister, CompanyResponse
@@ -10,6 +11,10 @@ router = APIRouter(
     prefix="/auth",
     tags=["Authentication"]
 )
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
 
 
 @router.post(
@@ -46,3 +51,10 @@ def login(
             status_code=401,
             detail=str(e)
         )
+
+
+@router.post("/forgot-password")
+def forgot_password(data: ForgotPasswordRequest):
+    return {
+        "message": "Password reset functionality will be available soon."
+    }
