@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -111,7 +111,8 @@ def login_user(db: Session, data: LoginRequest):
         RefreshToken(
             user_id=user.id,
             token=refresh_token,
-            expires_at=datetime.utcnow(),
+            # Refresh token valid for 7 days
+            expires_at=datetime.utcnow() + timedelta(days=7),
         )
     )
 
