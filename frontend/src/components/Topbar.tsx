@@ -13,6 +13,7 @@ import {
 import {
   Notifications,
   Search,
+  Logout,
 } from "@mui/icons-material";
 
 import { useNavigate } from "react-router-dom";
@@ -20,7 +21,15 @@ import { useAuth } from "../context/AuthContext";
 
 export default function Topbar() {
   const navigate = useNavigate();
+
   const { user } = useAuth();
+
+  function handleLogout() {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+
+    navigate("/login");
+  }
 
   return (
     <AppBar
@@ -28,7 +37,7 @@ export default function Topbar() {
       elevation={0}
       sx={{
         bgcolor: "#0F172A",
-        borderBottom: "1px solid #1E293B",
+        borderBottom: "1px solid #334155",
         ml: "260px",
         width: "calc(100% - 260px)",
       }}
@@ -46,14 +55,19 @@ export default function Topbar() {
             display: "flex",
             alignItems: "center",
             px: 2,
-            py: 0.5,
+            py: 0.7,
             width: 350,
             bgcolor: "#1E293B",
             borderRadius: 3,
+            border: "1px solid #334155",
             boxShadow: "none",
           }}
         >
-          <Search sx={{ color: "#94A3B8" }} />
+          <Search
+            sx={{
+              color: "#94A3B8",
+            }}
+          />
 
           <InputBase
             placeholder="Search..."
@@ -71,12 +85,26 @@ export default function Topbar() {
           sx={{
             display: "flex",
             alignItems: "center",
-            gap: 3,
+            gap: 2,
           }}
         >
-          <IconButton>
-            <Badge badgeContent={3} color="error">
-              <Notifications sx={{ color: "#fff" }} />
+          <IconButton
+            sx={{
+              bgcolor: "#1E293B",
+              "&:hover": {
+                bgcolor: "#334155",
+              },
+            }}
+          >
+            <Badge
+              badgeContent={3}
+              color="error"
+            >
+              <Notifications
+                sx={{
+                  color: "#fff",
+                }}
+              />
             </Badge>
           </IconButton>
 
@@ -89,26 +117,46 @@ export default function Topbar() {
               fontWeight={700}
               color="#fff"
             >
-              {user?.name}
+              {user?.name || "User"}
             </Typography>
 
             <Typography
               fontSize={12}
               color="#94A3B8"
             >
-              {user?.role}
+              {user?.role || "Viewer"}
             </Typography>
           </Box>
 
           <Avatar
             sx={{
-              bgcolor: "#2563EB",
+              bgcolor: "#3B82F6",
+              fontWeight: 700,
               cursor: "pointer",
             }}
-            onClick={() => navigate("/profile")}
+            onClick={() =>
+              navigate("/profile")
+            }
           >
-            {user?.name?.charAt(0).toUpperCase()}
+            {user?.name?.[0]?.toUpperCase() ||
+              "U"}
           </Avatar>
+
+          <IconButton
+            onClick={handleLogout}
+            sx={{
+              bgcolor: "#1E293B",
+              "&:hover": {
+                bgcolor: "#334155",
+              },
+            }}
+          >
+            <Logout
+              sx={{
+                color: "#fff",
+              }}
+            />
+          </IconButton>
         </Box>
       </Toolbar>
     </AppBar>

@@ -1,65 +1,71 @@
 import {
-  Avatar,
+  Dashboard,
+  Category,
+  Inventory2,
+  Assessment,
+  Analytics,
+  Warehouse,
+  Person,
+} from "@mui/icons-material";
+
+import {
   Box,
   Divider,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Toolbar,
   Typography,
 } from "@mui/material";
 
-import {
-  Dashboard,
-  People,
-  Inventory2,
-  Assessment,
-  Analytics,
-  Settings,
-  Logout,
-  Business,
-} from "@mui/icons-material";
+import { Link, useLocation } from "react-router-dom";
 
-import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+const menus = [
+  {
+    text: "Dashboard",
+    icon: <Dashboard />,
+    path: "/",
+  },
+  {
+    text: "Categories",
+    icon: <Category />,
+    path: "/categories",
+  },
+  {
+    text: "Products",
+    icon: <Inventory2 />,
+    path: "/products",
+  },
+  {
+    text: "Product Dashboard",
+    icon: <Assessment />,
+    path: "/product-dashboard",
+  },
+  {
+    text: "Inventory",
+    icon: <Warehouse />,
+    path: "/inventory",
+  },
+  {
+    text: "Reports",
+    icon: <Assessment />,
+    path: "/reports",
+  },
+  {
+    text: "Analytics",
+    icon: <Analytics />,
+    path: "/analytics",
+  },
+  {
+    text: "Profile",
+    icon: <Person />,
+    path: "/profile",
+  },
+];
 
 export default function Sidebar() {
-  const navigate = useNavigate();
   const location = useLocation();
-  const { logoutUser, user } = useAuth();
-
-  const menu = [
-    {
-      text: "Dashboard",
-      icon: <Dashboard />,
-      path: "/dashboard",
-    },
-    {
-      text: "Users",
-      icon: <People />,
-      path: "/users",
-    },
-    {
-      text: "Products",
-      icon: <Inventory2 />,
-      path: "/products",
-    },
-    {
-      text: "Reports",
-      icon: <Assessment />,
-      path: "/reports",
-    },
-    {
-      text: "Analytics",
-      icon: <Analytics />,
-      path: "/analytics",
-    },
-    {
-      text: "Settings",
-      icon: <Settings />,
-      path: "/profile",
-    },
-  ];
 
   return (
     <Box
@@ -67,62 +73,37 @@ export default function Sidebar() {
         width: 260,
         height: "100vh",
         bgcolor: "#111827",
-        color: "#fff",
-        display: "flex",
-        flexDirection: "column",
-        borderRight: "1px solid #1F2937",
+        color: "white",
         position: "fixed",
         left: 0,
         top: 0,
       }}
     >
-      {/* Logo */}
-
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-        }}
-      >
-        <Avatar
-          sx={{
-            bgcolor: "#2563EB",
-            width: 52,
-            height: 52,
-          }}
+      <Toolbar>
+        <Typography
+          variant="h6"
+          fontWeight={700}
         >
-          <Business />
-        </Avatar>
+          RetailPulse
+        </Typography>
+      </Toolbar>
 
-        <Box>
-          <Typography fontWeight={700} fontSize={20}>
-            RetailPulse
-          </Typography>
+      <Divider sx={{ bgcolor: "#334155" }} />
 
-          <Typography
-            fontSize={12}
-            color="#9CA3AF"
-          >
-            Analytics
-          </Typography>
-        </Box>
-      </Box>
-
-      <Divider sx={{ borderColor: "#374151" }} />
-
-      {/* Menu */}
-
-      <List sx={{ mt: 2, px: 1 }}>
-        {menu.map((item) => (
+      <List>
+        {menus.map((item) => (
           <ListItemButton
             key={item.text}
-            selected={location.pathname === item.path}
-            onClick={() => navigate(item.path)}
+            component={Link}
+            to={item.path}
+            selected={
+              location.pathname === item.path
+            }
             sx={{
-              borderRadius: 3,
-              mb: 1,
+              mx: 1,
+              my: 0.5,
+              borderRadius: 2,
+              color: "white",
 
               "&.Mui-selected": {
                 bgcolor: "#2563EB",
@@ -133,64 +114,24 @@ export default function Sidebar() {
               },
 
               "&:hover": {
-                bgcolor: "#1F2937",
+                bgcolor: "#1E293B",
               },
             }}
           >
             <ListItemIcon
               sx={{
-                color: "#fff",
-                minWidth: 42,
+                color: "white",
               }}
             >
               {item.icon}
             </ListItemIcon>
 
-            <ListItemText primary={item.text} />
+            <ListItemText
+              primary={item.text}
+            />
           </ListItemButton>
         ))}
       </List>
-
-      <Box sx={{ flexGrow: 1 }} />
-
-      <Divider sx={{ borderColor: "#374151" }} />
-
-      {/* User */}
-
-      <Box sx={{ p: 3 }}>
-        <Typography fontWeight={600}>
-          {user?.name}
-        </Typography>
-
-        <Typography
-          color="#9CA3AF"
-          fontSize={13}
-        >
-          {user?.role}
-        </Typography>
-
-        <ListItemButton
-          onClick={async () => {
-            await logoutUser();
-            navigate("/login");
-          }}
-          sx={{
-            mt: 2,
-            borderRadius: 2,
-            bgcolor: "#DC2626",
-
-            "&:hover": {
-              bgcolor: "#B91C1C",
-            },
-          }}
-        >
-          <ListItemIcon sx={{ color: "#fff" }}>
-            <Logout />
-          </ListItemIcon>
-
-          <ListItemText primary="Logout" />
-        </ListItemButton>
-      </Box>
     </Box>
   );
 }
