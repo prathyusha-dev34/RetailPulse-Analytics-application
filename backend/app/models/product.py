@@ -31,23 +31,52 @@ class Product(Base):
         nullable=False,
     )
 
-    name = Column(String(200), nullable=False)
+    name = Column(
+        String(200),
+        nullable=False,
+    )
 
-    sku = Column(String(100), nullable=False)
+    sku = Column(
+        String(100),
+        nullable=False,
+    )
 
-    brand = Column(String(100), nullable=True)
+    brand = Column(
+        String(100),
+        nullable=True,
+    )
 
-    description = Column(Text, nullable=True)
+    description = Column(
+        Text,
+        nullable=True,
+    )
 
-    unit_price = Column(Numeric(10, 2), nullable=False)
+    unit_price = Column(
+        Numeric(10, 2),
+        nullable=False,
+    )
 
-    cost_price = Column(Numeric(10, 2), nullable=False)
+    cost_price = Column(
+        Numeric(10, 2),
+        nullable=False,
+    )
 
-    stock_quantity = Column(Integer, nullable=False, default=0)
+    stock_quantity = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
 
-    unit_of_measure = Column(String(50), nullable=False)
+    unit_of_measure = Column(
+        String(50),
+        nullable=False,
+    )
 
-    status = Column(String(20), nullable=False, default="ACTIVE")
+    status = Column(
+        String(20),
+        nullable=False,
+        default="ACTIVE",
+    )
 
     created_at = Column(
         DateTime(timezone=True),
@@ -60,9 +89,18 @@ class Product(Base):
         onupdate=func.now(),
     )
 
-    company = relationship("Company", back_populates="products")
+    company = relationship(
+        "Company",
+        back_populates="products",
+    )
 
     category = relationship(
         "Category",
         back_populates="products",
+    )
+
+    sale_items = relationship(
+        "SaleItem",
+        back_populates="product",
+        cascade="all, delete-orphan",
     )

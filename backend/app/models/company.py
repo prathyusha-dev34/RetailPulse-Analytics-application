@@ -43,3 +43,9 @@ class Company(Base):
         back_populates="company",
         cascade="all, delete-orphan",
     )
+
+    sales = relationship(
+        "Sale",
+        back_populates="company",
+        cascade="all, delete-orphan",
+    )

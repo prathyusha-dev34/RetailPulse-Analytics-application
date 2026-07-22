@@ -12,14 +12,26 @@ import Inventory from "../pages/Inventory";
 import Reports from "../pages/Reports";
 import Analytics from "../pages/Analytics";
 
+import Sales from "../pages/Sales";
+import AddSale from "../pages/AddSale";
+import EditSale from "../pages/EditSale";
+import SaleDetails from "../pages/SaleDetails";
+
 import ProtectedRoute from "../components/ProtectedRoute";
 
 export default function AppRoutes() {
   return (
     <Routes>
       {/* Public Routes */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<RegisterCompany />} />
+      <Route
+        path="/login"
+        element={<Login />}
+      />
+
+      <Route
+        path="/register"
+        element={<RegisterCompany />}
+      />
 
       {/* Dashboard */}
       <Route
@@ -31,7 +43,6 @@ export default function AppRoutes() {
         }
       />
 
-      {/* Added Dashboard Route */}
       <Route
         path="/dashboard"
         element={
@@ -41,6 +52,7 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Profile */}
       <Route
         path="/profile"
         element={
@@ -50,6 +62,7 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Categories */}
       <Route
         path="/categories"
         element={
@@ -59,6 +72,7 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Products */}
       <Route
         path="/products"
         element={
@@ -68,6 +82,7 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Product Dashboard */}
       <Route
         path="/product-dashboard"
         element={
@@ -77,6 +92,7 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Inventory */}
       <Route
         path="/inventory"
         element={
@@ -86,6 +102,44 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Sales */}
+      <Route
+        path="/sales"
+        element={
+          <ProtectedRoute>
+            <Sales />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/sales/add"
+        element={
+          <ProtectedRoute>
+            <AddSale />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/sales/edit/:id"
+        element={
+          <ProtectedRoute>
+            <EditSale />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/sales/:id"
+        element={
+          <ProtectedRoute>
+            <SaleDetails />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Reports */}
       <Route
         path="/reports"
         element={
@@ -95,6 +149,7 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Analytics */}
       <Route
         path="/analytics"
         element={

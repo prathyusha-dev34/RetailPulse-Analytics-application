@@ -1,53 +1,66 @@
+import { Box } from "@mui/material";
+
+import Sidebar from "./Sidebar";
+import Navbar from "./Navbar";
+
 import { useState } from "react";
-import { Box, Toolbar } from "@mui/material";
-import { Outlet } from "react-router-dom";
 
-import Navbar from "../components/Navbar";
-import Sidebar from "../components/Sidebar";
 
-const drawerWidth = 260;
+export default function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
 
-export default function Layout() {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const drawerWidth = 260;
 
-  const handleDrawerToggle = () => {
-    setMobileOpen((prev) => !prev);
-  };
+  const [mobileOpen,setMobileOpen] =
+    useState(false);
 
-  const handleDrawerClose = () => {
-    setMobileOpen(false);
-  };
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#f5f7fb" }}>
-      <Navbar
-        drawerWidth={drawerWidth}
-        onDrawerToggle={handleDrawerToggle}
-      />
 
-      <Sidebar
-        drawerWidth={drawerWidth}
-        mobileOpen={mobileOpen}
-        onClose={handleDrawerClose}
-      />
+    <Box
+sx={{
+  minHeight:"100vh",
 
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          width: {
-            xs: "100%",
-            md: `calc(100% - ${drawerWidth}px)`,
-          },
-          p: 3,
-        }}
-      >
-        {/* Space for AppBar */}
-        <Toolbar />
+  background:
+  "linear-gradient(135deg,#020617,#0f172a,#1e293b)",
 
-        {/* Page Content */}
-        <Outlet />
-      </Box>
-    </Box>
-  );
+}}
+>
+
+<Sidebar />
+
+<Navbar
+ drawerWidth={drawerWidth}
+ onDrawerToggle={()=>
+ setMobileOpen(!mobileOpen)
 }
+/>
+
+
+<Box
+component="main"
+sx={{
+
+ml:`${drawerWidth}px`,
+
+pt:10,
+
+px:4,
+
+minHeight:"100vh",
+
+background:
+"linear-gradient(135deg,#020617,#0f172a,#1e293b)",
+
+}}
+>
+
+{children}
+
+</Box>
+
+
+</Box>

@@ -3,12 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import Base, engine
 
-# Import models
+# =========================
+# Import Models
+# =========================
 from app.models import Company, User, RefreshToken, AuditLog
 from app.models.category import Category
 from app.models.product import Product
+from app.models.sale import Sale
+from app.models.sale_item import SaleItem
 
-# Import routes
+# =========================
+# Import Routes
+# =========================
 from app.routes.auth import router as auth_router
 from app.routes.profile import router as profile_router
 from app.routes.admin import router as admin_router
@@ -17,10 +23,16 @@ from app.routes.logout import router as logout_router
 from app.routes.password import router as password_router
 from app.routes.category import router as category_router
 from app.routes.product import router as product_router
+from app.routes import sales
 
-# Create database tables
+# =========================
+# Create Database Tables
+# =========================
 Base.metadata.create_all(bind=engine)
 
+# =========================
+# FastAPI App
+# =========================
 app = FastAPI(
     title="RetailPulse Analytics API",
     version="1.0.0",
@@ -52,7 +64,11 @@ app.include_router(logout_router)
 app.include_router(password_router)
 app.include_router(category_router)
 app.include_router(product_router)
+app.include_router(sales.router)
 
+# =========================
+# Root
+# =========================
 @app.get("/", tags=["Root"])
 def root():
     return {
@@ -62,6 +78,9 @@ def root():
     }
 
 
+# =========================
+# Health Check
+# =========================
 @app.get("/health", tags=["Health"])
 def health_check():
     return {

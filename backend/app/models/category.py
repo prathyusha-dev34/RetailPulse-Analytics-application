@@ -21,7 +21,11 @@ class Category(Base):
 
     description = Column(Text, nullable=True)
 
-    status = Column(String(20), nullable=False, default="ACTIVE")
+    status = Column(
+        String(20),
+        nullable=False,
+        default="ACTIVE",
+    )
 
     created_at = Column(
         DateTime(timezone=True),
@@ -34,10 +38,19 @@ class Category(Base):
         onupdate=func.now(),
     )
 
-    company = relationship("Company", back_populates="categories")
+    company = relationship(
+        "Company",
+        back_populates="categories",
+    )
 
     products = relationship(
         "Product",
+        back_populates="category",
+        cascade="all, delete-orphan",
+    )
+
+    sales = relationship(
+        "SaleItem",
         back_populates="category",
         cascade="all, delete-orphan",
     )

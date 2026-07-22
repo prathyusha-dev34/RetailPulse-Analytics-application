@@ -603,7 +603,6 @@ export default function Products(){
               }
 
 
-
               InputProps={{
 
                 startAdornment:(
