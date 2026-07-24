@@ -13,6 +13,13 @@ from app.schemas.sale import SaleCreate
 from app.services.audit_service import create_audit_log
 
 
+# ==========================================
+# Constants
+# ==========================================
+
+LOW_STOCK_LIMIT = 5
+
+
 
 # ==========================================
 # Generate Invoice Number
@@ -22,20 +29,43 @@ def generate_invoice_number(
     db: Session,
     company_id: int,
 ):
+    """
+    Generates unique invoice number.
+
+    Format:
+    INV-YYYY-000001
+    """
 
     year = datetime.now().year
 
 
-    count = (
+    last_sale = (
         db.query(Sale)
         .filter(
-            Sale.company_id == company_id
+            Sale.company_id == company_id,
+            Sale.invoice_number.like(
+                f"INV-{year}-%"
+            )
         )
-        .count()
+        .order_by(
+            Sale.id.desc()
+        )
+        .first()
     )
 
 
-    next_number = count + 1
+    if last_sale:
+
+        last_number = int(
+            last_sale.invoice_number.split("-")[-1]
+        )
+
+        next_number = last_number + 1
+
+    else:
+
+        next_number = 1
+
 
 
     return (
@@ -45,6 +75,69 @@ def generate_invoice_number(
 
 
 # ==========================================
+# Calculate Line Total
+# ==========================================
+
+def calculate_line_total(
+    unit_price: Decimal,
+    quantity: int,
+    discount: Decimal,
+    tax: Decimal,
+):
+
+    subtotal = (
+        unit_price *
+        quantity
+    )
+
+
+    return (
+        subtotal
+        -
+        discount
+        +
+        tax
+    )
+
+
+
+# ==========================================
+# Validate Product Stock
+# ==========================================
+
+def validate_stock(
+    product: Product,
+    quantity: int,
+):
+
+    if product.stock_quantity < quantity:
+
+        raise ValueError(
+            f"Insufficient stock for {product.name}"
+        )
+
+
+
+# ==========================================
+# Update Product Stock Status
+# ==========================================
+
+def update_stock_status(
+    product: Product,
+):
+
+    if product.stock_quantity <= 0:
+
+        product.stock_quantity = 0
+
+        product.status = "OUT_OF_STOCK"
+
+
+    else:
+
+        product.status = "ACTIVE"
+
+        # ==========================================
 # Create Sale
 # ==========================================
 
@@ -55,134 +148,134 @@ def create_sale(
     user_id: int,
 ):
 
+    try:
 
-    invoice_number = generate_invoice_number(
-        db,
-        company_id
-    )
-
-
-    total_amount = Decimal("0.00")
-
-
-
-    sale = Sale(
-
-        company_id=company_id,
-
-        invoice_number=invoice_number,
-
-        customer_name=sale_data.customer_name,
-
-        sales_channel=sale_data.sales_channel,
-
-        payment_method=sale_data.payment_method,
-
-        created_by=user_id,
-
-    )
-
-
-    db.add(sale)
-
-    db.flush()
-
-
-
-    for item in sale_data.items:
-
-
-        product = (
-            db.query(Product)
-            .filter(
-                Product.id == item.product_id,
-                Product.company_id == company_id
-            )
-            .first()
+        invoice_number = generate_invoice_number(
+            db,
+            company_id
         )
 
 
-        if not product:
+        total_amount = Decimal("0.00")
 
-            raise ValueError(
-                "Product not found"
+
+
+        sale = Sale(
+
+            company_id=company_id,
+
+            invoice_number=invoice_number,
+
+            customer_name=sale_data.customer_name,
+
+            sales_channel=sale_data.sales_channel,
+
+            payment_method=sale_data.payment_method,
+
+            created_by=user_id,
+
+        )
+
+
+        db.add(sale)
+
+        db.flush()
+
+
+
+        for item in sale_data.items:
+
+
+            product = (
+                db.query(Product)
+                .filter(
+                    Product.id == item.product_id,
+                    Product.company_id == company_id
+                )
+                .first()
             )
 
 
+            if not product:
 
-        if product.stock_quantity < item.quantity:
+                raise ValueError(
+                    "Product not found"
+                )
 
-            raise ValueError(
-                f"Insufficient stock for {product.name}"
+
+
+            # Stock validation
+
+            validate_stock(
+                product,
+                item.quantity
             )
 
 
 
-        product_total = (
-            item.unit_price *
-            item.quantity
-        )
+            line_total = calculate_line_total(
+
+                item.unit_price,
+
+                item.quantity,
+
+                item.discount,
+
+                item.tax
+
+            )
 
 
 
-        line_total = (
-            product_total
-            -
-            item.discount
-            +
-            item.tax
-        )
+            sale_item = SaleItem(
+
+                sale_id=sale.id,
+
+                product_id=product.id,
+
+                category_id=product.category_id,
+
+                quantity=item.quantity,
+
+                unit_price=item.unit_price,
+
+                discount=item.discount,
+
+                tax=item.tax,
+
+                total=line_total,
+
+            )
+
+
+            db.add(sale_item)
 
 
 
-        sale_item = SaleItem(
-
-            sale_id=sale.id,
-
-            product_id=product.id,
-
-            category_id=product.category_id,
-
-            quantity=item.quantity,
-
-            unit_price=item.unit_price,
-
-            discount=item.discount,
-
-            tax=item.tax,
-
-            total=line_total,
-
-        )
-
-
-        db.add(sale_item)
+            total_amount += line_total
 
 
 
-        total_amount += line_total
+            # ==========================
+            # Inventory Update
+            # ==========================
+
+
+            product.stock_quantity -= item.quantity
 
 
 
-        # Reduce Stock
-
-        product.stock_quantity -= item.quantity
+            old_status = product.status
 
 
 
-        # Stock Status Update
-
-        if product.stock_quantity <= 0:
-
-
-            product.stock_quantity = 0
-
-            product.status = "OUT_OF_STOCK"
+            update_stock_status(
+                product
+            )
 
 
 
-        elif product.stock_quantity <= 5:
-
+            # Audit Stock Change
 
             create_audit_log(
 
@@ -192,9 +285,71 @@ def create_sale(
 
                 user_id=user_id,
 
-                action=f"Low Stock Alert - {product.name}"
+                action=(
+                    f"Inventory Updated - "
+                    f"{product.name}"
+                )
 
             )
+
+
+
+            # Low Stock Alert
+
+            if (
+                product.stock_quantity > 0
+                and
+                product.stock_quantity <= LOW_STOCK_LIMIT
+            ):
+
+
+                create_audit_log(
+
+                    db=db,
+
+                    company_id=company_id,
+
+                    user_id=user_id,
+
+                    action=(
+                        f"Low Stock Alert - "
+                        f"{product.name}"
+                    )
+
+                )
+
+
+
+            # Out of Stock Alert
+
+            if old_status != product.status and product.status == "OUT_OF_STOCK":
+
+
+                create_audit_log(
+
+                    db=db,
+
+                    company_id=company_id,
+
+                    user_id=user_id,
+
+                    action=(
+                        f"Product Out Of Stock - "
+                        f"{product.name}"
+                    )
+
+                )
+
+
+
+        sale.total_amount = total_amount
+
+
+
+        db.commit()
+
+
+        db.refresh(sale)
 
 
 
@@ -206,40 +361,27 @@ def create_sale(
 
             user_id=user_id,
 
-            action=f"Inventory Updated - {product.name}"
+            action=(
+                f"Sale Created - "
+                f"{invoice_number}"
+            )
 
         )
 
 
-
-    sale.total_amount = total_amount
-
-
-    db.commit()
-
-
-    db.refresh(sale)
+        return sale
 
 
 
-    create_audit_log(
-
-        db=db,
-
-        company_id=company_id,
-
-        user_id=user_id,
-
-        action=f"Sale Created - {invoice_number}"
-
-    )
+    except Exception as e:
 
 
-    return sale
+        db.rollback()
+
+        raise e
 
 
-
-# ==========================================
+    # ==========================================
 # Get All Sales
 # ==========================================
 
@@ -276,7 +418,9 @@ def get_sales(
 
     )
 
-    # ==========================================
+
+
+# ==========================================
 # Get Sale By ID
 # ==========================================
 
@@ -435,6 +579,7 @@ def filter_sales(
 
     if start_date:
 
+
         query = query.filter(
 
             Sale.sale_date >= start_date
@@ -444,6 +589,7 @@ def filter_sales(
 
 
     if end_date:
+
 
         query = query.filter(
 
@@ -455,6 +601,7 @@ def filter_sales(
 
     if category_id:
 
+
         query = query.filter(
 
             SaleItem.category_id == category_id
@@ -465,6 +612,7 @@ def filter_sales(
 
     if sales_channel:
 
+
         query = query.filter(
 
             Sale.sales_channel == sales_channel
@@ -474,6 +622,7 @@ def filter_sales(
 
 
     if payment_method:
+
 
         query = query.filter(
 
@@ -537,7 +686,7 @@ def sort_sales(
 
 
 
-    columns = {
+    sort_columns = {
 
         "sale_date": Sale.sale_date,
 
@@ -549,7 +698,7 @@ def sort_sales(
 
 
 
-    column = columns.get(
+    column = sort_columns.get(
 
         sort_by,
 
@@ -561,19 +710,27 @@ def sort_sales(
 
     if order.lower() == "asc":
 
+
         query = query.order_by(
+
             column.asc()
+
         )
+
 
     else:
 
+
         query = query.order_by(
+
             column.desc()
+
         )
 
 
 
     return query.all()
+
 
 # ==========================================
 # Update Sale
@@ -587,249 +744,316 @@ def update_sale(
     user_id: int,
 ):
 
+    try:
 
-    sale = (
 
-        db.query(Sale)
+        sale = (
 
-        .filter(
+            db.query(Sale)
 
-            Sale.id == sale_id,
+            .filter(
 
-            Sale.company_id == company_id
+                Sale.id == sale_id,
+
+                Sale.company_id == company_id
+
+            )
+
+            .first()
 
         )
 
-        .first()
 
-    )
+        if not sale:
+
+            raise ValueError(
+                "Sale not found"
+            )
 
 
 
-    if not sale:
+        # ==================================
+        # Restore Previous Stock
+        # ==================================
 
-        raise ValueError(
-            "Sale not found"
+        old_items = (
+
+            db.query(SaleItem)
+
+            .filter(
+
+                SaleItem.sale_id == sale.id
+
+            )
+
+            .all()
+
         )
 
 
 
+        for old_item in old_items:
 
-    # Restore previous stock
 
-    old_items = (
+            product = (
 
-        db.query(SaleItem)
+                db.query(Product)
 
-        .filter(
+                .filter(
+
+                    Product.id == old_item.product_id,
+
+                    Product.company_id == company_id
+
+                )
+
+                .first()
+
+            )
+
+
+
+            if product:
+
+
+                product.stock_quantity += old_item.quantity
+
+
+                update_stock_status(
+                    product
+                )
+
+
+                create_audit_log(
+
+                    db=db,
+
+                    company_id=company_id,
+
+                    user_id=user_id,
+
+                    action=(
+                        f"Stock Restored - "
+                        f"{product.name}"
+                    )
+
+                )
+
+
+
+        # Remove old items
+
+        db.query(SaleItem).filter(
 
             SaleItem.sale_id == sale.id
 
-        )
-
-        .all()
-
-    )
+        ).delete()
 
 
 
-    for old_item in old_items:
+        # Update Sale Header
 
-
-        product = (
-
-            db.query(Product)
-
-            .filter(
-
-                Product.id == old_item.product_id
-
-            )
-
-            .first()
-
+        sale.customer_name = (
+            sale_data.customer_name
         )
 
 
-        if product:
-
-            product.stock_quantity += old_item.quantity
-
-
-            if product.stock_quantity > 0:
-
-                product.status = "ACTIVE"
+        sale.sales_channel = (
+            sale_data.sales_channel
+        )
 
 
-
-
-    db.query(SaleItem).filter(
-
-        SaleItem.sale_id == sale.id
-
-    ).delete()
-
-
-
-    sale.customer_name = sale_data.customer_name
-
-    sale.sales_channel = sale_data.sales_channel
-
-    sale.payment_method = sale_data.payment_method
-
-
-
-    total_amount = Decimal("0.00")
-
-
-
-
-    for item in sale_data.items:
-
-
-        product = (
-
-            db.query(Product)
-
-            .filter(
-
-                Product.id == item.product_id,
-
-                Product.company_id == company_id
-
-            )
-
-            .first()
-
+        sale.payment_method = (
+            sale_data.payment_method
         )
 
 
 
-        if not product:
+        total_amount = Decimal("0.00")
 
-            raise ValueError(
-                "Product not found"
+
+
+        # ==================================
+        # Add Updated Items
+        # ==================================
+
+        for item in sale_data.items:
+
+
+            product = (
+
+                db.query(Product)
+
+                .filter(
+
+                    Product.id == item.product_id,
+
+                    Product.company_id == company_id
+
+                )
+
+                .first()
+
             )
 
 
 
-        if product.stock_quantity < item.quantity:
+            if not product:
 
-            raise ValueError(
-                f"Insufficient stock for {product.name}"
+
+                raise ValueError(
+                    "Product not found"
+                )
+
+
+
+            validate_stock(
+
+                product,
+
+                item.quantity
+
             )
 
 
 
-        product_total = (
+            line_total = calculate_line_total(
 
-            item.unit_price *
+                item.unit_price,
 
-            item.quantity
+                item.quantity,
+
+                item.discount,
+
+                item.tax
+
+            )
+
+
+
+            sale_item = SaleItem(
+
+                sale_id=sale.id,
+
+                product_id=product.id,
+
+                category_id=product.category_id,
+
+                quantity=item.quantity,
+
+                unit_price=item.unit_price,
+
+                discount=item.discount,
+
+                tax=item.tax,
+
+                total=line_total,
+
+            )
+
+
+            db.add(sale_item)
+
+
+
+            total_amount += line_total
+
+
+
+            # Inventory Update
+
+            product.stock_quantity -= item.quantity
+
+
+
+            update_stock_status(
+                product
+            )
+
+
+
+            create_audit_log(
+
+                db=db,
+
+                company_id=company_id,
+
+                user_id=user_id,
+
+                action=(
+                    f"Inventory Updated - "
+                    f"{product.name}"
+                )
+
+            )
+
+
+
+            if (
+                product.stock_quantity > 0
+                and
+                product.stock_quantity <= LOW_STOCK_LIMIT
+            ):
+
+
+                create_audit_log(
+
+                    db=db,
+
+                    company_id=company_id,
+
+                    user_id=user_id,
+
+                    action=(
+                        f"Low Stock Alert - "
+                        f"{product.name}"
+                    )
+
+                )
+
+
+
+        sale.total_amount = total_amount
+
+
+
+        db.commit()
+
+
+        db.refresh(sale)
+
+
+
+        create_audit_log(
+
+            db=db,
+
+            company_id=company_id,
+
+            user_id=user_id,
+
+            action=(
+                f"Sale Updated - "
+                f"{sale.invoice_number}"
+            )
 
         )
 
 
 
-        line_total = (
-
-            product_total
-
-            -
-
-            item.discount
-
-            +
-
-            item.tax
-
-        )
+        return sale
 
 
 
-        sale_item = SaleItem(
-
-            sale_id=sale.id,
-
-            product_id=product.id,
-
-            category_id=product.category_id,
-
-            quantity=item.quantity,
-
-            unit_price=item.unit_price,
-
-            discount=item.discount,
-
-            tax=item.tax,
-
-            total=line_total
-
-        )
+    except Exception as e:
 
 
+        db.rollback()
 
-        db.add(sale_item)
-
-
-
-        product.stock_quantity -= item.quantity
+        raise e
 
 
-
-        if product.stock_quantity <= 0:
-
-
-            product.stock_quantity = 0
-
-            product.status = "OUT_OF_STOCK"
-
-
-
-        elif product.stock_quantity <= 5:
-
-
-            product.status = "ACTIVE"
-
-
-
-        total_amount += line_total
-
-
-
-
-    sale.total_amount = total_amount
-
-
-
-    db.commit()
-
-
-    db.refresh(sale)
-
-
-
-    create_audit_log(
-
-        db=db,
-
-        company_id=company_id,
-
-        user_id=user_id,
-
-        action=f"Sale Updated - {sale.invoice_number}"
-
-    )
-
-
-
-    return sale
-
-
-
-
-
-# ==========================================
+    # ==========================================
 # Delete Sale
 # ==========================================
 
@@ -839,7 +1063,6 @@ def delete_sale(
     company_id: int,
     user_id: int,
 ):
-
 
     try:
 
@@ -864,6 +1087,7 @@ def delete_sale(
 
         if not sale:
 
+
             raise ValueError(
                 "Sale not found"
             )
@@ -886,6 +1110,8 @@ def delete_sale(
 
 
 
+        # Restore Inventory
+
         for item in items:
 
 
@@ -906,17 +1132,15 @@ def delete_sale(
             )
 
 
-
             if product:
 
 
                 product.stock_quantity += item.quantity
 
 
-
-                if product.stock_quantity > 0:
-
-                    product.status = "ACTIVE"
+                update_stock_status(
+                    product
+                )
 
 
 
@@ -928,17 +1152,21 @@ def delete_sale(
 
                     user_id=user_id,
 
-                    action=f"Stock Restored - {product.name}"
+                    action=(
+                        f"Stock Restored - "
+                        f"{product.name}"
+                    )
 
                 )
 
 
 
-        invoice = sale.invoice_number
+        invoice_number = sale.invoice_number
 
 
 
         db.delete(sale)
+
 
 
         db.commit()
@@ -953,7 +1181,10 @@ def delete_sale(
 
             user_id=user_id,
 
-            action=f"Sale Deleted - {invoice}"
+            action=(
+                f"Sale Deleted - "
+                f"{invoice_number}"
+            )
 
         )
 
@@ -975,7 +1206,11 @@ def delete_sale(
 
         raise e
 
-    # ==========================================
+
+
+
+
+# ==========================================
 # Sales Dashboard Summary
 # ==========================================
 
@@ -1006,9 +1241,7 @@ def get_dashboard_summary(
         db.query(
 
             func.sum(
-
                 Sale.total_amount
-
             )
 
         )
@@ -1069,7 +1302,7 @@ def get_dashboard_summary(
 def get_low_stock_products(
     db: Session,
     company_id: int,
-    threshold: int = 5,
+    threshold: int = LOW_STOCK_LIMIT,
 ):
 
 
@@ -1180,14 +1413,17 @@ def get_remaining_stock(
     return {
 
         "product":
+
         product.name,
 
 
         "remaining_stock":
+
         product.stock_quantity,
 
 
         "status":
+
         product.status
 
     }

@@ -104,3 +104,10 @@ class Product(Base):
         back_populates="product",
         cascade="all, delete-orphan",
     )
+
+    inventory = relationship(
+        "Inventory",
+        back_populates="product",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

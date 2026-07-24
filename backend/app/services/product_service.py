@@ -11,7 +11,7 @@ from app.schemas.product import (
 )
 
 from app.services.audit_service import create_audit_log
-
+from app.services.inventory_service import create_inventory
 
 def create_product(
     db: Session,
@@ -76,7 +76,7 @@ def create_product(
             "Stock Quantity cannot be negative."
         )
 
-    new_product = Product(
+        new_product = Product(
         company_id=current_user.company_id,
         category_id=product.category_id,
         name=product.name,
@@ -94,12 +94,16 @@ def create_product(
     db.commit()
     db.refresh(new_product)
 
+    create_inventory(
+        db=db,
+        product=new_product,
+    )
+
     create_audit_log(
         db=db,
         company_id=current_user.company_id,
         user_id=current_user.id,
         action="Product Created",
-        
     )
 
     return new_product
