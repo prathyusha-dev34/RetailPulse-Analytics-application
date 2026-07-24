@@ -9,6 +9,7 @@ import Categories from "../pages/Categories";
 import Products from "../pages/Products";
 import ProductDashboard from "../pages/ProductDashboard";
 import Inventory from "../pages/Inventory";
+import InventoryMovements from "../pages/InventoryMovements";
 import Reports from "../pages/Reports";
 import Analytics from "../pages/Analytics";
 
@@ -18,7 +19,7 @@ import EditSale from "../pages/EditSale";
 import SaleDetails from "../pages/SaleDetails";
 
 import ProtectedRoute from "../components/ProtectedRoute";
-
+import Notifications from "../pages/Notifications";
 export default function AppRoutes() {
   return (
     <Routes>
@@ -101,7 +102,17 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+       
+       <Route
+  path="/inventory/movements"
+  element={
+    <ProtectedRoute>
+      <InventoryMovements />
+    </ProtectedRoute>
+  }
+/>
 
+    
       {/* Sales */}
       <Route
         path="/sales"
@@ -158,6 +169,11 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      <Route
+  path="/notifications"
+  element={<Notifications />}
+/>
     </Routes>
   );
 }
