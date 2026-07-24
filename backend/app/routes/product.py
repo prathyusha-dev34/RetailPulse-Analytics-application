@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.roles import require_roles
 
 from app.models.user import User
 
@@ -39,7 +40,9 @@ router = APIRouter(
 def create_new_product(
     product: ProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles("COMPANY_ADMIN")
+    ),
 ):
     try:
         return create_product(
@@ -47,6 +50,7 @@ def create_new_product(
             product,
             current_user,
         )
+
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -122,7 +126,9 @@ def edit_product(
     product_id: int,
     data: ProductUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+       require_roles("COMPANY_ADMIN")
+    ),
 ):
     try:
         product = update_product(
@@ -153,7 +159,9 @@ def edit_product(
 def remove_product(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles("COMPANY_ADMIN")
+    ),
 ):
     success = delete_product(
         db,
@@ -178,7 +186,9 @@ def remove_product(
 def activate_product_route(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles("COMPANY_ADMIN")
+    ),
 ):
     product = activate_product(
         db,
@@ -202,7 +212,9 @@ def activate_product_route(
 def deactivate_product_route(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles("COMPANY_ADMIN")
+    ),
 ):
     product = deactivate_product(
         db,

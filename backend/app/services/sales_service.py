@@ -38,42 +38,33 @@ def generate_invoice_number(
 
     year = datetime.now().year
 
-
-    last_sale = (
-        db.query(Sale)
+    last_invoice = (
+        db.query(Sale.invoice_number)
         .filter(
             Sale.company_id == company_id,
             Sale.invoice_number.like(
                 f"INV-{year}-%"
-            )
+            ),
         )
         .order_by(
-            Sale.id.desc()
+            Sale.invoice_number.desc()
         )
         .first()
     )
 
-
-    if last_sale:
-
+    if last_invoice:
         last_number = int(
-            last_sale.invoice_number.split("-")[-1]
+            last_invoice[0].split("-")[-1]
         )
 
         next_number = last_number + 1
 
     else:
-
         next_number = 1
-
-
 
     return (
         f"INV-{year}-{next_number:06d}"
     )
-
-
-
 # ==========================================
 # Calculate Line Total
 # ==========================================

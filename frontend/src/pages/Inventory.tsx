@@ -1020,28 +1020,42 @@ stockStatusData.map(
  md={6}
 >
 
-
 <TextField
- fullWidth
- label="Search Product / SKU"
- value={search}
- onChange={(e)=>
-  setSearch(e.target.value)
- }
- InputLabelProps={{
-  sx:{
-   color:"#CBD5E1"
+  fullWidth
+  label="Search Product / SKU"
+  value={search}
+  onChange={(e) =>
+    setSearch(e.target.value)
   }
- }}
- InputProps={{
-  sx:{
-   color:"#FFFFFF",
-   bgcolor:"#0F172A",
-   borderRadius:2
-  }
- }}
-/>
+  sx={{
+    backgroundColor: "#FFFFFF",
+    borderRadius: 2,
 
+    "& .MuiInputBase-input": {
+      color: "#111827",
+    },
+
+    "& .MuiInputLabel-root": {
+      color: "#475569",
+    },
+
+    "& .MuiOutlinedInput-root": {
+      backgroundColor: "#FFFFFF",
+
+      "& fieldset": {
+        borderColor: "#CBD5E1",
+      },
+
+      "&:hover fieldset": {
+        borderColor: "#2563EB",
+      },
+
+      "&.Mui-focused fieldset": {
+        borderColor: "#2563EB",
+      },
+    },
+  }}
+/>
 
 </Grid>
 

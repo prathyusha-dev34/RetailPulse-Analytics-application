@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
+from app.dependencies.roles import require_roles
 
 from app.models.user import User
 
@@ -23,11 +24,16 @@ from app.services.category_service import (
     search_categories,
 )
 
+
 router = APIRouter(
     prefix="/categories",
     tags=["Categories"],
 )
 
+
+# =========================
+# Create Category
+# =========================
 
 @router.post(
     "/",
@@ -36,16 +42,27 @@ router = APIRouter(
 def create_new_category(
     category: CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles("COMPANY_ADMIN")
+    ),
 ):
     try:
-        return create_category(db, category, current_user)
+        return create_category(
+            db,
+            category,
+            current_user,
+        )
+
     except ValueError as e:
         raise HTTPException(
             status_code=400,
             detail=str(e),
         )
 
+
+# =========================
+# Get Categories
+# =========================
 
 @router.get(
     "/",
@@ -54,7 +71,9 @@ def create_new_category(
 def list_categories(
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     if search:
         return search_categories(
@@ -69,6 +88,10 @@ def list_categories(
     )
 
 
+# =========================
+# Get Category By ID
+# =========================
+
 @router.get(
     "/{category_id}",
     response_model=CategoryResponse,
@@ -76,7 +99,9 @@ def list_categories(
 def get_category_by_id(
     category_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     category = get_category(
         db,
@@ -93,6 +118,10 @@ def get_category_by_id(
     return category
 
 
+# =========================
+# Update Category
+# =========================
+
 @router.put(
     "/{category_id}",
     response_model=CategoryResponse,
@@ -101,7 +130,9 @@ def edit_category(
     category_id: int,
     data: CategoryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles("COMPANY_ADMIN")
+    ),
 ):
     category = update_category(
         db,
@@ -119,13 +150,19 @@ def edit_category(
     return category
 
 
+# =========================
+# Delete Category
+# =========================
+
 @router.delete(
     "/{category_id}",
 )
 def remove_category(
     category_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles("COMPANY_ADMIN")
+    ),
 ):
     success = delete_category(
         db,

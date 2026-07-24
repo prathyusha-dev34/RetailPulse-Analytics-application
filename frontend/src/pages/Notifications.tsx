@@ -102,11 +102,22 @@ const Notifications = () => {
               key={notification.id}
               sx={{
                 backgroundColor: notification.is_read
-                  ? "background.paper"
-                  : "rgba(33,150,243,0.15)",
+                  ? "#ffffff"
+                  : "#1e3a5f",
+
+                color: notification.is_read
+                  ? "#111827"
+                  : "#ffffff",
+
                 borderLeft: notification.is_read
                   ? "none"
                   : "4px solid #2196f3",
+
+                transition: "0.3s",
+
+                "&:hover": {
+                  transform: "translateY(-2px)",
+                },
               }}
             >
 
@@ -115,13 +126,23 @@ const Notifications = () => {
                 <Typography
                   variant="h6"
                   fontWeight={600}
+                  sx={{
+                    color: notification.is_read
+                      ? "#111827"
+                      : "#ffffff",
+                  }}
                 >
                   {notification.title}
                 </Typography>
 
 
                 <Typography
-                  sx={{ mt: 1 }}
+                  sx={{
+                    mt: 1,
+                    color: notification.is_read
+                      ? "#334155"
+                      : "#e2e8f0",
+                  }}
                 >
                   {notification.message}
                 </Typography>
@@ -129,7 +150,13 @@ const Notifications = () => {
 
                 <Typography
                   variant="caption"
-                  color="text.secondary"
+                  sx={{
+                    display: "block",
+                    mt: 1,
+                    color: notification.is_read
+                      ? "#64748b"
+                      : "#cbd5e1",
+                  }}
                 >
                   {new Date(
                     notification.created_at
