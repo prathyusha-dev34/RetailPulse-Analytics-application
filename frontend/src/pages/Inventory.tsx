@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState
+} from "react";
+
 
 import {
   Box,
@@ -24,6 +29,7 @@ import {
   Chip,
 } from "@mui/material";
 
+
 import {
   BarChart,
   Bar,
@@ -36,8 +42,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+
 import Sidebar from "../components/Sidebar";
 import Topbar from "../components/Topbar";
+
 
 import {
   getInventory,
@@ -49,11 +57,38 @@ import {
   updateReorderLevel,
 } from "../api/inventoryApi";
 
+
+
+// =========================
+// Interfaces
+// =========================
+
+
+interface Category {
+
+  name:string;
+
+}
+
+
+
+interface Product {
+
+  name:string;
+
+  sku:string;
+
+  brand:string;
+
+  category?:Category;
+
+}
+
+
+
 interface InventoryItem {
 
   id:number;
-
-  product_id:number;
 
   current_stock:number;
 
@@ -63,24 +98,61 @@ interface InventoryItem {
 
   reorder_level:number;
 
-  stock_status:string;
+  stock_status:
+  "IN_STOCK" |
+  "LOW_STOCK" |
+  "OUT_OF_STOCK";
+
 
   updated_at?:string;
 
 
-  product:{
-    name:string;
-    sku:string;
-    brand:string;
-    category_id:number;
-
-    category?:{
-      name:string;
-    };
-  };
+  product:Product;
 
 }
 
+
+
+interface Dashboard {
+
+  total_products:number;
+
+  total_inventory_quantity:number;
+
+  low_stock_products:number;
+
+  out_of_stock_products:number;
+
+}
+
+
+
+interface Movement {
+
+  id:number;
+
+  movement_type:string;
+
+  quantity_changed:number;
+
+  previous_quantity:number;
+
+  updated_quantity:number;
+
+  reason:string;
+
+  remarks?:string;
+
+  performed_by_name?:string;
+
+  created_at:string;
+
+}
+
+
+// =========================
+// Component
+// =========================
 
 
 export default function Inventory(){
@@ -92,61 +164,75 @@ useState<InventoryItem[]>([]);
 
 
 const [dashboard,setDashboard] =
-useState<any>({});
+useState<Dashboard>({
+  total_products:0,
+  total_inventory_quantity:0,
+  low_stock_products:0,
+  out_of_stock_products:0
+});
 
 
-
-// Search
 
 const [search,setSearch] =
 useState("");
 
 
 
-// Filters
-
 const [status,setStatus] =
 useState("");
 
+
+
 const [category,setCategory] =
 useState("");
+
+
 
 const [brand,setBrand] =
 useState("");
 
 
 
-// Sorting
-
 const [sortBy,setSortBy] =
 useState("");
 
 
 
-// Dialog
-
 const [open,setOpen] =
 useState(false);
 
-const [movementOpen, setMovementOpen] =
+
+
+const [movementOpen,setMovementOpen] =
 useState(false);
 
-const [selectedItem,setSelectedItem] =
-useState<any>(null);
+
 
 const [reorderOpen,setReorderOpen] =
 useState(false);
+
+
+
+const [selectedItem,setSelectedItem] =
+useState<InventoryItem | null>(null);
+
+
 
 const [reorderValue,setReorderValue] =
 useState(0);
 
 
-const [movements, setMovements] =
-useState<any[]>([]);
+
+const [movements,setMovements] =
+useState<Movement[]>([]);
+
+
 
 const [actionType,setActionType] =
 useState<
-"add"|"remove"|"adjust"
+"add" |
+"remove" |
+"adjust"
 >("add");
 
 
@@ -160,141 +246,224 @@ useState({
 
  reason:"",
 
- remarks:"",
+ remarks:""
 
 });
 
 
-
+// =========================
 // Load Inventory
+// =========================
 
 const loadInventory = async()=>{
 
+  try{
 
- const data = await getInventory({
+    const data = await getInventory({
 
-  search,
-
-  stock_status:
-  status || undefined,
-
- });
+      search:
+      search || undefined,
 
 
- setInventory(data);
+      stock_status:
+      status || undefined,
 
+
+      sort_by:
+      sortBy || undefined,
+
+    });
+
+
+
+    setInventory(
+      Array.isArray(data)
+      ? data
+      : []
+    );
+
+
+  }
+  catch(error){
+
+    console.log(
+      "Inventory loading failed",
+      error
+    );
+
+    setInventory([]);
+
+  }
 
 };
 
 
 
-// Dashboard
+// =========================
+// Load Dashboard
+// =========================
 
 const loadDashboard = async()=>{
 
+  try{
 
- const data =
- await getInventoryDashboard();
+    const data =
+    await getInventoryDashboard();
 
 
- setDashboard(data);
+    setDashboard(data);
 
+
+  }
+  catch(error){
+
+    console.log(
+      "Dashboard loading failed",
+      error
+    );
+
+  }
 
 };
 
 
 
+// =========================
+// Load Movements
+// =========================
+
+const loadMovements = async()=>{
+
+  try{
+
+    const data =
+    await getInventoryMovements();
+
+
+    setMovements(
+      Array.isArray(data)
+      ? data
+      : []
+    );
+
+
+    setMovementOpen(true);
+
+
+  }
+  catch(error){
+
+    console.log(
+      "Movement loading failed",
+      error
+    );
+
+  }
+
+};
+
+
+
+// =========================
 // Category Chart Data
+// =========================
 
 const categoryData =
 useMemo(()=>{
 
-
- const map:any={};
-
-
-
- inventory.forEach(item=>{
+  const map:
+  Record<string,number> = {};
 
 
-  const name =
-  item.product.category?.name ||
-  "Other";
+  inventory.forEach((item)=>{
 
 
-  map[name] =
-  (map[name] || 0)
-  +
-  item.current_stock;
+    const categoryName =
+    item.product.category?.name
+    ||
+    "Other";
 
 
- });
+    map[categoryName] =
+    (
+      map[categoryName]
+      ||
+      0
+    )
+    +
+    item.current_stock;
 
 
+  });
 
- return Object.keys(map)
- .map(key=>({
 
-  name:key,
+  return Object.keys(map)
+  .map((key)=>({
 
-  value:map[key]
+    name:key,
 
- }));
+    value:map[key]
+
+  }));
 
 
 },[inventory]);
 
 
 
-
-
+// =========================
 // Stock Status Chart Data
+// =========================
 
 const stockStatusData =
 useMemo(()=>{
 
 
- const map:any={};
+  const map:
+  Record<string,number> = {};
+
+
+  inventory.forEach((item)=>{
+
+
+    map[item.stock_status] =
+    (
+      map[item.stock_status]
+      ||
+      0
+    )
+    +
+    1;
+
+
+  });
 
 
 
- inventory.forEach(item=>{
+  return Object.keys(map)
+  .map((key)=>({
 
+    name:key,
 
-  map[item.stock_status] =
-  (map[item.stock_status] || 0)
-  +
-  1;
+    value:map[key]
 
-
- });
-
-
-
- return Object.keys(map)
- .map(key=>({
-
-  name:key,
-
-  value:map[key]
-
- }));
+  }));
 
 
 },[inventory]);
 
 
 
-
-
-
-// Filter + Sort Inventory
+// =========================
+// Frontend Filter + Sort
+// =========================
 
 const filteredInventory =
 useMemo(()=>{
 
 
- let data=[...inventory];
+ let data =
+ [...inventory];
 
 
 
@@ -303,9 +472,9 @@ useMemo(()=>{
 
   data =
   data.filter(
-   item =>
-   item.product.category?.name
-   === category
+    item =>
+    item.product.category?.name
+    === category
   );
 
 
@@ -318,9 +487,9 @@ useMemo(()=>{
 
   data =
   data.filter(
-   item =>
-   item.product.brand
-   === brand
+    item =>
+    item.product.brand
+    === brand
   );
 
 
@@ -332,10 +501,10 @@ useMemo(()=>{
 
 
   data.sort(
-   (a,b)=>
-   a.product.name.localeCompare(
-    b.product.name
-   )
+    (a,b)=>
+    a.product.name.localeCompare(
+      b.product.name
+    )
   );
 
 
@@ -343,13 +512,13 @@ useMemo(()=>{
 
 
 
- if(sortBy==="stock"){
+ else if(sortBy==="stock"){
 
 
   data.sort(
-   (a,b)=>
-   b.current_stock -
-   a.current_stock
+    (a,b)=>
+    b.current_stock -
+    a.current_stock
   );
 
 
@@ -357,18 +526,22 @@ useMemo(()=>{
 
 
 
- if(sortBy==="updated"){
+ else if(sortBy==="recent"){
 
 
   data.sort(
-   (a,b)=>
-   new Date(
-    b.updated_at || ""
-   ).getTime()
-   -
-   new Date(
-    a.updated_at || ""
-   ).getTime()
+    (a,b)=>
+
+    new Date(
+      b.updated_at || ""
+    ).getTime()
+
+    -
+
+    new Date(
+      a.updated_at || ""
+    ).getTime()
+
   );
 
 
@@ -377,7 +550,6 @@ useMemo(()=>{
 
 
  return data;
-
 
 
 },[
@@ -389,10 +561,9 @@ useMemo(()=>{
 
 
 
-
-
-
-// Category Dropdown Data
+// =========================
+// Category Dropdown
+// =========================
 
 const categories =
 useMemo(()=>{
@@ -402,12 +573,12 @@ useMemo(()=>{
 
   new Set(
 
-   inventory
-   .map(
-    item =>
-    item.product.category?.name
-   )
-   .filter(Boolean)
+    inventory
+    .map(
+      item =>
+      item.product.category?.name
+    )
+    .filter(Boolean)
 
   )
 
@@ -418,10 +589,9 @@ useMemo(()=>{
 
 
 
-
-
-
-// Brand Dropdown Data
+// =========================
+// Brand Dropdown
+// =========================
 
 const brands =
 useMemo(()=>{
@@ -431,12 +601,12 @@ useMemo(()=>{
 
   new Set(
 
-   inventory
-   .map(
-    item =>
-    item.product.brand
-   )
-   .filter(Boolean)
+    inventory
+    .map(
+      item =>
+      item.product.brand
+    )
+    .filter(Boolean)
 
   )
 
@@ -446,127 +616,187 @@ useMemo(()=>{
 },[inventory]);
 
 
+// =========================
+// Effects
+// =========================
 
-
-
-
-// API Calls
 
 useEffect(()=>{
 
-
- loadInventory();
-
+  loadInventory();
 
 },[
- search,
- status
+  search,
+  status,
+  sortBy
 ]);
 
 
 
 useEffect(()=>{
 
-
- loadDashboard();
-
+  loadDashboard();
 
 },[]);
 
-const loadMovements = async()=>{
 
- const data =
- await getInventoryMovements();
 
- setMovements(data);
 
- setMovementOpen(true);
 
-};
-
+// =========================
 // Stock Action Handler
+// =========================
+
 
 const handleAction = async()=>{
 
 
- // Quantity Validation
- if(!form.quantity || form.quantity <= 0){
+ try{
 
-  alert("Quantity must be greater than 0");
 
-  return;
+  if(
+    !form.quantity ||
+    form.quantity <= 0
+  ){
+
+    alert(
+      "Quantity must be greater than 0"
+    );
+
+    return;
+
+  }
+
+
+
+  if(
+    !form.reason.trim()
+  ){
+
+    alert(
+      "Reason is required"
+    );
+
+    return;
+
+  }
+
+
+
+
+  if(
+    actionType === "remove" &&
+    selectedItem &&
+    form.quantity >
+    selectedItem.available_stock
+  ){
+
+    alert(
+      "Cannot remove more than available stock"
+    );
+
+    return;
+
+  }
+
+
+
+
+
+  if(actionType==="add"){
+
+
+    await addStock(form);
+
+
+  }
+
+
+  else if(actionType==="remove"){
+
+
+    await removeStock(form);
+
+
+  }
+
+
+  else if(actionType==="adjust"){
+
+
+    await adjustStock(form);
+
+
+  }
+
+
+
+
+  setOpen(false);
+
+
+
+  setForm({
+
+    inventory_id:0,
+
+    quantity:0,
+
+    reason:"",
+
+    remarks:""
+
+  });
+
+
+
+  await loadInventory();
+
+  await loadDashboard();
+
+
 
  }
+ catch(error:any){
 
 
- // Reason Validation
- if(!form.reason || !form.reason.trim()){
+  console.log(error);
 
-  alert("Please enter reason");
 
-  return;
+  alert(
+    error.response?.data?.detail
+    ||
+    "Stock update failed"
+  );
+
 
  }
-
-
- // Remove Stock Validation
- if(
-  actionType==="remove" &&
-  selectedItem &&
-  form.quantity > selectedItem.available_stock
- ){
-
-  alert("Cannot remove more than available stock");
-
-  return;
-
- }
-
-
-
- if(actionType==="add"){
-
-  await addStock(form);
-
- }
-
-
- if(actionType==="remove"){
-
-  await removeStock(form);
-
- }
-
-
- if(actionType==="adjust"){
-
-  await adjustStock(form);
-
- }
-
-
- setOpen(false);
-
-
- loadInventory();
-
- loadDashboard();
 
 
 };
 
 
 
+
+// =========================
+// RETURN UI
+// =========================
 
 
 return (
 
 <Box
- sx={{
-  display:"flex",
-  minHeight:"100vh",
-  bgcolor:"#0F172A",
- }}
+
+sx={{
+
+display:"flex",
+
+minHeight:"100vh",
+
+bgcolor:"#0F172A"
+
+}}
+
 >
 
 
@@ -575,10 +805,15 @@ return (
 
 
 <Box
- sx={{
-  flex:1,
-  ml:"260px",
- }}
+
+sx={{
+
+flex:1,
+
+ml:"260px"
+
+}}
+
 >
 
 
@@ -587,11 +822,17 @@ return (
 
 
 <Container
- maxWidth="xl"
- sx={{
-  mt:12,
-  pb:4,
- }}
+
+maxWidth="xl"
+
+sx={{
+
+mt:12,
+
+pb:4
+
+}}
+
 >
 
 
@@ -599,128 +840,159 @@ return (
 
 
 <Box
- sx={{
-  mb:4,
-  p:3,
-  borderRadius:3,
 
-  background:
-  "linear-gradient(90deg,#1E3A8A,#2563EB)",
+sx={{
 
-  boxShadow:
-  "0 10px 25px rgba(37,99,235,0.30)",
- }}
+mb:4,
+
+p:3,
+
+borderRadius:3,
+
+background:
+"linear-gradient(90deg,#1E3A8A,#2563EB)",
+
+
+boxShadow:
+"0 10px 25px rgba(37,99,235,.30)"
+
+}}
+
 >
 
 
 <Typography
- variant="h4"
- sx={{
-  color:"#FFFFFF",
-  fontWeight:700,
- }}
+
+variant="h4"
+
+sx={{
+
+color:"#FFFFFF",
+
+fontWeight:700
+
+}}
+
 >
- Inventory Management
+
+Inventory Management
+
 </Typography>
 
 
 
 <Typography
- sx={{
-  color:"#DBEAFE",
-  mt:1,
- }}
+
+sx={{
+
+color:"#DBEAFE",
+
+mt:1
+
+}}
+
 >
- Monitor inventory levels, stock movement,
- and warehouse operations.
+
+Monitor inventory levels, stock movement,
+and warehouse operations.
+
 </Typography>
+
 
 
 </Box>
 
 
-
-
-
-{/* Dashboard Cards */}
+{/* ===========================
+    Dashboard Cards
+=========================== */}
 
 
 <Grid
- container
- spacing={3}
- mb={4}
+
+container
+
+spacing={3}
+
+mb={4}
+
 >
 
 
 {
+
 [
- {
-  title:"Total Products",
-  value:
-  dashboard.total_products || 0,
-  color:"#60A5FA"
- },
 
- {
-  title:"Total Inventory Quantity",
-  value:
-  dashboard.total_inventory_quantity || 0,
-  color:"#22C55E"
- },
+{
+ title:"Total Products",
+ value:dashboard.total_products || 0,
+ color:"#60A5FA"
+},
 
- {
-  title:"Low Stock Products",
-  value:
-  dashboard.low_stock_products || 0,
-  color:"#FACC15"
- },
+{
+ title:"Total Inventory Quantity",
+ value:dashboard.total_inventory_quantity || 0,
+ color:"#22C55E"
+},
 
- {
-  title:"Out Of Stock",
-  value:
-  dashboard.out_of_stock_products || 0,
-  color:"#EF4444"
- }
+{
+ title:"Low Stock Products",
+ value:dashboard.low_stock_products || 0,
+ color:"#FACC15"
+},
+
+{
+ title:"Out Of Stock",
+ value:dashboard.out_of_stock_products || 0,
+ color:"#EF4444"
+}
 
 ].map((card)=>(
 
 
 <Grid
- item
- xs={12}
- sm={6}
- lg={3}
- key={card.title}
+
+item
+
+xs={12}
+
+sm={6}
+
+lg={3}
+
+key={card.title}
+
 >
 
 
 <Card
- sx={{
-  background:
-  "linear-gradient(135deg,#1E293B,#334155)",
 
-  color:"#FFFFFF",
+sx={{
 
-  borderRadius:3,
-
-  height:"100%",
-
-  boxShadow:
-  "0 8px 20px rgba(0,0,0,.25)",
+background:
+"linear-gradient(135deg,#1E293B,#334155)",
 
 
-  transition:"0.3s",
+color:"#FFFFFF",
+
+borderRadius:3,
 
 
-  "&:hover":{
-   transform:
-   "translateY(-5px)",
+boxShadow:
+"0 8px 20px rgba(0,0,0,.25)",
 
-   boxShadow:
-   "0 10px 25px rgba(37,99,235,.35)",
-  }
 
- }}
+
+"&:hover":{
+
+transform:
+"translateY(-5px)"
+
+}
+
+
+}}
+
 >
 
 
@@ -728,24 +1000,43 @@ return (
 
 
 <Typography
- color="#CBD5E1"
- fontWeight={600}
+
+sx={{
+
+color:"#CBD5E1",
+
+fontWeight:600
+
+}}
+
 >
- {card.title}
+
+{card.title}
+
 </Typography>
 
 
 
 <Typography
- variant="h3"
- mt={1}
- fontWeight={700}
- sx={{
-  color:card.color
- }}
+
+variant="h3"
+
+sx={{
+
+mt:1,
+
+fontWeight:700,
+
+color:card.color
+
+}}
+
 >
- {card.value}
+
+{card.value}
+
 </Typography>
+
 
 
 </CardContent>
@@ -759,6 +1050,7 @@ return (
 
 ))
 
+
 }
 
 
@@ -766,90 +1058,133 @@ return (
 </Grid>
 
 
-{/* Charts Section */}
+
+
+
+{/* ===========================
+    Charts Section
+=========================== */}
+
 
 
 <Grid
- container
- spacing={3}
- mb={4}
+
+container
+
+spacing={3}
+
+mb={4}
+
 >
 
 
-{/* Inventory By Category */}
+{/* Category Chart */}
 
 
 <Grid
- item
- xs={12}
- lg={6}
+
+item
+
+xs={12}
+
+lg={6}
+
 >
 
 
 <Card
- sx={{
-  bgcolor:"#1E293B",
-  borderRadius:3,
-  p:2,
-  border:"1px solid #334155",
-  boxShadow:
-  "0 8px 20px rgba(0,0,0,.25)",
- }}
+
+sx={{
+
+bgcolor:"#1E293B",
+
+borderRadius:3,
+
+p:2,
+
+border:
+"1px solid #334155"
+
+}}
+
 >
 
 
 <Typography
- variant="h6"
- sx={{
-  color:"#FFFFFF",
-  fontWeight:700,
-  mb:2,
- }}
+
+variant="h6"
+
+sx={{
+
+color:"#FFFFFF",
+
+fontWeight:700,
+
+mb:2
+
+}}
+
 >
- Inventory By Category
+
+Inventory By Category
+
 </Typography>
 
 
 
 <Box
- sx={{
-  width:"100%",
-  height:320,
- }}
+
+sx={{
+
+height:320
+
+}}
+
 >
 
 
 <ResponsiveContainer
- width="100%"
- height="100%"
+
+width="100%"
+
+height="100%"
+
 >
 
 
 <BarChart
- data={categoryData}
+
+data={categoryData}
+
 >
 
 
 <XAxis
- dataKey="name"
- stroke="#CBD5E1"
+
+dataKey="name"
+
 />
 
 
-<YAxis
- stroke="#CBD5E1"
-/>
+
+<YAxis />
 
 
-<Tooltip
-/>
+
+<Tooltip />
+
 
 
 <Bar
- dataKey="value"
- fill="#2563EB"
- radius={[8,8,0,0]}
+
+dataKey="value"
+
+fill="#2563EB"
+
+radius={[8,8,0,0]}
+
 />
+
 
 
 </BarChart>
@@ -870,53 +1205,77 @@ return (
 
 
 
-
-{/* Stock Status Distribution */}
+{/* Stock Status Chart */}
 
 
 <Grid
- item
- xs={12}
- lg={6}
+
+item
+
+xs={12}
+
+lg={6}
+
 >
 
 
 <Card
- sx={{
-  bgcolor:"#1E293B",
-  borderRadius:3,
-  p:2,
-  border:"1px solid #334155",
-  boxShadow:
-  "0 8px 20px rgba(0,0,0,.25)",
- }}
+
+sx={{
+
+bgcolor:"#1E293B",
+
+borderRadius:3,
+
+p:2,
+
+border:
+"1px solid #334155"
+
+}}
+
 >
 
 
 <Typography
- variant="h6"
- sx={{
-  color:"#FFFFFF",
-  fontWeight:700,
-  mb:2,
- }}
+
+variant="h6"
+
+sx={{
+
+color:"#FFFFFF",
+
+fontWeight:700,
+
+mb:2
+
+}}
+
 >
- Stock Status Distribution
+
+Stock Status Distribution
+
 </Typography>
 
 
 
 <Box
- sx={{
-  width:"100%",
-  height:320,
- }}
+
+sx={{
+
+height:320
+
+}}
+
 >
 
 
 <ResponsiveContainer
- width="100%"
- height="100%"
+
+width="100%"
+
+height="100%"
+
 >
 
 
@@ -924,37 +1283,59 @@ return (
 
 
 <Pie
- data={stockStatusData}
- dataKey="value"
- nameKey="name"
- outerRadius={110}
- label
+
+data={stockStatusData}
+
+dataKey="value"
+
+nameKey="name"
+
+outerRadius={110}
+
+label
+
 >
 
 
 {
+
 stockStatusData.map(
+
 (entry,index)=>(
 
+
 <Cell
- key={`cell-${index}`}
- fill={
- [
- "#22C55E",
- "#FACC15",
- "#EF4444"
- ][index % 3]
- }
+
+key={
+`cell-${index}`
+}
+
+fill={
+
+[
+"#22C55E",
+"#FACC15",
+"#EF4444"
+][index % 3]
+
+}
+
 />
 
-))
+
+)
+
+)
+
 }
 
 
 </Pie>
 
 
+
 <Tooltip />
+
 
 
 </PieChart>
@@ -972,42 +1353,63 @@ stockStatusData.map(
 </Grid>
 
 
-
 </Grid>
 
-{/* Search & Filters */}
+
+
+{/* ===========================
+    Search & Filters
+=========================== */}
 
 
 <Paper
- sx={{
-  p:3,
-  mb:4,
-  borderRadius:3,
-  bgcolor:"#1E293B",
-  border:"1px solid #334155",
-  boxShadow:
-  "0 8px 20px rgba(0,0,0,.25)",
- }}
+
+sx={{
+
+p:3,
+
+mb:4,
+
+borderRadius:3,
+
+bgcolor:"#1E293B",
+
+border:
+"1px solid #334155"
+
+}}
+
 >
 
 
 <Typography
- variant="h6"
- sx={{
-  color:"#FFFFFF",
-  fontWeight:700,
-  mb:2,
- }}
+
+variant="h6"
+
+sx={{
+
+color:"#FFFFFF",
+
+fontWeight:700,
+
+mb:2
+
+}}
+
 >
- Search & Filters
+
+Search & Filters
+
 </Typography>
 
 
 
-
 <Grid
- container
- spacing={2}
+
+container
+
+spacing={2}
+
 >
 
 
@@ -1015,47 +1417,58 @@ stockStatusData.map(
 {/* Search */}
 
 <Grid
- item
- xs={12}
- md={6}
+
+item
+
+xs={12}
+
+md={4}
+
 >
 
+
 <TextField
-  fullWidth
-  label="Search Product / SKU"
-  value={search}
-  onChange={(e) =>
-    setSearch(e.target.value)
-  }
-  sx={{
-    backgroundColor: "#FFFFFF",
-    borderRadius: 2,
 
-    "& .MuiInputBase-input": {
-      color: "#111827",
-    },
+fullWidth
 
-    "& .MuiInputLabel-root": {
-      color: "#475569",
-    },
+label="Search Product / SKU"
 
-    "& .MuiOutlinedInput-root": {
-      backgroundColor: "#FFFFFF",
+value={search}
 
-      "& fieldset": {
-        borderColor: "#CBD5E1",
-      },
+onChange={(e)=>
 
-      "&:hover fieldset": {
-        borderColor: "#2563EB",
-      },
+setSearch(
+e.target.value
+)
 
-      "&.Mui-focused fieldset": {
-        borderColor: "#2563EB",
-      },
-    },
-  }}
+}
+
+
+sx={{
+
+backgroundColor:"#FFFFFF",
+
+borderRadius:2,
+
+
+"& .MuiInputBase-input":{
+
+color:"#111827"
+
+},
+
+
+"& .MuiInputLabel-root":{
+
+color:"#475569"
+
+}
+
+}}
+
+
 />
+
 
 </Grid>
 
@@ -1063,64 +1476,84 @@ stockStatusData.map(
 
 
 
-
-{/* Status */}
+{/* Stock Status */}
 
 <Grid
- item
- xs={12}
- md={3}
+
+item
+
+xs={12}
+
+md={2}
+
 >
 
 
 <TextField
- select
- fullWidth
- label="Stock Status"
- value={status}
- onChange={(e)=>
-  setStatus(e.target.value)
- }
- InputLabelProps={{
-  sx:{
-   color:"#CBD5E1"
-  }
- }}
- InputProps={{
-  sx:{
+
+select
+
+fullWidth
+
+label="Stock Status"
+
+value={status}
+
+
+onChange={(e)=>
+
+setStatus(
+e.target.value
+)
+
+}
+
+
+InputLabelProps={{
+
+sx:{
+
+color:"#CBD5E1"
+
+}
+
+}}
+
+
+InputProps={{
+ sx:{
    color:"#FFFFFF",
    bgcolor:"#0F172A",
-   borderRadius:2
-  }
- }}
+   borderRadius:2,
+
+   "& .MuiSvgIcon-root":{
+     color:"#FFFFFF"
+   }
+ }
+}}
+
+
 >
 
 
-<MenuItem value="">
- All
+<MenuItem value="IN_STOCK">
+  In Stock
 </MenuItem>
 
 
-<MenuItem value="In Stock">
- In Stock
+<MenuItem value="LOW_STOCK">
+  Low Stock
 </MenuItem>
 
 
-<MenuItem value="Low Stock">
- Low Stock
+<MenuItem value="OUT_OF_STOCK">
+  Out of Stock
 </MenuItem>
-
-
-<MenuItem value="Out of Stock">
- Out of Stock
-</MenuItem>
-
 
 </TextField>
 
 
 </Grid>
-
 
 
 
@@ -1129,62 +1562,96 @@ stockStatusData.map(
 {/* Category */}
 
 <Grid
- item
- xs={12}
- md={3}
+
+item
+
+xs={12}
+
+md={2}
+
 >
 
 
 <TextField
- select
- fullWidth
- label="Category"
- value={category}
- onChange={(e)=>
-  setCategory(e.target.value)
- }
- InputLabelProps={{
-  sx:{
-   color:"#CBD5E1"
-  }
- }}
- InputProps={{
-  sx:{
+
+select
+
+fullWidth
+
+label="Category"
+
+value={category}
+
+
+onChange={(e)=>
+
+setCategory(
+e.target.value
+)
+
+}
+
+
+InputLabelProps={{
+
+sx:{
+
+color:"#CBD5E1"
+
+}
+
+}}
+
+InputProps={{
+ sx:{
    color:"#FFFFFF",
    bgcolor:"#0F172A",
-   borderRadius:2
-  }
- }}
+   borderRadius:2,
+
+   "& .MuiSvgIcon-root":{
+     color:"#FFFFFF"
+   }
+ }
+}}
+
 >
 
 
 <MenuItem value="">
- All Categories
+
+All Categories
+
 </MenuItem>
 
 
 
 {
+
 categories.map((item)=>(
 
+
 <MenuItem
- key={item}
- value={item}
+
+key={item}
+
+value={item}
+
 >
- {item}
+
+{item}
+
 </MenuItem>
 
-))
-}
 
+))
+
+}
 
 
 </TextField>
 
 
 </Grid>
-
-
 
 
 
@@ -1193,54 +1660,91 @@ categories.map((item)=>(
 {/* Brand */}
 
 <Grid
- item
- xs={12}
- md={3}
+
+item
+
+xs={12}
+
+md={2}
+
 >
 
 
 <TextField
- select
- fullWidth
- label="Brand"
- value={brand}
- onChange={(e)=>
-  setBrand(e.target.value)
- }
- InputLabelProps={{
-  sx:{
-   color:"#CBD5E1"
-  }
- }}
- InputProps={{
-  sx:{
+
+select
+
+fullWidth
+
+label="Brand"
+
+value={brand}
+
+
+onChange={(e)=>
+
+setBrand(
+e.target.value
+)
+
+}
+
+
+InputLabelProps={{
+
+sx:{
+
+color:"#CBD5E1"
+
+}
+
+}}
+
+
+InputProps={{
+ sx:{
    color:"#FFFFFF",
    bgcolor:"#0F172A",
-   borderRadius:2
-  }
- }}
+   borderRadius:2,
+
+   "& .MuiSvgIcon-root":{
+     color:"#FFFFFF"
+   }
+ }
+}}
+
 >
 
 
 <MenuItem value="">
- All Brands
+
+All Brands
+
 </MenuItem>
 
 
 
 {
+
 brands.map((item)=>(
 
+
 <MenuItem
- key={item}
- value={item}
+
+key={item}
+
+value={item}
+
 >
- {item}
+
+{item}
+
 </MenuItem>
 
-))
-}
 
+))
+
+}
 
 
 </TextField>
@@ -1252,57 +1756,90 @@ brands.map((item)=>(
 
 
 
-
-
-{/* Sorting */}
+{/* Sort */}
 
 <Grid
- item
- xs={12}
- md={3}
+
+item
+
+xs={12}
+
+md={2}
+
 >
 
 
 <TextField
- select
- fullWidth
- label="Sort By"
- value={sortBy}
- onChange={(e)=>
-  setSortBy(e.target.value)
- }
- InputLabelProps={{
-  sx:{
-   color:"#CBD5E1"
-  }
- }}
- InputProps={{
-  sx:{
+
+select
+
+fullWidth
+
+label="Sort By"
+
+value={sortBy}
+
+
+onChange={(e)=>
+
+setSortBy(
+e.target.value
+)
+
+}
+
+
+InputLabelProps={{
+
+sx:{
+
+color:"#CBD5E1"
+
+}
+
+}}
+
+
+InputProps={{
+ sx:{
    color:"#FFFFFF",
    bgcolor:"#0F172A",
-   borderRadius:2
-  }
- }}
+   borderRadius:2,
+
+   "& .MuiSvgIcon-root":{
+     color:"#FFFFFF"
+   }
+ }
+}}
+
 >
 
 
 <MenuItem value="">
- Default
+
+Default
+
 </MenuItem>
 
 
 <MenuItem value="name">
- Product Name
+
+Product Name
+
 </MenuItem>
 
 
 <MenuItem value="stock">
- Current Stock
+
+Current Stock
+
 </MenuItem>
 
 
-<MenuItem value="updated">
- Recently Updated
+<MenuItem value="recent">
+
+Recently Updated
+
 </MenuItem>
 
 
@@ -1318,26 +1855,39 @@ brands.map((item)=>(
 
 </Paper>
 
-{/* Inventory Table */}
+{/* ===========================
+    Inventory Table
+=========================== */}
 
 
 <TableContainer
- component={Paper}
- sx={{
-  bgcolor:"#1E293B",
-  borderRadius:3,
-  border:"1px solid #334155",
-  overflowX:"auto",
-  boxShadow:
-  "0 10px 24px rgba(0,0,0,.25)",
- }}
+
+component={Paper}
+
+sx={{
+
+bgcolor:"#1E293B",
+
+borderRadius:3,
+
+border:
+"1px solid #334155",
+
+overflowX:"auto"
+
+}}
+
 >
 
 
 <Table
- sx={{
-  minWidth:900
- }}
+
+sx={{
+
+minWidth:1100
+
+}}
+
 >
 
 
@@ -1345,39 +1895,62 @@ brands.map((item)=>(
 
 
 <TableRow
- sx={{
-  bgcolor:"#2563EB"
- }}
+
+sx={{
+
+bgcolor:"#2563EB"
+
+}}
+
 >
 
 
 {
+
 [
+
 "Product",
+
 "SKU",
+
 "Brand",
+
 "Current Stock",
+
 "Reserved",
+
 "Available",
+
 "Reorder Level",
+
 "Status",
+
 "Actions"
 
 ].map((head)=>(
 
 
 <TableCell
- key={head}
- sx={{
-  color:"#FFFFFF",
-  fontWeight:700
- }}
+
+key={head}
+
+sx={{
+
+color:"#FFFFFF",
+
+fontWeight:700
+
+}}
+
 >
- {head}
+
+{head}
+
 </TableCell>
 
 
 ))
+
 
 }
 
@@ -1395,96 +1968,149 @@ brands.map((item)=>(
 
 
 {
+
 filteredInventory.map((item)=>(
 
 
 <TableRow
- key={item.id}
- hover
- sx={{
-  "&:hover":{
-   bgcolor:"#273549"
-  }
- }}
->
 
+key={item.id}
+
+hover
+
+sx={{
+
+"&:hover":{
+
+bgcolor:"#273549"
+
+}
+
+}}
+
+>
 
 
 <TableCell
- sx={{
-  color:"#FFFFFF"
- }}
+
+sx={{
+
+color:"#FFFFFF"
+
+}}
+
 >
- {item.product.name}
+
+{item.product.name}
+
 </TableCell>
 
 
 
 <TableCell
- sx={{
-  color:"#CBD5E1"
- }}
+
+sx={{
+
+color:"#CBD5E1"
+
+}}
+
 >
- {item.product.sku}
+
+{item.product.sku}
+
+</TableCell>
+
+
+
+<TableCell
+
+sx={{
+
+color:"#CBD5E1"
+
+}}
+
+>
+
+{item.product.brand || "-"}
+
 </TableCell>
 
 
 
 
 <TableCell
- sx={{
-  color:"#CBD5E1"
- }}
+
+sx={{
+
+color:"#60A5FA",
+
+fontWeight:700
+
+}}
+
 >
- {item.product.brand}
+
+{item.current_stock}
+
 </TableCell>
 
 
 
 
-
 <TableCell
- sx={{
-  color:"#60A5FA",
-  fontWeight:700
- }}
+
+sx={{
+
+color:"#CBD5E1"
+
+}}
+
 >
- {item.current_stock}
+
+{item.reserved_stock}
+
 </TableCell>
 
 
 
 
-
 <TableCell
- sx={{
-  color:"#CBD5E1"
- }}
+
+sx={{
+
+color:"#22C55E",
+
+fontWeight:700
+
+}}
+
 >
- {item.reserved_stock}
+
+{item.available_stock}
+
 </TableCell>
 
 
 
 
-
 <TableCell
- sx={{
-  color:"#22C55E",
-  fontWeight:700
- }}
->
- {item.available_stock}
- </TableCell>
 
-<TableCell
- sx={{
-  color:"#FACC15",
-  fontWeight:700
- }}
+sx={{
+
+color:"#FACC15",
+
+fontWeight:700
+
+}}
+
 >
- {item.reorder_level}
+
+{item.reorder_level}
+
 </TableCell>
+
 
 
 
@@ -1493,8 +2119,13 @@ filteredInventory.map((item)=>(
 
 <Chip
 
-label={item.stock_status}
-
+label={
+  item.stock_status === "IN_STOCK"
+    ? "In Stock"
+    : item.stock_status === "LOW_STOCK"
+    ? "Low Stock"
+    : "Out of Stock"
+}
 
 sx={{
 
@@ -1503,7 +2134,7 @@ fontWeight:700,
 
 color:
 
-item.stock_status==="In Stock"
+item.stock_status==="IN_STOCK"
 
 ?
 
@@ -1511,7 +2142,7 @@ item.stock_status==="In Stock"
 
 :
 
-item.stock_status==="Low Stock"
+item.stock_status==="LOW_STOCK"
 
 ?
 
@@ -1525,7 +2156,7 @@ item.stock_status==="Low Stock"
 
 backgroundColor:
 
-item.stock_status==="In Stock"
+item.stock_status==="IN_STOCK"
 
 ?
 
@@ -1533,7 +2164,7 @@ item.stock_status==="In Stock"
 
 :
 
-item.stock_status==="Low Stock"
+item.stock_status==="LOW_STOCK"
 
 ?
 
@@ -1541,39 +2172,14 @@ item.stock_status==="Low Stock"
 
 :
 
-"rgba(239,68,68,.12)",
+"rgba(239,68,68,.12)"
 
-
-border:
-
-item.stock_status==="In Stock"
-
-?
-
-"1px solid #22C55E"
-
-:
-
-item.stock_status==="Low Stock"
-
-?
-
-"1px solid #FACC15"
-
-:
-
-"1px solid #EF4444"
 
 }}
 
+
 />
-
-
 </TableCell>
-
-
-
-
 
 
 
@@ -1581,102 +2187,133 @@ item.stock_status==="Low Stock"
 
 <TableCell>
 
-<Button
- size="small"
- variant="contained"
- sx={{
-  mr:1,
-  bgcolor:"#22C55E",
-  textTransform:"none"
- }}
-
-onClick={()=>{
-
- setActionType("add");
-
- setForm({
-
-  inventory_id:item.id,
-
-  quantity:0,
-
-  reason:"",
-
-  remarks:""
-
- });
-
- setOpen(true);
-
-}}
->
-Add
-</Button>
-
 
 <Button
- size="small"
- variant="contained"
- sx={{
-  mr:1,
-  bgcolor:"#EF4444",
-  textTransform:"none"
- }}
 
-onClick={()=>{
+size="small"
 
- setActionType("remove");
-
- setForm({
-
-  inventory_id:item.id,
-
-  quantity:0,
-
-  reason:"",
-
-  remarks:""
-
- });
-
- setOpen(true);
-
-}}
->
-Remove
-</Button>
-
-
-<Button
- size="small"
- variant="contained"
- sx={{
-  mr:1,
-  bgcolor:"#2563EB",
-  textTransform:"none"
- }}
-
-onClick={()=>{
-
- setSelectedItem(item);
-
- setReorderValue(item.reorder_level);
-
- setReorderOpen(true);
-
-}}
->
-Reorder
-</Button>
-
-
-<Button
- size="small"
- variant="contained"
+variant="contained"
 
 sx={{
- bgcolor:"#F59E0B",
- textTransform:"none"
+
+mr:1,
+
+mb:1,
+
+bgcolor:"#22C55E",
+
+textTransform:"none"
+
+}}
+
+onClick={()=>{
+
+
+setActionType("add");
+
+
+setForm({
+
+inventory_id:item.id,
+
+quantity:0,
+
+reason:"",
+
+remarks:""
+
+});
+
+
+setSelectedItem(item);
+
+
+setOpen(true);
+
+
+}}
+
+>
+
+Add
+
+</Button>
+
+
+
+
+
+<Button
+
+size="small"
+
+variant="contained"
+
+sx={{
+
+mr:1,
+
+mb:1,
+
+bgcolor:"#EF4444",
+
+textTransform:"none"
+
+}}
+
+onClick={()=>{
+
+
+setActionType("remove");
+
+
+setForm({
+
+inventory_id:item.id,
+
+quantity:0,
+
+reason:"",
+
+remarks:""
+
+});
+
+
+setSelectedItem(item);
+
+
+setOpen(true);
+
+
+}}
+
+>
+
+Remove
+
+</Button>
+
+
+
+
+
+<Button
+
+size="small"
+
+variant="contained"
+
+sx={{
+
+mr:1,
+
+mb:1,
+
+bgcolor:"#F59E0B",
+
+textTransform:"none"
+
 }}
 
 onClick={()=>{
@@ -1687,15 +2324,18 @@ setActionType("adjust");
 
 setForm({
 
- inventory_id:item.id,
+inventory_id:item.id,
 
- quantity:item.current_stock,
+quantity:item.current_stock,
 
- reason:"",
+reason:"",
 
- remarks:""
+remarks:""
 
 });
+
+
+setSelectedItem(item);
 
 
 setOpen(true);
@@ -1712,9 +2352,45 @@ Adjust
 
 
 
+
+<Button
+
+size="small"
+
+variant="contained"
+
+sx={{
+
+bgcolor:"#2563EB",
+
+textTransform:"none"
+
+}}
+
+onClick={()=>{
+
+
+setSelectedItem(item);
+
+
+setReorderValue(
+item.reorder_level
+);
+
+
+setReorderOpen(true);
+
+
+}}
+
+>
+
+Reorder
+
+</Button>
+
+
 </TableCell>
-
-
 
 
 
@@ -1727,9 +2403,7 @@ Adjust
 }
 
 
-
 </TableBody>
-
 
 
 </Table>
@@ -1737,7 +2411,9 @@ Adjust
 
 </TableContainer>
 
-{/* Stock Action Dialog */}
+{/* ===========================
+    Stock Action Dialog
+=========================== */}
 
 
 <Dialog
@@ -1745,13 +2421,12 @@ Adjust
 open={open}
 
 onClose={()=>
- setOpen(false)
+setOpen(false)
 }
 
 fullWidth
 
 maxWidth="sm"
-
 
 PaperProps={{
 
@@ -1759,9 +2434,7 @@ sx:{
 
 bgcolor:"#1E293B",
 
-color:"#FFFFFF",
-
-borderRadius:3
+color:"#FFFFFF"
 
 }
 
@@ -1770,26 +2443,24 @@ borderRadius:3
 >
 
 
-
-
-
 <DialogTitle
 
 sx={{
 
-fontWeight:700,
-
 background:
-
 "linear-gradient(90deg,#1E3A8A,#2563EB)",
 
-color:"#FFFFFF"
+color:"#FFFFFF",
+
+fontWeight:700
 
 }}
 
 >
 
+
 {
+
 actionType==="add"
 
 ?
@@ -1810,25 +2481,14 @@ actionType==="remove"
 
 }
 
+
 </DialogTitle>
 
 
 
 
 
-
-
-<DialogContent
-
-sx={{
-
-mt:2
-
-}}
-
->
-
-
+<DialogContent>
 
 
 
@@ -1838,15 +2498,14 @@ fullWidth
 
 margin="normal"
 
-label="Quantity"
-
 type="number"
+
+label="Quantity"
 
 value={form.quantity}
 
 
 onChange={(e)=>
-
 
 setForm({
 
@@ -1858,43 +2517,10 @@ e.target.value
 
 })
 
-
 }
-
-
-
-InputLabelProps={{
-
-sx:{
-
-color:"#CBD5E1"
-
-}
-
-}}
-
-
-InputProps={{
-
-sx:{
-
-color:"#FFFFFF",
-
-bgcolor:"#0F172A",
-
-borderRadius:2
-
-}
-
-}}
 
 
 />
-
-
-
-
-
 
 
 
@@ -1906,12 +2532,10 @@ margin="normal"
 
 label="Reason"
 
-
 value={form.reason}
 
 
 onChange={(e)=>
-
 
 setForm({
 
@@ -1921,44 +2545,10 @@ reason:e.target.value
 
 })
 
-
 }
-
-
-
-InputLabelProps={{
-
-sx:{
-
-color:"#CBD5E1"
-
-}
-
-}}
-
-
-InputProps={{
-
-sx:{
-
-color:"#FFFFFF",
-
-bgcolor:"#0F172A",
-
-borderRadius:2
-
-}
-
-}}
 
 
 />
-
-
-
-
-
-
 
 
 
@@ -1974,12 +2564,10 @@ rows={3}
 
 label="Remarks"
 
-
 value={form.remarks}
 
 
 onChange={(e)=>
-
 
 setForm({
 
@@ -1989,41 +2577,10 @@ remarks:e.target.value
 
 })
 
-
 }
-
-
-
-InputLabelProps={{
-
-sx:{
-
-color:"#CBD5E1"
-
-}
-
-}}
-
-
-InputProps={{
-
-sx:{
-
-color:"#FFFFFF",
-
-bgcolor:"#0F172A",
-
-borderRadius:2
-
-}
-
-}}
 
 
 />
-
-
-
 
 
 
@@ -2033,32 +2590,12 @@ borderRadius:2
 
 
 
-
-
-<DialogActions
-
-sx={{
-
-px:3,
-
-pb:3
-
-}}
-
->
-
-
+<DialogActions>
 
 
 <Button
 
 onClick={()=>setOpen(false)}
-
-sx={{
-
-color:"#CBD5E1"
-
-}}
 
 >
 
@@ -2068,31 +2605,17 @@ Cancel
 
 
 
-
-
-
-
 <Button
 
 variant="contained"
 
 onClick={handleAction}
 
-
 sx={{
 
 bgcolor:"#2563EB",
 
-fontWeight:700,
-
-textTransform:"none",
-
-
-"&:hover":{
-
-bgcolor:"#1D4ED8"
-
-}
+textTransform:"none"
 
 }}
 
@@ -2104,56 +2627,95 @@ Save Changes
 
 
 
-
-
 </DialogActions>
-
-
 
 
 
 </Dialog>
 
+
+
+
+
+
+
+{/* ===========================
+    Reorder Dialog
+=========================== */}
+
+
+
 <Dialog
- open={reorderOpen}
- onClose={()=>setReorderOpen(false)}
+
+open={reorderOpen}
+
+onClose={()=>
+
+setReorderOpen(false)
+
+}
+
 >
 
-<DialogTitle
- sx={{
-  fontWeight:700,
-  background:"linear-gradient(90deg,#1E3A8A,#2563EB)",
-  color:"#FFFFFF"
- }}
->
- Update Reorder Level
+
+
+<DialogTitle>
+
+Update Reorder Level
+
 </DialogTitle>
 
 
-<DialogContent
- sx={{mt:2}}
->
+
+
+<DialogContent>
+
 
 <TextField
 
- fullWidth
+fullWidth
 
- type="number"
+type="number"
 
- label="Reorder Level"
+label="Reorder Level"
 
- value={reorderValue}
+value={reorderValue}
 
- onChange={(e)=>
-  setReorderValue(Number(e.target.value))
- }
 
- />
+onChange={(e)=>
+
+setReorderValue(
+Number(e.target.value)
+)
+
+}
+
+
+/>
+
+
 
 </DialogContent>
 
 
+
+
+
 <DialogActions>
+
+
+<Button
+
+onClick={()=>setReorderOpen(false)}
+
+>
+
+Cancel
+
+</Button>
+
+
+
 
 <Button
 
@@ -2162,68 +2724,78 @@ variant="contained"
 onClick={async()=>{
 
 
- if(!selectedItem){
+if(!selectedItem){
 
-  alert("Inventory item not selected");
+alert(
+"Select inventory item"
+);
 
-  return;
+return;
 
- }
-
-
- if(reorderValue < 0){
-
-  alert("Reorder level cannot be negative");
-
-  return;
-
- }
+}
 
 
- try{
+
+try{
 
 
-  await updateReorderLevel(
+await updateReorderLevel(
 
-   selectedItem.id,
+selectedItem.id,
 
-   {
-    reorder_level: reorderValue
-   }
+{
 
-  );
+reorder_level:
+reorderValue
 
+}
 
-  alert("Reorder level updated successfully");
-
-
-  setReorderOpen(false);
+);
 
 
-  loadInventory();
+
+setReorderOpen(false);
 
 
- }
- catch(error){
 
-  console.log(error);
+await loadInventory();
 
-  alert("Failed to update reorder level");
 
- }
+
+}
+
+catch(error){
+
+console.log(error);
+
+alert(
+"Reorder update failed"
+);
+
+}
+
 
 
 }}
 
 >
+
 Save
+
 </Button>
+
+
+
 </DialogActions>
+
 
 
 </Dialog>
 
-{/* Movement History Section */}
+
+{/* ===========================
+    Movement History Card
+=========================== */}
 
 
 <Paper
@@ -2238,40 +2810,26 @@ borderRadius:3,
 
 bgcolor:"#1E293B",
 
-border:"1px solid #334155",
-
-boxShadow:
-"0 8px 20px rgba(0,0,0,.25)"
+border:
+"1px solid #334155"
 
 }}
 
 >
 
 
+<Box
 
-<Grid
-
-container
-
-alignItems="center"
+display="flex"
 
 justifyContent="space-between"
 
-spacing={2}
+alignItems="center"
 
 >
 
 
-
-<Grid
-
-item
-
-xs={12}
-
-md={8}
-
->
+<Box>
 
 
 <Typography
@@ -2298,82 +2856,35 @@ Stock Movement History
 
 sx={{
 
-color:"#CBD5E1",
-
-mt:1
+color:"#CBD5E1"
 
 }}
 
 >
 
-Track stock additions, removals,
-and inventory adjustments.
+Track stock additions, removals and adjustments.
 
 </Typography>
 
 
-</Grid>
+</Box>
 
 
-
-
-
-
-
-<Grid
-
-item
-
-xs={12}
-
-md={4}
-
-sx={{
-
-textAlign:{
-
-xs:"left",
-
-md:"right"
-
-}
-
-}}
-
->
 
 
 <Button
 
 variant="contained"
 
-sx={{
-
-background:
-
-"linear-gradient(90deg,#1E3A8A,#2563EB)",
-
-fontWeight:700,
-
-textTransform:"none",
-
-px:4,
-
-
-"&:hover":{
-
-background:
-
-"linear-gradient(90deg,#1D4ED8,#2563EB)"
-
-}
-
-}}
-
 onClick={loadMovements}
 
-// Future Movement History page/dialog
+sx={{
 
+bgcolor:"#2563EB",
+
+textTransform:"none"
+
+}}
 
 >
 
@@ -2382,192 +2893,286 @@ View Movement History
 </Button>
 
 
-</Grid>
 
-
-
-
-</Grid>
-
+</Box>
 
 
 </Paper>
 
-{/* Movement History Dialog */}
+
+
+
+
+
+
+{/* ===========================
+    Movement History Dialog
+=========================== */}
+
+
 
 <Dialog
- open={movementOpen}
- onClose={()=>setMovementOpen(false)}
- fullWidth
- maxWidth="md"
- PaperProps={{
-  sx:{
-   bgcolor:"#1E293B",
-   color:"#FFFFFF",
-   borderRadius:3
-  }
- }}
+
+open={movementOpen}
+
+onClose={()=>
+setMovementOpen(false)
+}
+
+fullWidth
+
+maxWidth="md"
+
 >
 
+
+
 <DialogTitle
- sx={{
-  fontWeight:700,
-  background:
-  "linear-gradient(90deg,#1E3A8A,#2563EB)",
-  color:"#FFFFFF"
- }}
+
+sx={{
+
+fontWeight:700
+
+}}
+
 >
- Stock Movement History
+
+Stock Movement History
+
 </DialogTitle>
+
+
+
 
 
 <DialogContent>
 
+
 {
-movements.length === 0 ?
 
-(
+movements.length === 0
 
-<Typography
- sx={{
-  color:"#CBD5E1",
-  mt:2
- }}
->
- No movement history found.
+?
+
+<Typography>
+
+No movement history found.
+
 </Typography>
 
-)
 
 :
 
-(
-
 <TableContainer
- component={Paper}
- sx={{
-  bgcolor:"#0F172A",
-  mt:2
- }}
+
+component={Paper}
+
 >
+
+
 <Table>
 
+
+
 <TableHead>
-<TableRow
- sx={{
-  bgcolor:"#2563EB"
- }}
+
+
+<TableRow>
+
+
+{
+
+[
+
+"Type",
+
+"Previous",
+
+"Updated",
+
+"Changed",
+
+"Reason",
+
+"Remarks",
+
+"Performed By",
+
+"Date"
+
+].map((head)=>(
+
+
+<TableCell
+
+key={head}
+
 >
 
-{[
-"Movement Type",
-"Previous Qty",
-"Updated Qty",
-"Changed",
-"Reason",
-"Remarks",
-"Performed By",
-"Date"
-].map((head)=>(
-<TableCell
- key={head}
- sx={{
-  color:"#FFFFFF",
-  fontWeight:700
- }}
->
- {head}
+{head}
+
 </TableCell>
-))}
+
+
+))
+
+
+}
+
 
 </TableRow>
+
+
 </TableHead>
+
+
+
 
 
 <TableBody>
 
-{movements.map((item,index)=>(
 
-<TableRow key={index}>
+{
 
-<TableCell sx={{color:"#FFFFFF"}}>
- {item.movement_type}
+movements.map((item)=>(
+
+
+<TableRow
+
+key={item.id}
+
+>
+
+
+<TableCell>
+
+{item.movement_type}
+
 </TableCell>
 
 
-<TableCell sx={{color:"#FFFFFF"}}>
- {item.previous_quantity}
+
+<TableCell>
+
+{item.previous_quantity}
+
 </TableCell>
 
 
-<TableCell sx={{color:"#22C55E"}}>
- {item.updated_quantity}
+
+<TableCell>
+
+{item.updated_quantity}
+
 </TableCell>
 
 
-<TableCell sx={{color:"#FACC15"}}>
- {item.quantity_changed}
+
+<TableCell>
+
+{item.quantity_changed}
+
 </TableCell>
 
 
-<TableCell sx={{color:"#FFFFFF"}}>
- {item.reason}
+
+<TableCell>
+
+{item.reason}
+
 </TableCell>
 
 
-<TableCell sx={{color:"#CBD5E1"}}>
- {item.remarks}
+<TableCell>
+
+{item.remarks || "-"}
+
 </TableCell>
 
 
-<TableCell sx={{color:"#FFFFFF"}}>
- {item.performed_by}
+<TableCell>
+
+{item.performed_by_name || "-"}
+
 </TableCell>
 
 
-<TableCell sx={{color:"#CBD5E1"}}>
- {new Date(item.created_at).toLocaleString()}
+<TableCell>
+
+{
+new Date(
+item.created_at
+).toLocaleString()
+}
+
 </TableCell>
+
 
 
 </TableRow>
 
-))}
+
+))
+
+
+}
+
 
 </TableBody>
 
+
 </Table>
+
+
 </TableContainer>
-)
+
 
 }
+
 
 
 </DialogContent>
 
 
+
+
+
 <DialogActions>
 
+
 <Button
- onClick={()=>setMovementOpen(false)}
- sx={{
-  color:"#CBD5E1"
- }}
+
+onClick={()=>setMovementOpen(false)}
+
 >
- Close
+
+Close
+
 </Button>
+
 
 </DialogActions>
 
 
+
 </Dialog>
+
+
+
+
+
 
 </Container>
 
-</Box>
 
 </Box>
+
+
+</Box>
+
 
 );
 
+
 }
+

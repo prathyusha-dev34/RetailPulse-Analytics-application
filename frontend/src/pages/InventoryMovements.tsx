@@ -26,7 +26,6 @@ import {
 
 interface Movement {
 
-
   id:number;
 
   inventory_id:number;
@@ -45,12 +44,11 @@ interface Movement {
 
   performed_by:number;
 
+  performed_by_name:string;
+
   created_at:string;
 
-
 }
-
-
 
 export default function InventoryMovements(){
 
@@ -321,16 +319,12 @@ export default function InventoryMovements(){
 
 
                         <TableCell
-                          sx={{
-                            color:"white",
-                          }}
-                        >
-
-                          {item.performed_by}
-
-                        </TableCell>
-
-
+  sx={{
+    color:"white",
+  }}
+>
+  {item.performed_by_name || "-"}
+</TableCell>
 
 
                         <TableCell

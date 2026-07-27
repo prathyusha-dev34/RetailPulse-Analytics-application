@@ -22,9 +22,16 @@ class User(Base):
 
     password = Column(String, nullable=False)
 
-    role = Column(String, default="COMPANY_ADMIN")
+    role = Column(
+        String,
+        nullable=False,
+        default="COMPANY_ADMIN",
+    )
 
-    status = Column(String, default="ACTIVE")
+    status = Column(
+        String,
+        default="ACTIVE",
+    )
 
     last_login = Column(
         DateTime(timezone=True),

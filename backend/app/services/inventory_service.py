@@ -1,5 +1,5 @@
-from sqlalchemy import func, asc, desc
-from sqlalchemy.orm import Session
+from sqlalchemy import func, asc, desc, or_
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
@@ -9,9 +9,8 @@ from app.models.notification import Notification
 
 from app.services.audit_service import create_audit_log
 
-
-# =====================================
-# Stock Status Calculation
+# ===================================== 
+# Stock Status Calculation 
 # =====================================
 
 def calculate_stock_status(
@@ -25,8 +24,6 @@ def calculate_stock_status(
         return "Low Stock"
 
     return "In Stock"
-
-
 
 # =====================================
 # Notification Helper
@@ -102,19 +99,25 @@ def create_inventory(
 def get_inventory(
     db: Session,
     current_user: User,
+    skip: int = 0,
+    limit: int = 10,
 ):
 
     return (
         db.query(Inventory)
+        .options(
+            joinedload(Inventory.product)
+            .joinedload(Product.category)
+        )
         .join(Product)
         .filter(
             Inventory.company_id
             == current_user.company_id
         )
+        .offset(skip)
+        .limit(limit)
         .all()
     )
-
-
 
 # =====================================
 # Get Single Inventory
@@ -128,10 +131,13 @@ def get_inventory_item(
 
     return (
         db.query(Inventory)
+        .options(
+            joinedload(Inventory.product)
+            .joinedload(Product.category)
+        )
         .filter(
             Inventory.id == inventory_id,
-            Inventory.company_id
-            == current_user.company_id,
+            Inventory.company_id == current_user.company_id,
         )
         .first()
     )
@@ -178,8 +184,12 @@ def get_dashboard_summary(
             Inventory.company_id
             == current_user.company_id,
 
-            Inventory.stock_status
-            == "Low Stock",
+            Inventory.stock_status.in_(
+                [
+                    "LOW_STOCK",
+                    "Low Stock"
+                ]
+            )
         )
         .count()
     )
@@ -191,8 +201,12 @@ def get_dashboard_summary(
             Inventory.company_id
             == current_user.company_id,
 
-            Inventory.stock_status
-            == "Out of Stock",
+            Inventory.stock_status.in_(
+                [
+                    "OUT_OF_STOCK",
+                    "Out of Stock"
+                ]
+            )
         )
         .count()
     )
@@ -200,7 +214,8 @@ def get_dashboard_summary(
 
     return {
 
-        "total_products": total_products,
+        "total_products":
+            total_products,
 
         "total_inventory_quantity":
             total_inventory,
@@ -212,7 +227,6 @@ def get_dashboard_summary(
             out_of_stock,
 
     }
-
 # =====================================
 # Add Stock
 # =====================================
@@ -316,8 +330,6 @@ def add_stock(
 
     )
 
-
-
     # ===============================
     # Notification
     # ===============================
@@ -325,7 +337,7 @@ def add_stock(
     if old_status != inventory.stock_status:
 
 
-        if inventory.stock_status == "Low Stock":
+        if inventory.stock_status == "LOW_STOCK":
 
             create_inventory_notification(
 
@@ -345,7 +357,7 @@ def add_stock(
             )
 
 
-        elif inventory.stock_status == "Out of Stock":
+        elif inventory.stock_status == "OUT_OF_STOCK":
 
 
             create_inventory_notification(
@@ -364,7 +376,6 @@ def add_stock(
                 notification_type="OUT_OF_STOCK",
 
             )
-
 
 
     # Manual stock adjustment notification
@@ -387,14 +398,12 @@ def add_stock(
     )
 
 
-
     db.commit()
 
     db.refresh(inventory)
 
 
     return inventory
-
 
 # =====================================
 # Remove Stock
@@ -513,7 +522,7 @@ def remove_stock(
     if old_status != inventory.stock_status:
 
 
-        if inventory.stock_status == "Low Stock":
+        if inventory.stock_status == "LOW_STOCK":
 
 
             create_inventory_notification(
@@ -535,8 +544,7 @@ def remove_stock(
 
 
 
-        elif inventory.stock_status == "Out of Stock":
-
+        elif inventory.stock_status == "OUT_OF_STOCK":
 
             create_inventory_notification(
 
@@ -615,14 +623,11 @@ def adjust_stock(
         return None
 
 
+    if quantity <= 0:
 
-    if quantity < 0:
-
-        raise ValueError(
-            "Stock quantity cannot become negative."
-        )
-
-
+      raise ValueError(
+          "Adjustment quantity must be greater than zero."
+    )
 
     if not reason.strip():
 
@@ -759,7 +764,6 @@ def adjust_stock(
 
     return inventory
 
-
 # =====================================
 # Search & Filter Inventory
 # =====================================
@@ -772,31 +776,37 @@ def search_inventory(
     brand: str | None = None,
     stock_status: str | None = None,
     sort_by: str | None = None,
+    skip: int = 0,
+    limit: int = 10,
 ):
 
     query = (
         db.query(Inventory)
+        .options(
+            joinedload(Inventory.product)
+            .joinedload(Product.category)
+        )
         .join(Product)
         .filter(
-            Inventory.company_id
-            ==
-            current_user.company_id
+            Inventory.company_id == current_user.company_id
         )
     )
 
 
-    # Search by Product Name / SKU
+    # Search Product Name / SKU
 
     if search:
 
         query = query.filter(
-
-            (Product.name.ilike(f"%{search}%"))
-            |
-            (Product.sku.ilike(f"%{search}%"))
-
+            or_(
+                Product.name.ilike(
+                    f"%{search}%"
+                ),
+                Product.sku.ilike(
+                    f"%{search}%"
+                )
+            )
         )
-
 
 
     # Category Filter
@@ -804,27 +814,19 @@ def search_inventory(
     if category_id:
 
         query = query.filter(
-
-            Product.category_id
-            ==
-            category_id
-
+            Product.category_id == category_id
         )
-
 
 
     # Brand Filter
 
-    if brand and brand.strip():
+    if brand:
 
         query = query.filter(
-
             Product.brand.ilike(
-                f"%{brand.strip()}%"
+                f"%{brand}%"
             )
-
         )
-
 
 
     # Stock Status Filter
@@ -832,13 +834,8 @@ def search_inventory(
     if stock_status:
 
         query = query.filter(
-
-            Inventory.stock_status
-            ==
-            stock_status
-
+            Inventory.stock_status == stock_status
         )
-
 
 
     # Sorting
@@ -871,13 +868,12 @@ def search_inventory(
         )
 
 
-
-    return query.all()
-
-
-
-
-
+    return (
+        query
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 # =====================================
 # Movement History
 # =====================================
@@ -885,37 +881,76 @@ def search_inventory(
 def get_movement_history(
     db: Session,
     current_user: User,
+    skip: int = 0,
+    limit: int = 10,
 ):
 
-    return (
-
+    movements = (
         db.query(InventoryMovement)
-
-        .join(Inventory)
-
-        .filter(
-
-            Inventory.company_id
-            ==
-            current_user.company_id
-
+        .options(
+            joinedload(
+                InventoryMovement.inventory
+            )
+            .joinedload(
+                Inventory.product
+            ),
+            joinedload(
+                InventoryMovement.user
+            )
         )
-
+        .join(Inventory)
+        .filter(
+            Inventory.company_id
+            == current_user.company_id
+        )
         .order_by(
-
             desc(
                 InventoryMovement.created_at
             )
-
         )
-
+        .offset(skip)
+        .limit(limit)
         .all()
-
     )
 
 
+    result = []
 
 
+    for movement in movements:
+
+        result.append(
+            {
+                "id": movement.id,
+
+                "inventory_id": movement.inventory_id,
+
+                "movement_type": movement.movement_type,
+
+                "quantity_changed": movement.quantity_changed,
+
+                "previous_quantity": movement.previous_quantity,
+
+                "updated_quantity": movement.updated_quantity,
+
+                "reason": movement.reason,
+
+                "remarks": movement.remarks,
+
+                "performed_by": movement.performed_by,
+
+                "performed_by_name": (
+                    movement.user.name
+                    if movement.user
+                    else "-"
+                ),
+
+                "created_at": movement.created_at,
+            }
+        )
+
+
+    return result
 
 # =====================================
 # Get Inventory By Product

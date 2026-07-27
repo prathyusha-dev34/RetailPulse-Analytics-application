@@ -4,6 +4,19 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+# -----------------------------
+# Category Mini
+# -----------------------------
+
+class CategoryMini(BaseModel):
+
+    id: int
+
+    name: str
+
+    class Config:
+        from_attributes = True
+
 
 # -----------------------------
 # Product Mini Response
@@ -21,12 +34,10 @@ class ProductMini(BaseModel):
 
     category_id: Optional[int] = None
 
+    category: Optional[CategoryMini] = None
 
     class Config:
         from_attributes = True
-
-
-
 
 
 # -----------------------------
@@ -63,8 +74,7 @@ class InventoryResponse(InventoryBase):
     product: Optional[ProductMini] = None
 
 
-    updated_at: datetime
-
+    updated_at: Optional[datetime] = None
 
 
     class Config:
@@ -112,39 +122,29 @@ class InventoryMovementResponse(BaseModel):
 
     id: int
 
-
     inventory_id: int
-
 
     movement_type: str
 
-
     quantity_changed: int
-
 
     previous_quantity: int
 
-
     updated_quantity: int
-
 
     reason: str
 
-
     remarks: Optional[str] = None
-
 
     performed_by: int
 
+    performed_by_name: Optional[str] = None
 
     created_at: datetime
 
 
-
     class Config:
         from_attributes = True
-
-
 
 
 

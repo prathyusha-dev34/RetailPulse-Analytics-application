@@ -10,7 +10,11 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.dependencies.auth import get_current_user
+
+from app.dependencies.auth import (
+    get_current_user,
+    require_company_admin,
+)
 
 from app.models.user import User
 
@@ -32,11 +36,16 @@ from app.services.inventory_service import (
     update_reorder_level,
 )
 
+
 router = APIRouter(
     prefix="/inventory",
     tags=["Inventory"],
 )
 
+
+# =====================================
+# GET INVENTORY LIST
+# =====================================
 
 @router.get(
     "/",
@@ -48,9 +57,16 @@ def list_inventory(
     brand: Optional[str] = Query(None),
     stock_status: Optional[str] = Query(None),
     sort_by: Optional[str] = Query(None),
+
+    skip: int = Query(0),
+    limit: int = Query(10),
+
     db: Session = Depends(get_db),
+
     current_user: User = Depends(get_current_user),
+
 ):
+
     if (
         search
         or category_id
@@ -58,6 +74,7 @@ def list_inventory(
         or stock_status
         or sort_by
     ):
+
         return search_inventory(
             db=db,
             current_user=current_user,
@@ -66,171 +83,319 @@ def list_inventory(
             brand=brand,
             stock_status=stock_status,
             sort_by=sort_by,
+            skip=skip,
+            limit=limit,
         )
+
 
     return get_inventory(
         db,
         current_user,
+        skip,
+        limit,
     )
 
 
+
+# =====================================
+# DASHBOARD SUMMARY
+# =====================================
+
 @router.get(
-    "/dashboard/summary",
+    "/dashboard/summary"
 )
 def dashboard_summary(
+
     db: Session = Depends(get_db),
+
     current_user: User = Depends(get_current_user),
+
 ):
+
     return get_dashboard_summary(
         db,
         current_user,
     )
 
+# =====================================
+# MOVEMENT HISTORY
+# =====================================
 
 @router.get(
     "/movements",
     response_model=list[InventoryMovementResponse],
 )
 def movement_history(
+
+    skip: int = Query(0),
+
+    limit: int = Query(10),
+
     db: Session = Depends(get_db),
+
     current_user: User = Depends(get_current_user),
+
 ):
+
     return get_movement_history(
         db,
         current_user,
+        skip,
+        limit,
     )
 
+
+
+# =====================================
+# ADD STOCK
+# =====================================
 
 @router.patch(
     "/add-stock",
     response_model=InventoryResponse,
 )
 def add_stock_route(
+
     data: StockAdjustment,
+
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+
+    current_user: User = Depends(require_company_admin),
+
 ):
+
     try:
+
         inventory = add_stock(
+
             db=db,
+
             inventory_id=data.inventory_id,
+
             quantity=data.quantity,
+
             reason=data.reason,
+
             remarks=data.remarks or "",
+
             current_user=current_user,
+
         )
 
+
         if not inventory:
+
             raise HTTPException(
+
                 status_code=404,
+
                 detail="Inventory not found.",
+
             )
+
 
         return inventory
 
+
+
     except ValueError as e:
+
         raise HTTPException(
+
             status_code=400,
+
             detail=str(e),
+
         )
 
+
+
+# =====================================
+# REMOVE STOCK
+# =====================================
 
 @router.patch(
     "/remove-stock",
     response_model=InventoryResponse,
 )
 def remove_stock_route(
+
     data: StockAdjustment,
+
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+
+    current_user: User = Depends(require_company_admin),
+
 ):
+
     try:
+
         inventory = remove_stock(
+
             db=db,
+
             inventory_id=data.inventory_id,
+
             quantity=data.quantity,
+
             reason=data.reason,
+
             remarks=data.remarks or "",
+
             current_user=current_user,
+
         )
 
+
         if not inventory:
+
             raise HTTPException(
+
                 status_code=404,
+
                 detail="Inventory not found.",
+
             )
+
 
         return inventory
 
+
+
     except ValueError as e:
+
         raise HTTPException(
+
             status_code=400,
+
             detail=str(e),
+
         )
 
+
+
+# =====================================
+# ADJUST STOCK
+# =====================================
 
 @router.patch(
     "/adjust-stock",
     response_model=InventoryResponse,
 )
 def adjust_stock_route(
+
     data: StockAdjustment,
+
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+
+    current_user: User = Depends(require_company_admin),
+
 ):
+
     try:
+
         inventory = adjust_stock(
+
             db=db,
+
             inventory_id=data.inventory_id,
+
             quantity=data.quantity,
+
             reason=data.reason,
+
             remarks=data.remarks or "",
+
             current_user=current_user,
+
         )
 
+
         if not inventory:
+
             raise HTTPException(
+
                 status_code=404,
+
                 detail="Inventory not found.",
+
             )
+
 
         return inventory
 
+
+
     except ValueError as e:
+
         raise HTTPException(
+
             status_code=400,
+
             detail=str(e),
+
         )
 
+
+
+# =====================================
+# UPDATE REORDER LEVEL
+# =====================================
 
 @router.patch(
     "/{inventory_id}/reorder-level",
     response_model=InventoryResponse,
 )
 def update_reorder_level_route(
+
     inventory_id: int,
+
     data: ReorderLevelUpdate,
+
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+
+    current_user: User = Depends(require_company_admin),
+
 ):
+
     try:
+
         inventory = update_reorder_level(
+
             db=db,
+
             inventory_id=inventory_id,
+
             reorder_level=data.reorder_level,
+
             current_user=current_user,
+
         )
 
+
         if not inventory:
+
             raise HTTPException(
+
                 status_code=404,
+
                 detail="Inventory not found.",
+
             )
+
 
         return inventory
 
+
+
     except ValueError as e:
+
         raise HTTPException(
+
             status_code=400,
+
             detail=str(e),
+
         )
+
+ 

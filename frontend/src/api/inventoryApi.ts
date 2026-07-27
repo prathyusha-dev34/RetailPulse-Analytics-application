@@ -8,10 +8,20 @@ import axios from "./axios";
 export const getInventory = async (
   params?: {
     search?: string;
+
     category_id?: number;
+
     brand?: string;
-    stock_status?: string;
-    sort_by?: string;
+
+    stock_status?:
+      | "In Stock"
+      | "Low Stock"
+      | "Out of Stock";
+
+    sort_by?:
+      | "name"
+      | "stock"
+      | "recent";
   }
 ) => {
 
@@ -48,15 +58,17 @@ async () => {
 // =========================
 
 export const getInventoryMovements =
-async () => {
+async (
+  skip = 0,
+  limit = 10
+) => {
 
   const response = await axios.get(
-    "/inventory/movements"
+    `/inventory/movements?skip=${skip}&limit=${limit}`
   );
 
   return response.data;
 };
-
 
 
 // =========================
@@ -66,8 +78,11 @@ async () => {
 export const addStock = async (
   data: {
     inventory_id: number;
+
     quantity: number;
+
     reason: string;
+
     remarks?: string;
   }
 ) => {
@@ -89,8 +104,11 @@ export const addStock = async (
 export const removeStock = async (
   data: {
     inventory_id: number;
+
     quantity: number;
+
     reason: string;
+
     remarks?: string;
   }
 ) => {
@@ -112,8 +130,11 @@ export const removeStock = async (
 export const adjustStock = async (
   data: {
     inventory_id: number;
+
     quantity: number;
+
     reason: string;
+
     remarks?: string;
   }
 ) => {
@@ -135,6 +156,7 @@ export const adjustStock = async (
 export const updateReorderLevel =
 async (
   inventory_id: number,
+
   data: {
     reorder_level: number;
   }
