@@ -1911,6 +1911,8 @@ bgcolor:"#2563EB"
 
 "Product",
 
+"Category",
+
 "SKU",
 
 "Brand",
