@@ -1287,234 +1287,221 @@ export default function SaleDetails(){
 
           <Table>
 
+<TableHead>
 
+<TableRow>
 
-            <TableHead>
+<TableCell
+sx={{
+color:"#fff",
+fontWeight:700
+}}
+>
+Product
+</TableCell>
 
 
-              <TableRow>
+<TableCell
+sx={{
+color:"#fff",
+fontWeight:700
+}}
+>
+Category
+</TableCell>
 
 
-                <TableCell
+<TableCell
+sx={{
+color:"#fff",
+fontWeight:700
+}}
+>
+Quantity
+</TableCell>
 
-                  sx={{
-                    color:"#fff",
-                    fontWeight:700
-                  }}
 
-                >
+<TableCell
+sx={{
+color:"#fff",
+fontWeight:700
+}}
+>
+Unit Price
+</TableCell>
 
-                  Product
 
-                </TableCell>
+<TableCell
+sx={{
+color:"#fff",
+fontWeight:700
+}}
+>
+Discount
+</TableCell>
 
 
+<TableCell
+sx={{
+color:"#fff",
+fontWeight:700
+}}
+>
+Tax
+</TableCell>
 
-                <TableCell
 
-                  sx={{
-                    color:"#fff",
-                    fontWeight:700
-                  }}
+<TableCell
+sx={{
+color:"#fff",
+fontWeight:700
+}}
+>
+Total
+</TableCell>
 
-                >
 
-                  Quantity
+</TableRow>
 
-                </TableCell>
+</TableHead>
 
 
 
+<TableBody>
 
-                <TableCell
-
-                  sx={{
-                    color:"#fff",
-                    fontWeight:700
-                  }}
-
-                >
-
-                  Unit Price
-
-                </TableCell>
-
-
-
-
-
-                <TableCell
-
-                  sx={{
-                    color:"#fff",
-                    fontWeight:700
-                  }}
-
-                >
-
-                  Discount
-
-                </TableCell>
-
-
-
-
-
-                <TableCell
-
-                  sx={{
-                    color:"#fff",
-                    fontWeight:700
-                  }}
-
-                >
-
-                  Tax
-
-                </TableCell>
-
-
-
-
-
-                <TableCell
-
-                  sx={{
-                    color:"#fff",
-                    fontWeight:700
-                  }}
-
-                >
-
-                  Total
-
-                </TableCell>
-
-
-
-
-              </TableRow>
-
-
-            </TableHead>
-
-
-
-
-
-
-
-
-            <TableBody>
 
 {
-  items.length === 0 ? (
+items.length === 0 ? (
 
-    <TableRow>
+<TableRow>
 
-      <TableCell
-        colSpan={6}
-        align="center"
-        sx={{
-          color:"#fff"
-        }}
-      >
-        No products found
-      </TableCell>
+<TableCell
+colSpan={7}
+align="center"
+sx={{
+color:"#fff"
+}}
+>
 
-    </TableRow>
+No products found
 
-  ) : (
+</TableCell>
 
-    items.map(
-      (item:any)=>(
-
-        <TableRow
-          key={item.id}
-        >
-
-          <TableCell
-            sx={{
-              color:"#e2e8f0"
-            }}
-          >
-            {
-              item.product_name ||
-              item.product?.name ||
-              item.product_id
-            }
-          </TableCell>
+</TableRow>
 
 
-          <TableCell
-            sx={{
-              color:"#e2e8f0"
-            }}
-          >
-            {
-              item.quantity
-            }
-          </TableCell>
+)
+
+:
+
+items.map((item:any)=>(
 
 
-          <TableCell
-            sx={{
-              color:"#e2e8f0"
-            }}
-          >
-            {
-              formatCurrency(item.unit_price)
-            }
-          </TableCell>
+<TableRow key={item.id}>
 
 
-          <TableCell
-            sx={{
-              color:"#ef4444"
-            }}
-          >
-            {
-              formatCurrency(item.discount)
-            }
-          </TableCell>
-
-
-          <TableCell
-            sx={{
-              color:"#22c55e"
-            }}
-          >
-            {
-              formatCurrency(item.tax)
-            }
-          </TableCell>
-
-
-          <TableCell
-            sx={{
-              color:"#fff",
-              fontWeight:700
-            }}
-          >
-            {
-              formatCurrency(item.total)
-            }
-          </TableCell>
-
-
-        </TableRow>
-
-      )
-    )
-
-  )
+<TableCell
+sx={{
+color:"#e2e8f0"
+}}
+>
+{
+item.product_name ||
+item.product?.name ||
+item.product_id
 }
+</TableCell>
+
+
+
+<TableCell
+sx={{
+color:"#e2e8f0"
+}}
+>
+{
+item.product?.category?.name ||
+item.category_name ||
+"-"
+}
+</TableCell>
+
+
+
+<TableCell
+sx={{
+color:"#e2e8f0"
+}}
+>
+{
+item.quantity
+}
+</TableCell>
+
+
+
+<TableCell
+sx={{
+color:"#e2e8f0"
+}}
+>
+{
+formatCurrency(item.unit_price)
+}
+</TableCell>
+
+
+
+<TableCell
+sx={{
+color:"#ef4444"
+}}
+>
+{
+formatCurrency(item.discount)
+}
+</TableCell>
+
+
+
+<TableCell
+sx={{
+color:"#22c55e"
+}}
+>
+{
+formatCurrency(item.tax)
+}
+</TableCell>
+
+
+
+<TableCell
+sx={{
+color:"#fff",
+fontWeight:700
+}}
+>
+{
+formatCurrency(item.total)
+}
+</TableCell>
+
+
+
+</TableRow>
+
+
+))
+
+
+}
+
 
 </TableBody>
 
 
-          </Table>
-
+</Table>
 
 
         </Paper>

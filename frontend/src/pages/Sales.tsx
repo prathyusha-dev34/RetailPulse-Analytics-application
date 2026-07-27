@@ -1,342 +1,362 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState
+} from "react";
+
 
 import {
+  Alert,
   Box,
   Button,
+  Card,
+  CardContent,
+  Chip,
   Container,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  MenuItem,
+  Divider,
+  Grid,
   Paper,
+  Snackbar,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  TextField,
-  Typography,
-  Chip,
+  Typography
 } from "@mui/material";
 
 
-import AddIcon from "@mui/icons-material/Add";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-
-
-import { useNavigate } from "react-router-dom";
+import PrintIcon from "@mui/icons-material/Print";
 
 
 import {
-  getSales,
-  deleteSale,
-  getLowStockProducts,
-  getOutOfStockProducts,
+  useNavigate,
+  useParams
+} from "react-router-dom";
+
+
+import {
+  getSale
 } from "../api/salesApi";
 
 
 
+export default function SaleDetails(){
 
 
-// ================================
-// FILTER FIELD STYLE
-// ================================
+  const { id } = useParams();
 
 
-const filterFieldStyle = {
+  const navigate = useNavigate();
 
 
-  "& .MuiInputBase-root": {
-    color:"#e5e7eb",
-    backgroundColor:"#111827",
-  },
 
+  const [sale,setSale] =
+  useState<any>(null);
 
-  "& .MuiInputLabel-root": {
-    color:"#93c5fd",
-  },
 
 
-  "& .MuiInputLabel-root.Mui-focused": {
-    color:"#60a5fa",
-  },
+  const [loading,setLoading] =
+  useState(true);
 
 
- "& input": {
-  color:"#e5e7eb",
-  fontSize:"14px",
-},
 
-"& input::-webkit-calendar-picker-indicator": {
-  filter:"invert(1)",
-},
+  const [snackbar,setSnackbar] =
+  useState({
 
+    open:false,
 
-  "& .MuiOutlinedInput-notchedOutline": {
-    borderColor:"#334155",
-  },
+    message:"",
 
+    severity:
+    "success" as
+    "success" |
+    "error" |
+    "info"
 
-  "&:hover .MuiOutlinedInput-notchedOutline": {
-    borderColor:"#3b82f6",
-  },
+  });
 
 
-  "& .MuiSelect-icon": {
-    color:"#93c5fd",
-  },
 
 
-};
 
+  useEffect(()=>{
 
+    loadSale();
 
+  },[]);
 
 
 
 
 
-export default function Sales(){
 
+  const loadSale = async()=>{
 
 
-const navigate = useNavigate();
+    try{
 
 
+      setLoading(true);
 
 
-const [sales,setSales] =
-useState<any[]>([]);
 
+      const response:any =
+      await getSale(
+        Number(id)
+      );
 
 
-const [loading,setLoading] =
-useState(true);
 
+      const saleData =
 
+      response?.data?.sale ??
 
-const [search,setSearch] =
-useState("");
+      response?.data?.data ??
 
+      response?.data ??
 
+      null;
 
-const [fromDate,setFromDate] =
-useState("");
 
 
+      setSale(
+        saleData
+      );
 
-const [toDate,setToDate] =
-useState("");
 
 
+    }
+    catch(error){
 
-const [categoryFilter,setCategoryFilter] =
-useState("");
 
+      console.error(error);
 
 
-const [channelFilter,setChannelFilter] =
-useState("");
 
+      setSnackbar({
 
+        open:true,
 
-const [paymentFilter,setPaymentFilter] =
-useState("");
+        message:
+        "Unable to load sale details",
 
+        severity:
+        "error"
 
+      });
 
-const [sortBy,setSortBy] =
-useState("");
 
+    }
+    finally{
 
 
-const [lowStockCount,setLowStockCount] =
-useState(0);
+      setLoading(false);
 
 
+    }
 
-const [outOfStockCount,setOutOfStockCount] =
-useState(0);
 
+  };
 
 
-const [deleteId,setDeleteId] =
-useState<number | null>(null);
+    const formatCurrency = (
+    value:any
+  )=>{
 
 
+    return Number(
+      value || 0
+    )
+    .toLocaleString(
+      "en-IN",
+      {
 
+        style:"currency",
 
+        currency:"INR"
 
+      }
+    );
 
 
+  };
 
-// ================================
-// LOAD SALES + STOCK ALERTS
-// ================================
 
 
-const loadSales = async()=>{
 
 
-try{
+  const formatDate = (
+    value:any
+  )=>{
 
 
-setLoading(true);
+    if(!value)
 
+      return "-";
 
 
-const response:any =
-await getSales();
 
+    return new Date(
+      value
+    )
+    .toLocaleString(
+      "en-IN"
+    );
 
 
-console.log(
-"SALES RESPONSE:",
-response
-);
+  };
 
 
 
-const data =
-Array.isArray(response)
-?
-response
-:
-response.data || [];
 
 
 
-setSales(data);
+  if(loading){
 
 
+    return (
 
+      <Container>
 
+        <Typography
+          mt={5}
+          color="white"
+        >
 
-const lowStock:any =
-await getLowStockProducts(5);
+          Loading sale details...
 
+        </Typography>
 
+      </Container>
 
-const outStock:any =
-await getOutOfStockProducts();
+    );
 
 
+  }
 
 
 
-setLowStockCount(
 
-Array.isArray(lowStock)
-?
-lowStock.length
-:
-0
 
-);
 
+  if(!sale){
 
 
-setOutOfStockCount(
+    return (
 
-Array.isArray(outStock)
-?
-outStock.length
-:
-0
+      <Container>
 
-);
+        <Typography
+          mt={5}
+          color="white"
+        >
 
+          Sale not found
 
+        </Typography>
 
-}
+      </Container>
 
+    );
 
-catch(error){
 
+  }
 
-console.error(
-"SALES LOAD ERROR:",
-error
-);
 
 
-}
 
 
-finally{
 
 
-setLoading(false);
+  const items =
+  sale.items ?? [];
 
 
-}
 
 
-};
 
 
+  const subtotal =
+  items.reduce(
 
+    (
+      sum:number,
+      item:any
+    )=>
 
 
+    sum +
 
-useEffect(()=>{
+    (
+      Number(
+        item.quantity || 0
+      )
 
+      *
 
-loadSales();
+      Number(
+        item.unit_price || 0
+      )
 
+    ),
 
-},[]);
+    0
 
+  );
 
-// ================================
-// DELETE SALE
-// ================================
 
 
-const handleDelete = async()=>{
 
 
-try{
 
+  const discount =
+  items.reduce(
 
-if(deleteId){
+    (
+      sum:number,
+      item:any
+    )=>
 
 
-await deleteSale(deleteId);
+    sum +
 
+    Number(
+      item.discount || 0
+    ),
 
 
-setDeleteId(null);
+    0
 
+  );
 
 
-loadSales();
 
 
 
-}
 
 
-}
-catch(error){
+  const tax =
+  items.reduce(
 
+    (
+      sum:number,
+      item:any
+    )=>
 
-console.log(error);
 
+    sum +
 
-}
+    Number(
+      item.tax || 0
+    ),
 
 
-};
+    0
 
+  );
 
 
 
@@ -344,1426 +364,1336 @@ console.log(error);
 
 
 
+  const totalQuantity =
+  items.reduce(
 
-// ================================
-// FILTER DATA
-// ================================
+    (
+      sum:number,
+      item:any
+    )=>
 
 
-let filteredSales = [
-...sales
-];
+    sum +
 
+    Number(
+      item.quantity || 0
+    ),
 
 
+    0
 
-if(search){
+  );
 
 
-filteredSales =
-filteredSales.filter(
-(item:any)=>
 
-(item.customer_name || "")
-.toLowerCase()
-.includes(
-search.toLowerCase()
-)
 
-||
 
-(item.invoice_number || "")
-.toLowerCase()
-.includes(
-search.toLowerCase()
-)
 
-);
 
+  const cardStyle = {
 
-}
+    background:"#111827",
 
+    color:"#fff",
 
+    borderRadius:3,
 
+    border:
+    "1px solid #1e293b",
 
-if(channelFilter){
+    height:"100%"
 
+  };
 
-filteredSales =
-filteredSales.filter(
-(item:any)=>
 
-item.sales_channel === channelFilter
+    return (
 
-);
 
+    <Box
 
-}
+      sx={{
 
+        minHeight:"100vh",
 
+        background:
+        "linear-gradient(135deg,#020617,#0f172a,#1e293b)",
 
+        py:5
 
-if(paymentFilter){
+      }}
 
+    >
 
-filteredSales =
-filteredSales.filter(
-(item:any)=>
 
-item.payment_method === paymentFilter
 
-);
+      <Container maxWidth="xl">
 
 
-}
 
 
 
 
-if(fromDate){
+        <Paper
 
+          sx={{
 
-filteredSales =
-filteredSales.filter(
-(item:any)=>
+            p:4,
 
-new Date(item.sale_date)
->=
-new Date(fromDate)
+            mb:4,
 
-);
+            background:"#111827",
 
+            color:"#fff",
 
-}
+            borderRadius:4,
 
+            border:
+            "1px solid #1e293b"
 
+          }}
 
+        >
 
-if(toDate){
 
 
-filteredSales =
-filteredSales.filter(
-(item:any)=>
 
-new Date(item.sale_date)
-<=
-new Date(
-toDate+"T23:59:59"
-)
 
-);
+          <Box
 
+            display="flex"
 
-}
+            justifyContent="space-between"
 
+            alignItems="center"
 
+            flexWrap="wrap"
 
+            gap={3}
 
+          >
 
-if(sortBy==="date"){
 
 
-filteredSales.sort(
-(a:any,b:any)=>
 
-new Date(b.sale_date).getTime()
--
-new Date(a.sale_date).getTime()
 
-);
+            <Box>
 
 
-}
 
+              <Box
 
+                display="flex"
 
+                alignItems="center"
 
+                gap={2}
 
-if(sortBy==="amount"){
+                mb={2}
 
+              >
 
-filteredSales.sort(
-(a:any,b:any)=>
 
-Number(
-b.total_amount || 0
-)
--
-Number(
-a.total_amount || 0
-)
 
-);
+                <ReceiptLongIcon
 
+                  sx={{
 
-}
+                    fontSize:40,
 
+                    color:"#60a5fa"
 
+                  }}
 
+                />
 
 
-if(sortBy==="invoice"){
 
 
-filteredSales.sort(
-(a:any,b:any)=>
 
-(a.invoice_number || "")
-.localeCompare(
-b.invoice_number || ""
-)
+                <Typography
 
-);
+                  variant="h4"
 
+                  fontWeight="700"
 
-}
+                >
 
+                  Invoice Details
 
+                </Typography>
 
 
 
+              </Box>
 
 
-const cardStyle = {
 
 
-p:3,
 
 
-borderRadius:4,
 
+              <Typography
 
-background:
-"linear-gradient(135deg,#111827,#1e293b)",
+                color="#94a3b8"
 
+              >
 
-color:"#fff",
+                Invoice Number :
 
+                {" "}
 
-boxShadow:
-"0 10px 30px rgba(0,0,0,0.35)"
+                <b>
 
+                {
+                  sale.invoice_number || "-"
+                }
 
-};
+                </b>
 
 
+              </Typography>
 
 
 
 
-return (
 
 
 
-<Container
+              <Typography
 
-maxWidth="xl"
+                color="#94a3b8"
 
-sx={{
+                mt={1}
 
-mt:4,
+              >
 
-mb:6,
+                Sale Date :
 
-background:"transparent",
+                {" "}
 
-minHeight:"100vh"
+                {
 
-}}
+                  formatDate(
+                    sale.sale_date
+                  )
 
->
+                }
 
 
+              </Typography>
 
 
 
 
 
-{/* HEADER */}
+            </Box>
 
 
 
-<Box
 
-sx={{
 
-display:"flex",
 
-justifyContent:"space-between",
 
-alignItems:"center",
 
-mb:4,
+            <Chip
 
-flexWrap:"wrap",
+              label="Completed"
 
-gap:2
+              color="success"
 
-}}
+              sx={{
 
->
+                fontWeight:700,
 
+                fontSize:15
 
+              }}
 
-<Box>
+            />
 
 
 
 
-<Typography
 
-variant="h4"
+          </Box>
 
-fontWeight="700"
 
-sx={{
 
-color:"#f8fafc",
 
-letterSpacing:"0.5px",
 
-textShadow:
-"0 2px 8px rgba(0,0,0,0.5)"
+        </Paper>
 
-}}
 
->
+                <Grid
 
-Sales Management
+          container
 
-</Typography>
+          spacing={3}
 
+          mb={4}
 
+        >
 
 
 
 
-<Typography
 
-sx={{
 
-color:"#cbd5e1",
+          <Grid
 
-mt:1
+            item
 
-}}
+            xs={12}
 
->
+            md={3}
 
-Manage sales, invoices and transactions
+          >
 
-</Typography>
 
 
+            <Card
 
+              sx={cardStyle}
 
+            >
 
-</Box>
 
+              <CardContent>
 
 
 
+                <Typography
 
+                  color="#94a3b8"
 
+                >
 
-<Button
+                  Total Amount
 
-variant="contained"
+                </Typography>
 
-startIcon={<AddIcon/>}
 
-onClick={()=>navigate("/sales/add")}
 
-sx={{
 
 
-borderRadius:3,
+                <Typography
 
+                  variant="h5"
 
-px:3,
+                  fontWeight="700"
 
+                  mt={1}
 
-py:1.2,
+                >
 
+                  {
+                    formatCurrency(
+                      sale.total_amount
+                    )
+                  }
 
-fontWeight:"bold"
+                </Typography>
 
 
-}}
 
->
+              </CardContent>
 
-Add Sale
 
-</Button>
+            </Card>
 
 
 
+          </Grid>
 
 
 
 
-</Box>
 
 
 
 
+          <Grid
 
+            item
 
+            xs={12}
 
-{/* SUMMARY CARDS */}
+            md={3}
 
+          >
 
-<Box
 
-sx={{
 
+            <Card
 
-display:"grid",
+              sx={cardStyle}
 
+            >
 
-gridTemplateColumns:{
 
 
-xs:"1fr",
+              <CardContent>
 
 
-sm:"repeat(2,1fr)",
 
 
-md:"repeat(4,1fr)"
+                <Typography
 
+                  color="#94a3b8"
 
-},
+                >
 
+                  Total Products
 
-gap:3,
+                </Typography>
 
 
-mb:4
 
 
-}}
 
->
+                <Typography
 
+                  variant="h5"
 
-<Paper sx={cardStyle}>
+                  fontWeight="700"
 
+                  mt={1}
 
-<Typography
-sx={{
-color:"#cbd5e1"
-}}
->
-Total Sales
-</Typography>
+                >
 
+                  {
+                    items.length
+                  }
 
+                </Typography>
 
-<Typography
-variant="h4"
-fontWeight="bold"
-sx={{
-mt:1
-}}
->
-{sales.length}
-</Typography>
 
 
-</Paper>
+              </CardContent>
 
 
+            </Card>
 
 
 
+          </Grid>
 
 
-<Paper sx={cardStyle}>
 
 
-<Typography
-sx={{
-color:"#cbd5e1"
-}}
->
-Revenue
-</Typography>
 
 
 
-<Typography
-variant="h4"
-fontWeight="bold"
-sx={{
-mt:1
-}}
->
 
-₹
-{
 
-sales.reduce(
+          <Grid
 
-(sum,item)=>
+            item
 
-sum + Number(
-item.total_amount || 0
-),
+            xs={12}
 
-0
+            md={3}
 
-)
-.toFixed(2)
+          >
 
-}
 
-</Typography>
 
+            <Card
 
-</Paper>
+              sx={cardStyle}
 
+            >
 
 
 
+              <CardContent>
 
 
 
-<Paper sx={cardStyle}>
 
+                <Typography
 
-<Typography
-sx={{
-color:"#cbd5e1"
-}}
->
-Orders
-</Typography>
+                  color="#94a3b8"
 
+                >
 
+                  Quantity Sold
 
-<Typography
-variant="h4"
-fontWeight="bold"
-sx={{
-mt:1
-}}
->
-{sales.length}
-</Typography>
+                </Typography>
 
 
-</Paper>
 
 
 
+                <Typography
 
+                  variant="h5"
 
+                  fontWeight="700"
 
+                  mt={1}
 
-<Paper sx={cardStyle}>
+                >
 
+                  {
+                    totalQuantity
+                  }
 
-<Typography
-sx={{
-color:"#cbd5e1"
-}}
->
-Average Order
-</Typography>
+                </Typography>
 
 
 
-<Typography
-variant="h4"
-fontWeight="bold"
-sx={{
-mt:1
-}}
->
+              </CardContent>
 
-₹
-{
 
-sales.length
+            </Card>
 
-?
 
-(
 
-sales.reduce(
+          </Grid>
 
-(sum,item)=>
 
-sum + Number(
-item.total_amount || 0
-),
 
-0
 
-)
-/
-sales.length
 
-)
-.toFixed(2)
 
-:
 
-"0.00"
 
-}
 
+          <Grid
 
-</Typography>
+            item
 
+            xs={12}
 
-</Paper>
+            md={3}
 
+          >
 
 
-</Box>
 
+            <Card
 
+              sx={cardStyle}
 
+            >
 
 
 
+              <CardContent>
 
 
 
-{/* STOCK ALERTS */}
 
+                <Typography
 
+                  color="#94a3b8"
 
-<Box
+                >
 
-sx={{
+                  Payment
 
-display:"flex",
+                </Typography>
 
-gap:3,
 
-mb:4,
 
-flexWrap:"wrap"
 
-}}
 
->
+                <Typography
 
+                  variant="h6"
 
+                  fontWeight="700"
 
+                  mt={1}
 
+                >
 
+                  {
+                    sale.payment_method || "-"
+                  }
 
-<Paper
+                </Typography>
 
-sx={{
 
 
-p:3,
+              </CardContent>
 
 
-minWidth:280,
+            </Card>
 
 
-display:"flex",
 
+          </Grid>
 
-alignItems:"center",
 
 
-gap:2,
 
 
-borderRadius:4,
 
+        </Grid>
 
-background:
-"linear-gradient(135deg,#854d0e,#422006)",
 
+                <Grid
 
-color:"white"
+          container
 
+          spacing={3}
 
-}}
+          mb={4}
 
->
+        >
 
 
-<WarningAmberIcon
 
-sx={{
 
-fontSize:40,
+          {/* Customer Information */}
 
-color:"#facc15"
+          <Grid
 
-}}
+            item
 
-/>
+            xs={12}
 
+            md={4}
 
+          >
 
 
-<Box>
 
+            <Card
 
-<Typography
+              sx={cardStyle}
 
-sx={{
+            >
 
-color:"#fde68a"
 
-}}
+              <CardContent>
 
->
 
-Low Stock
+                <Typography
 
-</Typography>
+                  variant="h6"
 
+                  fontWeight="700"
 
+                >
 
+                  Customer Information
 
+                </Typography>
 
-<Typography
 
-variant="h5"
 
-fontWeight="bold"
 
-color="white"
 
->
+                <Divider
 
-{lowStockCount} Products
+                  sx={{
 
-</Typography>
+                    my:2,
 
+                    borderColor:"#334155"
 
+                  }}
 
-</Box>
+                />
 
 
-</Paper>
 
 
 
+                <Typography>
 
+                  Customer :
 
+                  {" "}
 
+                  {
+                    sale.customer_name || "-"
+                  }
 
+                </Typography>
 
 
-<Paper
 
-sx={{
 
 
-p:3,
+                <Typography
 
+                  mt={2}
 
-minWidth:280,
+                >
 
+                  Invoice :
 
-display:"flex",
+                  {" "}
 
+                  {
+                    sale.invoice_number || "-"
+                  }
 
-alignItems:"center",
+                </Typography>
 
 
-gap:2,
 
 
-borderRadius:4,
 
+                <Typography
 
-background:
-"linear-gradient(135deg,#991b1b,#450a0a)",
+                  mt={2}
 
+                >
 
-color:"white"
+                  Date :
 
+                  {" "}
 
-}}
+                  {
+                    formatDate(
+                      sale.sale_date
+                    )
+                  }
 
->
+                </Typography>
 
 
 
-<InfoOutlinedIcon
 
-sx={{
 
-fontSize:40,
+              </CardContent>
 
-color:"#fca5a5"
 
-}}
+            </Card>
 
-/>
 
 
+          </Grid>
 
 
 
 
-<Box>
 
 
 
-<Typography
+          {/* Payment Details */}
 
-sx={{
+          <Grid
 
-color:"#fecaca"
+            item
 
-}}
+            xs={12}
 
->
+            md={4}
 
-Out Of Stock
+          >
 
-</Typography>
 
 
+            <Card
 
+              sx={cardStyle}
 
+            >
 
-<Typography
 
-variant="h5"
+              <CardContent>
 
-fontWeight="bold"
 
-color="white"
+                <Typography
 
->
+                  variant="h6"
 
-{outOfStockCount} Products
+                  fontWeight="700"
 
-</Typography>
+                >
 
+                  Payment Details
 
+                </Typography>
 
-</Box>
 
 
 
-</Paper>
 
+                <Divider
 
+                  sx={{
 
+                    my:2,
 
+                    borderColor:"#334155"
 
-</Box>
+                  }}
 
+                />
 
 
 
 
 
+                <Typography>
 
+                  Sales Channel :
 
+                  {" "}
 
-{/* FILTER SECTION */}
+                  {
+                    sale.sales_channel || "-"
+                  }
 
+                </Typography>
 
 
-<Paper
 
-sx={{
 
 
-p:3,
+                <Typography
 
+                  mt={2}
 
-mb:4,
+                >
 
+                  Payment Method :
 
-borderRadius:4,
+                  {" "}
 
+                  {
+                    sale.payment_method || "-"
+                  }
 
-background:"#0f172a"
+                </Typography>
 
 
-}}
 
->
 
 
+              </CardContent>
 
-<Typography
 
-sx={{
+            </Card>
 
-color:"#f8fafc",
 
-fontWeight:700,
 
-fontSize:"18px",
+          </Grid>
 
-mb:2
 
-}}
 
->
 
-Filters
 
-</Typography>
 
 
+          {/* Product Details */}
 
+          <Grid
 
+            item
 
+            xs={12}
 
+            md={4}
 
-<Box
+          >
 
-sx={{
 
 
-display:"grid",
+            <Card
 
+              sx={cardStyle}
 
-gridTemplateColumns:{
+            >
 
 
-xs:"1fr",
+              <CardContent>
 
 
-sm:"repeat(2,1fr)",
 
 
-md:"repeat(6,1fr)"
+                <Typography
 
+                  variant="h6"
 
-},
+                  fontWeight="700"
 
+                >
 
-gap:2
+                  Product Details
 
+                </Typography>
 
-}}
 
->
 
 
 
+                <Divider
 
+                  sx={{
 
+                    my:2,
 
+                    borderColor:"#334155"
 
+                  }}
 
-<TextField
+                />
 
-label="Search"
 
-value={search}
 
-onChange={(e)=>
 
-setSearch(
-e.target.value
-)
 
-}
+                <Typography>
 
-fullWidth
+                  Product :
 
-sx={filterFieldStyle}
+                  {" "}
 
-/>
-<TextField
-  type="date"
-  value={fromDate}
-  fullWidth
-  onChange={(e)=>setFromDate(e.target.value)}
-  sx={filterFieldStyle}
-/>
+                  {
+                    items[0]?.product_name ||
 
-<TextField
-  type="date"
-  value={toDate}
-  fullWidth
-  onChange={(e)=>setToDate(e.target.value)}
-  sx={filterFieldStyle}
-/>
-<TextField
+                    items[0]?.product?.name ||
 
-select
+                    "-"
 
-label="Channel"
+                  }
 
-value={channelFilter}
+                </Typography>
 
-onChange={(e)=>
 
-setChannelFilter(
-e.target.value
-)
 
-}
 
-sx={filterFieldStyle}
 
->
+                <Typography
 
+                  mt={2}
 
-<MenuItem value="">
-All
-</MenuItem>
+                >
 
+                  Category :
 
-<MenuItem value="Retail Store">
-Retail Store
-</MenuItem>
+                  {" "}
 
+                  {
+                    items[0]?.product?.category?.name ||
 
-<MenuItem value="Online Store">
-Online Store
-</MenuItem>
+                    items[0]?.category_name ||
 
+                    items[0]?.category ||
 
-<MenuItem value="Marketplace">
-Marketplace
-</MenuItem>
+                    "-"
 
+                  }
 
-</TextField>
+                </Typography>
 
 
 
 
 
+                <Typography
 
+                  mt={2}
 
+                >
 
+                  SKU :
 
-<TextField
+                  {" "}
 
-select
+                  {
+                    items[0]?.product?.sku ||
 
-label="Payment"
+                    items[0]?.sku ||
 
-value={paymentFilter}
+                    "-"
 
-onChange={(e)=>
+                  }
 
-setPaymentFilter(
-e.target.value
-)
+                </Typography>
 
-}
 
-sx={filterFieldStyle}
 
->
 
 
-<MenuItem value="">
-All
-</MenuItem>
+              </CardContent>
 
 
-<MenuItem value="Cash">
-Cash
-</MenuItem>
+            </Card>
 
 
-<MenuItem value="Card">
-Card
-</MenuItem>
 
+          </Grid>
 
-<MenuItem value="UPI">
-UPI
-</MenuItem>
 
 
-<MenuItem value="Bank Transfer">
-Bank Transfer
-</MenuItem>
 
 
-</TextField>
 
+        </Grid>
 
 
+                <Paper
 
+          sx={{
 
+            p:3,
 
+            mb:4,
 
+            background:"#111827",
 
+            borderRadius:3
 
-<TextField
+          }}
 
-select
+        >
 
-label="Sort By"
 
-value={sortBy}
 
-onChange={(e)=>
 
-setSortBy(
-e.target.value
-)
 
-}
+          <Typography
 
-sx={filterFieldStyle}
+            variant="h6"
 
->
+            fontWeight="700"
 
+            color="white"
 
-<MenuItem value="">
-None
-</MenuItem>
+            mb={3}
 
+          >
 
-<MenuItem value="date">
-Date
-</MenuItem>
+            Pricing Breakdown
 
+          </Typography>
 
-<MenuItem value="invoice">
-Invoice
-</MenuItem>
 
 
-<MenuItem value="amount">
-Amount
-</MenuItem>
 
 
-</TextField>
 
 
+          <Table>
 
 
 
-</Box>
+            <TableHead>
 
 
-</Paper>
+              <TableRow>
 
 
 
+                {[
+                  "Product",
+                  "Category",
+                  "Quantity",
+                  "Unit Price",
+                  "Discount",
+                  "Tax",
+                  "Total"
 
+                ].map((head)=>(
 
 
+                  <TableCell
 
+                    key={head}
 
+                    sx={{
 
-{/* SALES TABLE */}
+                      color:"#fff",
 
+                      fontWeight:700
 
+                    }}
 
-<TableContainer
+                  >
 
-component={Paper}
+                    {head}
 
-sx={{
 
-background:"#0f172a",
+                  </TableCell>
 
-borderRadius:4
 
-}}
+                ))}
 
->
 
 
-<Table>
+              </TableRow>
 
 
-<TableHead>
+            </TableHead>
 
 
-<TableRow>
 
 
-{
 
-[
-"Invoice",
-"Customer",
-"Date",
-"Channel",
-"Payment",
-"Status",
-"Amount",
-"Actions"
 
-].map((head)=>(
 
+            <TableBody>
 
-<TableCell
 
-key={head}
 
-sx={{
+            {
 
-color:"#94a3b8",
+            items.length === 0 ? (
 
-fontWeight:"bold"
 
-}}
 
->
+              <TableRow>
 
-{head}
 
-</TableCell>
 
+                <TableCell
 
-))
+                  colSpan={7}
 
+                  align="center"
 
-}
+                  sx={{
 
+                    color:"#fff"
 
-</TableRow>
+                  }}
 
+                >
 
-</TableHead>
 
+                  No products found
 
 
 
+                </TableCell>
 
 
 
+              </TableRow>
 
-<TableBody>
 
 
-{
+            )
 
+            :
 
-loading ?
+            (
 
 
+            items.map(
 
-<TableRow>
+              (item:any)=>(
 
 
-<TableCell
 
-colSpan={8}
+                <TableRow
 
-align="center"
+                  key={item.id}
 
-sx={{color:"white"}}
+                >
 
->
 
-Loading...
 
-</TableCell>
 
 
-</TableRow>
+                  {/* Product */}
 
+                  <TableCell
 
+                    sx={{
 
+                      color:"#e2e8f0"
 
+                    }}
 
+                  >
 
-:
+                  {
 
+                    item.product_name ||
 
+                    item.product?.name ||
 
-filteredSales.length===0 ?
+                    item.product_id ||
 
+                    "-"
 
+                  }
 
 
+                  </TableCell>
 
-<TableRow>
 
 
-<TableCell
 
-colSpan={8}
 
-align="center"
 
-sx={{color:"white"}}
 
->
+                  {/* Category */}
 
 
-<Typography
+                  <TableCell
 
-p={3}
+                    sx={{
 
->
+                      color:"#e2e8f0"
 
-No sales available
+                    }}
 
-</Typography>
+                  >
 
 
-</TableCell>
+                  {
 
+                    item.product?.category?.name ||
 
-</TableRow>
+                    item.category_name ||
 
+                    item.category ||
 
+                    "-"
 
+                  }
 
 
+                  </TableCell>
 
-:
 
 
 
-filteredSales.map((item:any)=>(
 
 
 
-<TableRow
 
-key={item.id}
+                  {/* Quantity */}
 
-hover
 
->
+                  <TableCell
 
+                    sx={{
 
+                      color:"#e2e8f0"
 
+                    }}
 
-<TableCell
+                  >
 
-sx={{
+                  {
 
-color:"white",
+                    item.quantity || 0
 
-fontWeight:"bold"
+                  }
 
-}}
 
->
+                  </TableCell>
 
-{item.invoice_number || "-"}
 
-</TableCell>
 
 
 
 
 
 
+                  {/* Unit Price */}
 
-<TableCell
 
-sx={{color:"white"}}
+                  <TableCell
 
->
+                    sx={{
 
-{item.customer_name || "-"}
+                      color:"#e2e8f0"
 
-</TableCell>
+                    }}
 
+                  >
 
 
+                  {
 
+                    formatCurrency(
 
+                      item.unit_price
 
+                    )
 
-<TableCell
+                  }
 
-sx={{color:"white"}}
 
->
 
-{
+                  </TableCell>
 
-item.sale_date
 
-?
 
-new Date(item.sale_date)
-.toLocaleDateString()
 
-:
 
-"-"
 
-}
 
 
-</TableCell>
+                  {/* Discount */}
 
 
+                  <TableCell
 
+                    sx={{
 
+                      color:"#ef4444"
 
+                    }}
 
+                  >
 
-<TableCell
 
-sx={{color:"white"}}
+                  {
 
->
+                    formatCurrency(
 
-{item.sales_channel || "-"}
+                      item.discount
 
-</TableCell>
+                    )
 
+                  }
 
 
 
+                  </TableCell>
 
 
 
 
-<TableCell
 
-sx={{color:"white"}}
 
->
 
-{item.payment_method || "-"}
 
-</TableCell>
 
+                  {/* Tax */}
 
 
+                  <TableCell
 
+                    sx={{
 
+                      color:"#22c55e"
 
+                    }}
 
-<TableCell>
+                  >
 
 
-<Chip
+                  {
 
-label="Completed"
+                    formatCurrency(
 
-size="small"
+                      item.tax
 
-sx={{
+                    )
 
-background:"#16a34a",
+                  }
 
-color:"white",
 
-fontWeight:"bold"
 
-}}
+                  </TableCell>
 
-/>
 
 
-</TableCell>
 
 
 
@@ -1771,215 +1701,799 @@ fontWeight:"bold"
 
 
 
-<TableCell
+                  {/* Total */}
 
-sx={{
 
-color:"white",
+                  <TableCell
 
-fontWeight:"bold"
+                    sx={{
 
-}}
+                      color:"#fff",
 
->
+                      fontWeight:700
 
-₹
-{
+                    }}
 
-Number(
-item.total_amount || 0
-)
-.toFixed(2)
+                  >
 
-}
 
-</TableCell>
+                  {
 
+                    formatCurrency(
 
+                      item.total ||
 
+                      item.total_amount
 
+                    )
 
+                  }
 
 
-<TableCell>
 
+                  </TableCell>
 
 
-<IconButton
 
-sx={{color:"#38bdf8"}}
 
-onClick={()=>navigate(`/sales/${item.id}`)}
 
->
 
-<VisibilityIcon/>
 
-</IconButton>
 
+                </TableRow>
 
 
 
+              )
 
+            )
 
 
-<IconButton
+            )
 
-sx={{color:"#60a5fa"}}
 
-onClick={()=>navigate(`/sales/edit/${item.id}`)}
+            }
 
->
 
-<EditIcon/>
 
-</IconButton>
+            </TableBody>
 
 
 
 
+          </Table>
 
 
 
-<IconButton
 
-sx={{color:"#f87171"}}
 
-onClick={()=>setDeleteId(item.id)}
 
->
+        </Paper>
 
-<DeleteIcon/>
+        <Table>
 
-</IconButton>
+  <TableHead>
 
+    <TableRow>
 
+      {[
+        "Product",
+        "Category",
+        "Quantity",
+        "Unit Price",
+        "Discount",
+        "Tax",
+        "Total"
+      ].map((head)=>(
 
-</TableCell>
+        <TableCell
+          key={head}
+          sx={{
+            color:"#fff",
+            fontWeight:700
+          }}
+        >
+          {head}
+        </TableCell>
 
+      ))}
 
+    </TableRow>
 
+  </TableHead>
 
 
-</TableRow>
+  <TableBody>
 
+    {
+      items.length === 0 ? (
 
-))
+        <TableRow>
 
+          <TableCell
+            colSpan={7}
+            align="center"
+            sx={{
+              color:"#fff"
+            }}
+          >
+            No products found
+          </TableCell>
 
-}
+        </TableRow>
 
+      )
 
+      :
 
-</TableBody>
+      (
+
+        items.map((item:any)=>(
+
+          <TableRow
+            key={item.id}
+          >
+
+
+            {/* Product */}
+
+            <TableCell
+              sx={{
+                color:"#e2e8f0"
+              }}
+            >
+
+              {
+                item.product_name ||
+                item.product?.name ||
+                item.product_id ||
+                "-"
+              }
+
+            </TableCell>
+
+
+
+            {/* Category */}
+
+            <TableCell
+              sx={{
+                color:"#e2e8f0"
+              }}
+            >
+
+              {
+                item.product?.category?.name ||
+                item.category_name ||
+                item.category ||
+                "-"
+              }
+
+            </TableCell>
+
+
+
+
+            {/* Quantity */}
+
+            <TableCell
+              sx={{
+                color:"#e2e8f0"
+              }}
+            >
+
+              {
+                item.quantity || 0
+              }
+
+            </TableCell>
+
+
+
+
+            {/* Unit Price */}
+
+            <TableCell
+              sx={{
+                color:"#e2e8f0"
+              }}
+            >
+
+              {
+                formatCurrency(
+                  item.unit_price
+                )
+              }
+
+            </TableCell>
+
+
+
+
+
+            {/* Discount */}
+
+            <TableCell
+              sx={{
+                color:"#ef4444"
+              }}
+            >
+
+              {
+                formatCurrency(
+                  item.discount
+                )
+              }
+
+            </TableCell>
+
+
+
+
+
+            {/* Tax */}
+
+            <TableCell
+              sx={{
+                color:"#22c55e"
+              }}
+            >
+
+              {
+                formatCurrency(
+                  item.tax
+                )
+              }
+
+            </TableCell>
+
+
+
+
+
+            {/* Total */}
+
+            <TableCell
+              sx={{
+                color:"#fff",
+                fontWeight:700
+              }}
+            >
+
+              {
+                formatCurrency(
+                  item.total
+                )
+              }
+
+            </TableCell>
+
+
+
+          </TableRow>
+
+        ))
+
+      )
+
+    }
+
+
+  </TableBody>
 
 
 </Table>
 
+        <Card
 
-</TableContainer>
+          sx={{
 
+            background:"#111827",
 
+            color:"#fff",
 
+            borderRadius:3,
 
+            mb:4
 
+          }}
 
+        >
 
 
 
-{/* DELETE CONFIRMATION */}
+          <CardContent>
 
 
 
-<Dialog
+            <Typography
 
-open={Boolean(deleteId)}
+              variant="h6"
 
-onClose={()=>setDeleteId(null)}
+              fontWeight="700"
 
->
+              mb={3}
 
+            >
 
+              Invoice Summary
 
-<DialogTitle>
+            </Typography>
 
-Delete Sale
 
-</DialogTitle>
 
 
 
+            <Divider
 
+              sx={{
 
-<DialogContent>
+                borderColor:"#334155",
 
+                mb:3
 
-<Typography>
+              }}
 
-Are you sure you want to delete this sale?
+            />
 
-</Typography>
 
 
-</DialogContent>
 
 
 
 
+            {/* Subtotal */}
 
+            <Box
 
+              display="flex"
 
-<DialogActions>
+              justifyContent="space-between"
 
+              mb={2}
 
-<Button
+            >
 
-onClick={()=>setDeleteId(null)}
+              <Typography>
 
->
+                Subtotal
 
-Cancel
+              </Typography>
 
-</Button>
 
 
+              <Typography>
 
+                {
 
+                  formatCurrency(
 
+                    subtotal
 
-<Button
+                  )
 
-variant="contained"
+                }
 
-color="error"
+              </Typography>
 
-onClick={handleDelete}
 
->
+            </Box>
 
-Delete
 
-</Button>
 
 
 
-</DialogActions>
 
 
 
-</Dialog>
 
+            {/* Discount */}
 
 
+            <Box
 
+              display="flex"
 
+              justifyContent="space-between"
 
+              mb={2}
 
-</Container>
+            >
 
 
-);
+              <Typography>
+
+                Discount Applied
+
+              </Typography>
+
+
+
+              <Typography
+
+                color="#ef4444"
+
+              >
+
+                -
+
+                {
+
+                  formatCurrency(
+
+                    discount
+
+                  )
+
+                }
+
+
+              </Typography>
+
+
+            </Box>
+
+
+
+
+
+
+
+
+
+            {/* Tax */}
+
+
+            <Box
+
+              display="flex"
+
+              justifyContent="space-between"
+
+              mb={2}
+
+            >
+
+
+              <Typography>
+
+                Tax
+
+              </Typography>
+
+
+
+              <Typography
+
+                color="#22c55e"
+
+              >
+
+                +
+
+                {
+
+                  formatCurrency(
+
+                    tax
+
+                  )
+
+                }
+
+
+              </Typography>
+
+
+            </Box>
+
+
+
+
+
+
+
+
+
+            <Divider
+
+              sx={{
+
+                borderColor:"#334155",
+
+                my:3
+
+              }}
+
+            />
+
+
+
+
+
+
+
+
+
+            {/* Final Amount */}
+
+
+            <Box
+
+              display="flex"
+
+              justifyContent="space-between"
+
+              alignItems="center"
+
+            >
+
+
+
+              <Typography
+
+                variant="h6"
+
+                fontWeight="700"
+
+              >
+
+                Final Amount
+
+              </Typography>
+
+
+
+
+
+              <Typography
+
+                variant="h5"
+
+                fontWeight="700"
+
+                color="#60a5fa"
+
+              >
+
+                {
+
+                  formatCurrency(
+
+                    sale.total_amount
+
+                  )
+
+                }
+
+
+              </Typography>
+
+
+
+            </Box>
+
+
+
+
+
+          </CardContent>
+
+
+        </Card>
+
+
+                <Box
+
+          display="flex"
+
+          gap={2}
+
+          flexWrap="wrap"
+
+          mb={3}
+
+        >
+
+
+
+
+
+          {/* Back Button */}
+
+          <Button
+
+            variant="contained"
+
+            startIcon={
+              <ArrowBackIcon/>
+            }
+
+            onClick={()=>navigate("/sales")}
+
+            sx={{
+
+              textTransform:"none",
+
+              fontWeight:700
+
+            }}
+
+          >
+
+            Back To Sales
+
+
+          </Button>
+
+
+
+
+
+
+
+
+          {/* Edit Button */}
+
+
+          <Button
+
+            variant="contained"
+
+            color="warning"
+
+            startIcon={
+              <EditIcon/>
+            }
+
+            onClick={()=>
+
+
+              navigate(
+
+                `/sales/edit/${sale.id}`
+
+              )
+
+
+            }
+
+            sx={{
+
+              textTransform:"none",
+
+              fontWeight:700
+
+            }}
+
+          >
+
+            Edit Sale
+
+
+          </Button>
+
+
+
+
+
+
+
+
+
+          {/* Print Button */}
+
+
+          <Button
+
+            variant="outlined"
+
+            startIcon={
+              <PrintIcon/>
+            }
+
+            onClick={()=>window.print()}
+
+            sx={{
+
+              color:"#fff",
+
+              borderColor:"#64748b",
+
+              textTransform:"none"
+
+            }}
+
+          >
+
+            Print Invoice
+
+
+          </Button>
+
+
+
+
+
+        </Box>
+
+
+
+
+
+      </Container>
+
+
+
+
+
+
+
+      <Snackbar
+
+        open={snackbar.open}
+
+        autoHideDuration={3000}
+
+        onClose={()=>
+
+
+          setSnackbar({
+
+            ...snackbar,
+
+            open:false
+
+          })
+
+
+        }
+
+      >
+
+
+
+        <Alert
+
+          severity={snackbar.severity}
+
+          variant="filled"
+
+          onClose={()=>
+
+
+            setSnackbar({
+
+              ...snackbar,
+
+              open:false
+
+            })
+
+
+          }
+
+        >
+
+          {snackbar.message}
+
+
+        </Alert>
+
+
+
+      </Snackbar>
+
+
+
+
+
+
+
+    </Box>
+
+
+  );
 
 
 }
-
