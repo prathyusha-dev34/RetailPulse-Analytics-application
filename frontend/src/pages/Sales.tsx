@@ -1,8 +1,8 @@
 import {
   useEffect,
-  useState
+  useMemo,
+  useState,
 } from "react";
-
 
 import {
   Alert,
@@ -12,124 +12,270 @@ import {
   CardContent,
   Chip,
   Container,
-  Divider,
   Grid,
+  MenuItem,
   Paper,
   Snackbar,
+  Stack,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
-  Typography
+  TextField,
+  Typography,
 } from "@mui/material";
 
 
-import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import EditIcon from "@mui/icons-material/Edit";
-import PrintIcon from "@mui/icons-material/Print";
+import {
+  Add,
+  Delete,
+  Edit,
+  Visibility,
+  PointOfSale,
+  TrendingUp,
+  ShoppingCart,
+  CurrencyRupee,
+} from "@mui/icons-material";
+
+
+import { useNavigate } from "react-router-dom";
+
+
+import Sidebar from "../components/Sidebar";
+import Topbar from "../components/Topbar";
 
 
 import {
-  useNavigate,
-  useParams
-} from "react-router-dom";
-
-
-import {
-  getSale
+  getSales,
+  deleteSale,
+  getDashboardSummary,
+  getLowStockProducts,
+  getOutOfStockProducts,
 } from "../api/salesApi";
 
 
 
-export default function SaleDetails(){
+interface Sale {
+
+  id:number;
+
+  invoice_number:string;
+
+  customer_name:string;
+
+  sale_date:string;
+
+  sales_channel:string;
+
+  payment_method:string;
+
+  total_amount:number;
+
+  status?:string;
+
+}
 
 
-  const { id } = useParams();
+
+interface DashboardSummary {
+
+  total_sales:number;
+
+  total_revenue:number;
+
+  total_orders:number;
+
+  average_order_value:number;
+
+}
+
+
+
+
+export default function Sales(){
 
 
   const navigate = useNavigate();
 
 
 
-  const [sale,setSale] =
-  useState<any>(null);
+  const [sales,setSales] =
+    useState<Sale[]>([]);
+
+
+
+  const [summary,setSummary] =
+    useState<DashboardSummary>({
+      total_sales:0,
+      total_revenue:0,
+      total_orders:0,
+      average_order_value:0,
+    });
+
+
+
+  const [lowStock,setLowStock] =
+    useState<any[]>([]);
+
+
+
+  const [outOfStock,setOutOfStock] =
+    useState<any[]>([]);
+
+
+
+  const [search,setSearch] =
+    useState("");
+
+
+
+  const [channel,setChannel] =
+    useState("");
+
+
+
+  const [payment,setPayment] =
+    useState("");
 
 
 
   const [loading,setLoading] =
-  useState(true);
+    useState(true);
 
 
 
   const [snackbar,setSnackbar] =
-  useState({
+    useState({
 
-    open:false,
+      open:false,
 
-    message:"",
+      message:"",
 
-    severity:
-    "success" as
-    "success" |
-    "error" |
-    "info"
+      severity:
+        "success" as
+        "success" |
+        "error",
 
-  });
-
-
+    });
 
 
 
   useEffect(()=>{
 
-    loadSale();
+    loadData();
 
   },[]);
 
 
+    const loadData = async () => {
+
+  try {
+
+    setLoading(true);
+
+    const [
+      salesRes,
+      summaryRes,
+      lowRes,
+      outRes,
+    ] = await Promise.all([
+      getSales(),
+      getDashboardSummary(),
+      getLowStockProducts(),
+      getOutOfStockProducts(),
+    ]);
 
 
+    console.log("SALES RESPONSE 👉", salesRes);
+    console.log("LOW STOCK RESPONSE 👉", lowRes);
+    console.log("OUT STOCK RESPONSE 👉", outRes);
+
+    const salesData = Array.isArray(salesRes)
+      ? salesRes
+      : salesRes.data ?? [];
 
 
-  const loadSale = async()=>{
+    setSales(salesData);
+
+
+    setSummary(
+      summaryRes.data ?? summaryRes
+    );
+
+
+    setLowStock(
+      Array.isArray(lowRes)
+        ? lowRes
+        : lowRes.data ?? []
+    );
+
+
+    setOutOfStock(
+      Array.isArray(outRes)
+        ? outRes
+        : outRes.data ?? []
+    );
+
+
+  } catch(error) {
+
+    console.error(
+      "Sales loading error:",
+      error
+    );
+
+  } finally {
+
+    setLoading(false);
+
+  }
+
+};
+
+
+  const handleDelete = async(
+    id:number
+  )=>{
+
+
+    const confirmDelete =
+      window.confirm(
+        "Delete this sale?"
+      );
+
+
+    if(!confirmDelete)
+      return;
+
 
 
     try{
 
 
-      setLoading(true);
+      await deleteSale(id);
 
 
 
-      const response:any =
-      await getSale(
-        Number(id)
-      );
+      setSnackbar({
+
+        open:true,
+
+        message:
+          "Sale deleted successfully",
+
+        severity:"success",
+
+      });
 
 
 
-      const saleData =
-
-      response?.data?.sale ??
-
-      response?.data?.data ??
-
-      response?.data ??
-
-      null;
+      loadData();
 
 
 
-      setSale(
-        saleData
-      );
-
-
-
-    }
-    catch(error){
+    }catch(error){
 
 
       console.error(error);
@@ -141,19 +287,11 @@ export default function SaleDetails(){
         open:true,
 
         message:
-        "Unable to load sale details",
+          "Unable to delete sale",
 
-        severity:
-        "error"
+        severity:"error",
 
       });
-
-
-    }
-    finally{
-
-
-      setLoading(false);
 
 
     }
@@ -162,22 +300,20 @@ export default function SaleDetails(){
   };
 
 
-    const formatCurrency = (
-    value:any
+
+
+  const formatCurrency = (
+    value:number
   )=>{
 
 
     return Number(
       value || 0
-    )
-    .toLocaleString(
+    ).toLocaleString(
       "en-IN",
       {
-
         style:"currency",
-
-        currency:"INR"
-
+        currency:"INR",
       }
     );
 
@@ -187,274 +323,208 @@ export default function SaleDetails(){
 
 
 
-
   const formatDate = (
-    value:any
+    value:string
   )=>{
 
 
     if(!value)
-
       return "-";
 
 
-
-    return new Date(
-      value
-    )
-    .toLocaleString(
-      "en-IN"
-    );
+    return new Date(value)
+      .toLocaleString("en-IN");
 
 
   };
 
 
 
+
+  const filteredSales =
+    useMemo(()=>{
+
+
+      let data = [
+        ...sales
+      ];
+
+
+
+      if(search.trim()){
+
+
+        const text =
+          search.toLowerCase();
+
+
+
+        data =
+          data.filter(
+            (sale)=>
+
+              sale.invoice_number
+              ?.toLowerCase()
+              .includes(text)
+
+              ||
+
+              sale.customer_name
+              ?.toLowerCase()
+              .includes(text)
+
+          );
+
+
+      }
+
+
+
+
+      if(channel){
+
+
+        data =
+          data.filter(
+            (sale)=>
+              sale.sales_channel === channel
+          );
+
+
+      }
+
+
+
+
+      if(payment){
+
+
+        data =
+          data.filter(
+            (sale)=>
+              sale.payment_method === payment
+          );
+
+
+      }
+
+
+
+
+      return data;
+
+
+
+    },[
+      sales,
+      search,
+      channel,
+      payment,
+    ]);
+
+
+
+    const cardStyle = {
+
+    background:
+      "linear-gradient(135deg,#1E293B,#334155)",
+
+    color:"#fff",
+
+    borderRadius:4,
+
+    height:"100%",
+
+    border:
+      "1px solid #334155",
+
+  };
 
 
 
   if(loading){
 
-
     return (
 
-      <Container>
+      <Box
+        sx={{
+          minHeight:"100vh",
+          bgcolor:"#0F172A",
+          display:"flex",
+          alignItems:"center",
+          justifyContent:"center",
+        }}
+      >
 
         <Typography
-          mt={5}
           color="white"
+          variant="h6"
         >
-
-          Loading sale details...
-
+          Loading Sales...
         </Typography>
 
-      </Container>
+
+      </Box>
 
     );
-
 
   }
 
 
 
-
-
-
-  if(!sale){
-
-
-    return (
-
-      <Container>
-
-        <Typography
-          mt={5}
-          color="white"
-        >
-
-          Sale not found
-
-        </Typography>
-
-      </Container>
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-  const items =
-  sale.items ?? [];
-
-
-
-
-
-
-  const subtotal =
-  items.reduce(
-
-    (
-      sum:number,
-      item:any
-    )=>
-
-
-    sum +
-
-    (
-      Number(
-        item.quantity || 0
-      )
-
-      *
-
-      Number(
-        item.unit_price || 0
-      )
-
-    ),
-
-    0
-
-  );
-
-
-
-
-
-
-  const discount =
-  items.reduce(
-
-    (
-      sum:number,
-      item:any
-    )=>
-
-
-    sum +
-
-    Number(
-      item.discount || 0
-    ),
-
-
-    0
-
-  );
-
-
-
-
-
-
-
-  const tax =
-  items.reduce(
-
-    (
-      sum:number,
-      item:any
-    )=>
-
-
-    sum +
-
-    Number(
-      item.tax || 0
-    ),
-
-
-    0
-
-  );
-
-
-
-
-
-
-
-  const totalQuantity =
-  items.reduce(
-
-    (
-      sum:number,
-      item:any
-    )=>
-
-
-    sum +
-
-    Number(
-      item.quantity || 0
-    ),
-
-
-    0
-
-  );
-
-
-
-
-
-
-
-  const cardStyle = {
-
-    background:"#111827",
-
-    color:"#fff",
-
-    borderRadius:3,
-
-    border:
-    "1px solid #1e293b",
-
-    height:"100%"
-
-  };
-
-
-    return (
-
+  return (
 
     <Box
 
       sx={{
 
+        display:"flex",
+
+        bgcolor:"#0F172A",
+
         minHeight:"100vh",
-
-        background:
-        "linear-gradient(135deg,#020617,#0f172a,#1e293b)",
-
-        py:5
 
       }}
 
     >
 
 
-
-      <Container maxWidth="xl">
-
+      <Sidebar />
 
 
 
+      <Box
+
+        component="main"
+
+        sx={{
+
+          flexGrow:1,
+
+          ml:"260px",
+
+        }}
+
+      >
 
 
-        <Paper
+        <Topbar />
+
+
+
+        <Container
+
+          maxWidth="xl"
 
           sx={{
 
-            p:4,
+            mt:4,
 
-            mb:4,
-
-            background:"#111827",
-
-            color:"#fff",
-
-            borderRadius:4,
-
-            border:
-            "1px solid #1e293b"
+            pb:5,
 
           }}
 
         >
-
-
 
 
 
@@ -468,150 +538,52 @@ export default function SaleDetails(){
 
             flexWrap="wrap"
 
-            gap={3}
+            gap={2}
+
+            mb={4}
 
           >
 
 
+            <Typography
 
+              variant="h4"
 
+              fontWeight={700}
 
-            <Box>
+              color="white"
 
+            >
 
+              Sales Management
 
-              <Box
+            </Typography>
 
-                display="flex"
 
-                alignItems="center"
 
-                gap={2}
+            <Button
 
-                mb={2}
+              variant="contained"
 
-              >
+              startIcon={<Add />}
 
-
-
-                <ReceiptLongIcon
-
-                  sx={{
-
-                    fontSize:40,
-
-                    color:"#60a5fa"
-
-                  }}
-
-                />
-
-
-
-
-
-                <Typography
-
-                  variant="h4"
-
-                  fontWeight="700"
-
-                >
-
-                  Invoice Details
-
-                </Typography>
-
-
-
-              </Box>
-
-
-
-
-
-
-
-              <Typography
-
-                color="#94a3b8"
-
-              >
-
-                Invoice Number :
-
-                {" "}
-
-                <b>
-
-                {
-                  sale.invoice_number || "-"
-                }
-
-                </b>
-
-
-              </Typography>
-
-
-
-
-
-
-
-              <Typography
-
-                color="#94a3b8"
-
-                mt={1}
-
-              >
-
-                Sale Date :
-
-                {" "}
-
-                {
-
-                  formatDate(
-                    sale.sale_date
-                  )
-
-                }
-
-
-              </Typography>
-
-
-
-
-
-            </Box>
-
-
-
-
-
-
-
-
-            <Chip
-
-              label="Completed"
-
-              color="success"
+              onClick={()=>navigate("/sales/add")}
 
               sx={{
 
-                fontWeight:700,
+                textTransform:"none",
 
-                fontSize:15
+                borderRadius:3,
+
+                fontWeight:700,
 
               }}
 
-            />
+            >
 
+              Add Sale
 
+            </Button>
 
 
 
@@ -620,451 +592,540 @@ export default function SaleDetails(){
 
 
 
-
-        </Paper>
-
-
-                <Grid
-
-          container
-
-          spacing={3}
-
-          mb={4}
-
-        >
-
-
-
-
-
-
           <Grid
 
-            item
+            container
 
-            xs={12}
+            spacing={3}
 
-            md={3}
+            mb={4}
 
           >
 
 
 
-            <Card
+            <Grid
 
-              sx={cardStyle}
+              size={{
+                xs:12,
+                md:3
+              }}
+
+            >
+
+              <Card sx={cardStyle}>
+
+                <CardContent>
+
+
+                  <PointOfSale
+
+                    sx={{
+
+                      fontSize:38,
+
+                      color:"#60A5FA",
+
+                    }}
+
+                  />
+
+
+                  <Typography
+
+                    mt={2}
+
+                    color="#CBD5E1"
+
+                  >
+
+                    Total Sales
+
+                  </Typography>
+
+
+
+                  <Typography
+
+                    variant="h5"
+
+                    fontWeight={700}
+
+                  >
+
+                    {summary.total_sales}
+
+                  </Typography>
+
+
+
+                </CardContent>
+
+
+              </Card>
+
+
+            </Grid>
+
+
+
+
+
+            <Grid
+
+              size={{
+                xs:12,
+                md:3
+              }}
 
             >
 
 
-              <CardContent>
+              <Card sx={cardStyle}>
+
+
+                <CardContent>
+
+
+                  <CurrencyRupee
+
+                    sx={{
+
+                      fontSize:38,
+
+                      color:"#22C55E",
+
+                    }}
+
+                  />
+
+
+                  <Typography
+
+                    mt={2}
+
+                    color="#CBD5E1"
+
+                  >
+
+                    Revenue
+
+                  </Typography>
 
 
 
-                <Typography
+                  <Typography
 
-                  color="#94a3b8"
+                    variant="h5"
 
-                >
+                    fontWeight={700}
 
-                  Total Amount
+                  >
 
-                </Typography>
+                    {formatCurrency(
+                      summary.total_revenue
+                    )}
+
+                  </Typography>
+
+
+
+                </CardContent>
+
+
+              </Card>
+
+
+            </Grid>
 
 
 
 
 
-                <Typography
+            <Grid
 
-                  variant="h5"
+              size={{
+                xs:12,
+                md:3
+              }}
 
-                  fontWeight="700"
+            >
 
-                  mt={1}
 
-                >
+              <Card sx={cardStyle}>
+
+
+                <CardContent>
+
+
+                  <ShoppingCart
+
+                    sx={{
+
+                      fontSize:38,
+
+                      color:"#F59E0B",
+
+                    }}
+
+                  />
+
+
+
+                  <Typography
+
+                    mt={2}
+
+                    color="#CBD5E1"
+
+                  >
+
+                    Orders
+
+                  </Typography>
+
+
+
+                  <Typography
+
+                    variant="h5"
+
+                    fontWeight={700}
+
+                  >
+
+                    {summary.total_orders}
+
+                  </Typography>
+
+
+
+                </CardContent>
+
+
+              </Card>
+
+
+            </Grid>
+
+
+
+
+
+            <Grid
+
+              size={{
+                xs:12,
+                md:3
+              }}
+
+            >
+
+
+              <Card sx={cardStyle}>
+
+
+                <CardContent>
+
+
+                  <TrendingUp
+
+                    sx={{
+
+                      fontSize:38,
+
+                      color:"#EC4899",
+
+                    }}
+
+                  />
+
+
+
+                  <Typography
+
+                    mt={2}
+
+                    color="#CBD5E1"
+
+                  >
+
+                    Average Order
+
+                  </Typography>
+
+
+
+                  <Typography
+
+                    variant="h5"
+
+                    fontWeight={700}
+
+                  >
+
+                    {formatCurrency(
+                      summary.average_order_value
+                    )}
+
+                  </Typography>
+
+
+
+                </CardContent>
+
+
+              </Card>
+
+
+            </Grid>
+
+
+
+          </Grid>
+
+
+          {/* STOCK ALERTS */}
+
+          <Grid
+            container
+            spacing={3}
+            mb={4}
+          >
+
+
+            <Grid
+              size={{
+                xs:12,
+                md:6
+              }}
+            >
+
+              <Card
+
+                sx={{
+
+                  bgcolor:"#1E293B",
+
+                  color:"#fff",
+
+                  borderRadius:4,
+
+                  border:
+                    "1px solid #334155",
+
+                  height:"100%",
+
+                }}
+
+              >
+
+                <CardContent>
+
+
+                  <Typography
+
+                    variant="h6"
+
+                    fontWeight={700}
+
+                    color="#F59E0B"
+
+                    mb={2}
+
+                  >
+
+                    Low Stock Products
+
+                  </Typography>
+
+
 
                   {
-                    formatCurrency(
-                      sale.total_amount
+                    lowStock.length === 0 ? (
+
+                      <Typography
+                        color="#CBD5E1"
+                      >
+
+                        No Low Stock Products
+
+                      </Typography>
+
+
+                    ) : (
+
+
+                      <Stack
+                        direction="row"
+                        flexWrap="wrap"
+                        gap={1}
+                      >
+
+
+                        {
+                          lowStock.map(
+                            (item:any)=>(
+
+                              <Chip
+
+                                key={item.id}
+
+                                label={
+                                  `${
+                                    item.name ??
+                                    item.product_name ??
+                                    "Product"
+                                  } (${
+                                    item.available_stock ??
+                                    0
+                                  })`
+                                }
+
+                                color="warning"
+
+                              />
+
+                            )
+                          )
+                        }
+
+
+                      </Stack>
+
+
                     )
                   }
 
-                </Typography>
 
 
-
-              </CardContent>
-
-
-            </Card>
+                </CardContent>
 
 
+              </Card>
 
-          </Grid>
 
+            </Grid>
 
 
 
 
 
+            <Grid
 
-
-          <Grid
-
-            item
-
-            xs={12}
-
-            md={3}
-
-          >
-
-
-
-            <Card
-
-              sx={cardStyle}
+              size={{
+                xs:12,
+                md:6
+              }}
 
             >
 
 
+              <Card
 
-              <CardContent>
+                sx={{
+
+                  bgcolor:"#1E293B",
+
+                  color:"#fff",
+
+                  borderRadius:4,
+
+                  border:
+                    "1px solid #334155",
+
+                  height:"100%",
+
+                }}
+
+              >
 
 
+                <CardContent>
 
 
-                <Typography
+                  <Typography
 
-                  color="#94a3b8"
+                    variant="h6"
 
-                >
+                    fontWeight={700}
 
-                  Total Products
+                    color="#EF4444"
 
-                </Typography>
+                    mb={2}
+
+                  >
+
+                    Out Of Stock Products
+
+                  </Typography>
 
 
-
-
-
-                <Typography
-
-                  variant="h5"
-
-                  fontWeight="700"
-
-                  mt={1}
-
-                >
 
                   {
-                    items.length
-                  }
+                    outOfStock.length === 0 ? (
 
-                </Typography>
+                      <Typography
+                        color="#CBD5E1"
+                      >
 
+                        No Out Of Stock Products
 
+                      </Typography>
 
-              </CardContent>
 
+                    ) : (
 
-            </Card>
 
+                      <Stack
 
+                        direction="row"
 
-          </Grid>
+                        flexWrap="wrap"
 
+                        gap={1}
 
+                      >
 
 
+                        {
+                          outOfStock.map(
+                            (item:any)=>(
 
+                              <Chip
 
+                                key={item.id}
 
+                                label={
+                                  item.name ??
+                                  item.product_name ??
+                                  "Product"
+                                }
 
+                                color="error"
 
-          <Grid
+                              />
 
-            item
+                            )
+                          )
+                        }
 
-            xs={12}
 
-            md={3}
+                      </Stack>
 
-          >
 
-
-
-            <Card
-
-              sx={cardStyle}
-
-            >
-
-
-
-              <CardContent>
-
-
-
-
-                <Typography
-
-                  color="#94a3b8"
-
-                >
-
-                  Quantity Sold
-
-                </Typography>
-
-
-
-
-
-                <Typography
-
-                  variant="h5"
-
-                  fontWeight="700"
-
-                  mt={1}
-
-                >
-
-                  {
-                    totalQuantity
-                  }
-
-                </Typography>
-
-
-
-              </CardContent>
-
-
-            </Card>
-
-
-
-          </Grid>
-
-
-
-
-
-
-
-
-
-          <Grid
-
-            item
-
-            xs={12}
-
-            md={3}
-
-          >
-
-
-
-            <Card
-
-              sx={cardStyle}
-
-            >
-
-
-
-              <CardContent>
-
-
-
-
-                <Typography
-
-                  color="#94a3b8"
-
-                >
-
-                  Payment
-
-                </Typography>
-
-
-
-
-
-                <Typography
-
-                  variant="h6"
-
-                  fontWeight="700"
-
-                  mt={1}
-
-                >
-
-                  {
-                    sale.payment_method || "-"
-                  }
-
-                </Typography>
-
-
-
-              </CardContent>
-
-
-            </Card>
-
-
-
-          </Grid>
-
-
-
-
-
-
-        </Grid>
-
-
-                <Grid
-
-          container
-
-          spacing={3}
-
-          mb={4}
-
-        >
-
-
-
-
-          {/* Customer Information */}
-
-          <Grid
-
-            item
-
-            xs={12}
-
-            md={4}
-
-          >
-
-
-
-            <Card
-
-              sx={cardStyle}
-
-            >
-
-
-              <CardContent>
-
-
-                <Typography
-
-                  variant="h6"
-
-                  fontWeight="700"
-
-                >
-
-                  Customer Information
-
-                </Typography>
-
-
-
-
-
-                <Divider
-
-                  sx={{
-
-                    my:2,
-
-                    borderColor:"#334155"
-
-                  }}
-
-                />
-
-
-
-
-
-                <Typography>
-
-                  Customer :
-
-                  {" "}
-
-                  {
-                    sale.customer_name || "-"
-                  }
-
-                </Typography>
-
-
-
-
-
-                <Typography
-
-                  mt={2}
-
-                >
-
-                  Invoice :
-
-                  {" "}
-
-                  {
-                    sale.invoice_number || "-"
-                  }
-
-                </Typography>
-
-
-
-
-
-                <Typography
-
-                  mt={2}
-
-                >
-
-                  Date :
-
-                  {" "}
-
-                  {
-                    formatDate(
-                      sale.sale_date
                     )
                   }
 
-                </Typography>
 
 
+                </CardContent>
 
 
+              </Card>
 
-              </CardContent>
 
-
-            </Card>
+            </Grid>
 
 
 
@@ -1075,1425 +1136,596 @@ export default function SaleDetails(){
 
 
 
+          {/* FILTER SECTION */}
 
-          {/* Payment Details */}
 
-          <Grid
+          <Paper
 
-            item
-
-            xs={12}
-
-            md={4}
-
-          >
-
-
-
-            <Card
-
-              sx={cardStyle}
-
-            >
-
-
-              <CardContent>
-
-
-                <Typography
-
-                  variant="h6"
-
-                  fontWeight="700"
-
-                >
-
-                  Payment Details
-
-                </Typography>
-
-
-
-
-
-                <Divider
-
-                  sx={{
-
-                    my:2,
-
-                    borderColor:"#334155"
-
-                  }}
-
-                />
-
-
-
-
-
-                <Typography>
-
-                  Sales Channel :
-
-                  {" "}
-
-                  {
-                    sale.sales_channel || "-"
-                  }
-
-                </Typography>
-
-
-
-
-
-                <Typography
-
-                  mt={2}
-
-                >
-
-                  Payment Method :
-
-                  {" "}
-
-                  {
-                    sale.payment_method || "-"
-                  }
-
-                </Typography>
-
-
-
-
-
-              </CardContent>
-
-
-            </Card>
-
-
-
-          </Grid>
-
-
-
-
-
-
-
-          {/* Product Details */}
-
-          <Grid
-
-            item
-
-            xs={12}
-
-            md={4}
-
-          >
-
-
-
-            <Card
-
-              sx={cardStyle}
-
-            >
-
-
-              <CardContent>
-
-
-
-
-                <Typography
-
-                  variant="h6"
-
-                  fontWeight="700"
-
-                >
-
-                  Product Details
-
-                </Typography>
-
-
-
-
-
-                <Divider
-
-                  sx={{
-
-                    my:2,
-
-                    borderColor:"#334155"
-
-                  }}
-
-                />
-
-
-
-
-
-                <Typography>
-
-                  Product :
-
-                  {" "}
-
-                  {
-                    items[0]?.product_name ||
-
-                    items[0]?.product?.name ||
-
-                    "-"
-
-                  }
-
-                </Typography>
-
-
-
-
-
-                <Typography
-
-                  mt={2}
-
-                >
-
-                  Category :
-
-                  {" "}
-
-                  {
-                    items[0]?.product?.category?.name ||
-
-                    items[0]?.category_name ||
-
-                    items[0]?.category ||
-
-                    "-"
-
-                  }
-
-                </Typography>
-
-
-
-
-
-                <Typography
-
-                  mt={2}
-
-                >
-
-                  SKU :
-
-                  {" "}
-
-                  {
-                    items[0]?.product?.sku ||
-
-                    items[0]?.sku ||
-
-                    "-"
-
-                  }
-
-                </Typography>
-
-
-
-
-
-              </CardContent>
-
-
-            </Card>
-
-
-
-          </Grid>
-
-
-
-
-
-
-        </Grid>
-
-
-                <Paper
-
-          sx={{
-
-            p:3,
-
-            mb:4,
-
-            background:"#111827",
-
-            borderRadius:3
-
-          }}
-
-        >
-
-
-
-
-
-          <Typography
-
-            variant="h6"
-
-            fontWeight="700"
-
-            color="white"
-
-            mb={3}
-
-          >
-
-            Pricing Breakdown
-
-          </Typography>
-
-
-
-
-
-
-
-          <Table>
-
-
-
-            <TableHead>
-
-
-              <TableRow>
-
-
-
-                {[
-                  "Product",
-                  "Category",
-                  "Quantity",
-                  "Unit Price",
-                  "Discount",
-                  "Tax",
-                  "Total"
-
-                ].map((head)=>(
-
-
-                  <TableCell
-
-                    key={head}
-
-                    sx={{
-
-                      color:"#fff",
-
-                      fontWeight:700
-
-                    }}
-
-                  >
-
-                    {head}
-
-
-                  </TableCell>
-
-
-                ))}
-
-
-
-              </TableRow>
-
-
-            </TableHead>
-
-
-
-
-
-
-
-            <TableBody>
-
-
-
-            {
-
-            items.length === 0 ? (
-
-
-
-              <TableRow>
-
-
-
-                <TableCell
-
-                  colSpan={7}
-
-                  align="center"
-
-                  sx={{
-
-                    color:"#fff"
-
-                  }}
-
-                >
-
-
-                  No products found
-
-
-
-                </TableCell>
-
-
-
-              </TableRow>
-
-
-
-            )
-
-            :
-
-            (
-
-
-            items.map(
-
-              (item:any)=>(
-
-
-
-                <TableRow
-
-                  key={item.id}
-
-                >
-
-
-
-
-
-                  {/* Product */}
-
-                  <TableCell
-
-                    sx={{
-
-                      color:"#e2e8f0"
-
-                    }}
-
-                  >
-
-                  {
-
-                    item.product_name ||
-
-                    item.product?.name ||
-
-                    item.product_id ||
-
-                    "-"
-
-                  }
-
-
-                  </TableCell>
-
-
-
-
-
-
-
-                  {/* Category */}
-
-
-                  <TableCell
-
-                    sx={{
-
-                      color:"#e2e8f0"
-
-                    }}
-
-                  >
-
-
-                  {
-
-                    item.product?.category?.name ||
-
-                    item.category_name ||
-
-                    item.category ||
-
-                    "-"
-
-                  }
-
-
-                  </TableCell>
-
-
-
-
-
-
-
-
-                  {/* Quantity */}
-
-
-                  <TableCell
-
-                    sx={{
-
-                      color:"#e2e8f0"
-
-                    }}
-
-                  >
-
-                  {
-
-                    item.quantity || 0
-
-                  }
-
-
-                  </TableCell>
-
-
-
-
-
-
-
-
-                  {/* Unit Price */}
-
-
-                  <TableCell
-
-                    sx={{
-
-                      color:"#e2e8f0"
-
-                    }}
-
-                  >
-
-
-                  {
-
-                    formatCurrency(
-
-                      item.unit_price
-
-                    )
-
-                  }
-
-
-
-                  </TableCell>
-
-
-
-
-
-
-
-
-                  {/* Discount */}
-
-
-                  <TableCell
-
-                    sx={{
-
-                      color:"#ef4444"
-
-                    }}
-
-                  >
-
-
-                  {
-
-                    formatCurrency(
-
-                      item.discount
-
-                    )
-
-                  }
-
-
-
-                  </TableCell>
-
-
-
-
-
-
-
-
-
-                  {/* Tax */}
-
-
-                  <TableCell
-
-                    sx={{
-
-                      color:"#22c55e"
-
-                    }}
-
-                  >
-
-
-                  {
-
-                    formatCurrency(
-
-                      item.tax
-
-                    )
-
-                  }
-
-
-
-                  </TableCell>
-
-
-
-
-
-
-
-
-
-
-                  {/* Total */}
-
-
-                  <TableCell
-
-                    sx={{
-
-                      color:"#fff",
-
-                      fontWeight:700
-
-                    }}
-
-                  >
-
-
-                  {
-
-                    formatCurrency(
-
-                      item.total ||
-
-                      item.total_amount
-
-                    )
-
-                  }
-
-
-
-                  </TableCell>
-
-
-
-
-
-
-
-
-                </TableRow>
-
-
-
-              )
-
-            )
-
-
-            )
-
-
-            }
-
-
-
-            </TableBody>
-
-
-
-
-          </Table>
-
-
-
-
-
-
-        </Paper>
-
-        <Table>
-
-  <TableHead>
-
-    <TableRow>
-
-      {[
-        "Product",
-        "Category",
-        "Quantity",
-        "Unit Price",
-        "Discount",
-        "Tax",
-        "Total"
-      ].map((head)=>(
-
-        <TableCell
-          key={head}
-          sx={{
-            color:"#fff",
-            fontWeight:700
-          }}
-        >
-          {head}
-        </TableCell>
-
-      ))}
-
-    </TableRow>
-
-  </TableHead>
-
-
-  <TableBody>
-
-    {
-      items.length === 0 ? (
-
-        <TableRow>
-
-          <TableCell
-            colSpan={7}
-            align="center"
             sx={{
-              color:"#fff"
+
+              bgcolor:"#1E293B",
+
+              p:3,
+
+              mb:4,
+
+              borderRadius:4,
+
             }}
+
           >
-            No products found
-          </TableCell>
-
-        </TableRow>
-
-      )
-
-      :
-
-      (
-
-        items.map((item:any)=>(
-
-          <TableRow
-            key={item.id}
-          >
-
-
-            {/* Product */}
-
-            <TableCell
-              sx={{
-                color:"#e2e8f0"
-              }}
-            >
-
-              {
-                item.product_name ||
-                item.product?.name ||
-                item.product_id ||
-                "-"
-              }
-
-            </TableCell>
-
-
-
-            {/* Category */}
-
-            <TableCell
-              sx={{
-                color:"#e2e8f0"
-              }}
-            >
-
-              {
-                item.product?.category?.name ||
-                item.category_name ||
-                item.category ||
-                "-"
-              }
-
-            </TableCell>
-
-
-
-
-            {/* Quantity */}
-
-            <TableCell
-              sx={{
-                color:"#e2e8f0"
-              }}
-            >
-
-              {
-                item.quantity || 0
-              }
-
-            </TableCell>
-
-
-
-
-            {/* Unit Price */}
-
-            <TableCell
-              sx={{
-                color:"#e2e8f0"
-              }}
-            >
-
-              {
-                formatCurrency(
-                  item.unit_price
-                )
-              }
-
-            </TableCell>
-
-
-
-
-
-            {/* Discount */}
-
-            <TableCell
-              sx={{
-                color:"#ef4444"
-              }}
-            >
-
-              {
-                formatCurrency(
-                  item.discount
-                )
-              }
-
-            </TableCell>
-
-
-
-
-
-            {/* Tax */}
-
-            <TableCell
-              sx={{
-                color:"#22c55e"
-              }}
-            >
-
-              {
-                formatCurrency(
-                  item.tax
-                )
-              }
-
-            </TableCell>
-
-
-
-
-
-            {/* Total */}
-
-            <TableCell
-              sx={{
-                color:"#fff",
-                fontWeight:700
-              }}
-            >
-
-              {
-                formatCurrency(
-                  item.total
-                )
-              }
-
-            </TableCell>
-
-
-
-          </TableRow>
-
-        ))
-
-      )
-
-    }
-
-
-  </TableBody>
-
-
-</Table>
-
-        <Card
-
-          sx={{
-
-            background:"#111827",
-
-            color:"#fff",
-
-            borderRadius:3,
-
-            mb:4
-
-          }}
-
-        >
-
-
-
-          <CardContent>
-
 
 
             <Typography
 
-              variant="h6"
+              color="white"
 
-              fontWeight="700"
+              fontWeight={700}
 
-              mb={3}
+              mb={2}
 
             >
 
-              Invoice Summary
+              Filters
 
             </Typography>
 
 
 
 
+            <Grid
 
-            <Divider
+              container
 
-              sx={{
-
-                borderColor:"#334155",
-
-                mb:3
-
-              }}
-
-            />
-
-
-
-
-
-
-
-            {/* Subtotal */}
-
-            <Box
-
-              display="flex"
-
-              justifyContent="space-between"
-
-              mb={2}
-
-            >
-
-              <Typography>
-
-                Subtotal
-
-              </Typography>
-
-
-
-              <Typography>
-
-                {
-
-                  formatCurrency(
-
-                    subtotal
-
-                  )
-
-                }
-
-              </Typography>
-
-
-            </Box>
-
-
-
-
-
-
-
-
-
-            {/* Discount */}
-
-
-            <Box
-
-              display="flex"
-
-              justifyContent="space-between"
-
-              mb={2}
+              spacing={2}
 
             >
 
 
-              <Typography>
 
-                Discount Applied
+              <Grid
 
-              </Typography>
-
-
-
-              <Typography
-
-                color="#ef4444"
+                size={{
+                  xs:12,
+                  md:4
+                }}
 
               >
 
-                -
+                <TextField
 
-                {
+                  fullWidth
 
-                  formatCurrency(
+                  label="Search Invoice / Customer"
 
-                    discount
+                  value={search}
 
-                  )
+                  onChange={(e)=>
+                    setSearch(e.target.value)
+                  }
 
-                }
+                  sx={{
 
+                    input:{
+                      color:"#fff",
+                    },
 
-              </Typography>
+                    label:{
+                      color:"#CBD5E1",
+                    }
 
+                  }}
 
-            </Box>
+                />
 
-
-
-
-
-
-
-
-
-            {/* Tax */}
-
-
-            <Box
-
-              display="flex"
-
-              justifyContent="space-between"
-
-              mb={2}
-
-            >
-
-
-              <Typography>
-
-                Tax
-
-              </Typography>
+              </Grid>
 
 
 
-              <Typography
 
-                color="#22c55e"
+
+              <Grid
+
+                size={{
+                  xs:12,
+                  md:4
+                }}
 
               >
 
-                +
 
-                {
+                <TextField
 
-                  formatCurrency(
+                  fullWidth
 
-                    tax
+                  select
 
-                  )
+                  label="Sales Channel"
 
-                }
+                  value={channel}
 
-
-              </Typography>
-
-
-            </Box>
+                  onChange={(e)=>
+                    setChannel(e.target.value)
+                  }
 
 
+                  sx={{
+
+                    input:{
+                      color:"#fff",
+                    },
+
+                    label:{
+                      color:"#CBD5E1",
+                    }
+
+                  }}
+
+                >
 
 
+                  <MenuItem value="">
+
+                    All
+
+                  </MenuItem>
 
 
+                  <MenuItem value="Retail Store">
+
+                    Retail Store
+
+                  </MenuItem>
 
 
+                  <MenuItem value="Online Store">
 
-            <Divider
+                    Online Store
 
-              sx={{
-
-                borderColor:"#334155",
-
-                my:3
-
-              }}
-
-            />
+                  </MenuItem>
 
 
+                  <MenuItem value="Marketplace">
+
+                    Marketplace
+
+                  </MenuItem>
 
 
+                </TextField>
 
 
-
-
-
-            {/* Final Amount */}
-
-
-            <Box
-
-              display="flex"
-
-              justifyContent="space-between"
-
-              alignItems="center"
-
-            >
-
-
-
-              <Typography
-
-                variant="h6"
-
-                fontWeight="700"
-
-              >
-
-                Final Amount
-
-              </Typography>
+              </Grid>
 
 
 
 
 
-              <Typography
+              <Grid
 
-                variant="h5"
-
-                fontWeight="700"
-
-                color="#60a5fa"
+                size={{
+                  xs:12,
+                  md:4
+                }}
 
               >
 
-                {
 
-                  formatCurrency(
+                <TextField
 
-                    sale.total_amount
+                  fullWidth
 
-                  )
+                  select
 
-                }
+                  label="Payment Method"
 
+                  value={payment}
 
-              </Typography>
-
-
-
-            </Box>
+                  onChange={(e)=>
+                    setPayment(e.target.value)
+                  }
 
 
+                  sx={{
+
+                    input:{
+                      color:"#fff",
+                    },
+
+                    label:{
+                      color:"#CBD5E1",
+                    }
+
+                  }}
+
+                >
+
+
+                  <MenuItem value="">
+
+                    All
+
+                  </MenuItem>
+
+
+                  <MenuItem value="Cash">
+
+                    Cash
+
+                  </MenuItem>
+
+
+                  <MenuItem value="Card">
+
+                    Card
+
+                  </MenuItem>
+
+
+                  <MenuItem value="UPI">
+
+                    UPI
+
+                  </MenuItem>
+
+
+                  <MenuItem value="Bank Transfer">
+
+                    Bank Transfer
+
+                  </MenuItem>
 
 
 
-          </CardContent>
+                </TextField>
 
 
-        </Card>
+              </Grid>
 
 
-                <Box
 
-          display="flex"
 
-          gap={2}
+            </Grid>
 
-          flexWrap="wrap"
 
-          mb={3}
+          </Paper>
 
+
+          {/* SALES TABLE */}
+
+<Paper
+  sx={{
+    bgcolor: "#1E293B",
+    borderRadius: 3,
+    overflow: "hidden",
+  }}
+>
+
+  <Box
+    p={3}
+  >
+
+    <Typography
+      color="white"
+      variant="h6"
+      fontWeight={700}
+    >
+      Sales Transactions
+    </Typography>
+
+  </Box>
+
+
+  <TableContainer>
+
+    <Table>
+
+      <TableHead>
+
+        <TableRow
+          sx={{
+            bgcolor:"#0F172A",
+          }}
         >
 
+          <TableCell sx={{color:"#CBD5E1"}}>
+            Invoice
+          </TableCell>
+
+          <TableCell sx={{color:"#CBD5E1"}}>
+            Customer
+          </TableCell>
+
+          <TableCell sx={{color:"#CBD5E1"}}>
+            Date
+          </TableCell>
+
+          <TableCell sx={{color:"#CBD5E1"}}>
+            Channel
+          </TableCell>
+
+          <TableCell sx={{color:"#CBD5E1"}}>
+            Payment
+          </TableCell>
+
+          <TableCell sx={{color:"#CBD5E1"}}>
+            Amount
+          </TableCell>
+
+          <TableCell sx={{color:"#CBD5E1"}}>
+            Actions
+          </TableCell>
+
+        </TableRow>
+
+      </TableHead>
+
+
+      <TableBody>
+
+
+        {
+          filteredSales.length === 0 ? (
+
+            <TableRow>
+
+              <TableCell
+                colSpan={7}
+                align="center"
+                sx={{
+                  color:"gray",
+                  py:5,
+                }}
+              >
+
+                No sales found
+
+              </TableCell>
+
+            </TableRow>
+
+
+          ) : (
+
+
+            filteredSales.map(
+              (sale) => (
+
+                <TableRow
+                  key={sale.id}
+                  hover
+                  sx={{
+                    "& td":{
+                      color:"#fff",
+                      borderColor:"#334155",
+                    },
+                  }}
+                >
+
+
+                  <TableCell>
+                    {sale.invoice_number}
+                  </TableCell>
+
+
+                  <TableCell>
+                    {sale.customer_name}
+                  </TableCell>
+
+
+                  <TableCell>
+
+                    {
+                      new Date(
+                        sale.sale_date
+                      ).toLocaleDateString(
+                        "en-IN"
+                      )
+                    }
+
+                  </TableCell>
+
+
+                  <TableCell>
+
+                    <Chip
+                      label={
+                        sale.sales_channel ||
+                        "N/A"
+                      }
+                      size="small"
+                      sx={{
+                        bgcolor:"#2563EB",
+                        color:"#fff",
+                      }}
+                    />
+
+                  </TableCell>
+
+
+                  <TableCell>
+
+                    <Chip
+                      label={
+                        sale.payment_method ||
+                        "N/A"
+                      }
+                      size="small"
+                      sx={{
+                        bgcolor:"#334155",
+                        color:"#fff",
+                      }}
+                    />
+
+                  </TableCell>
+
+
+                  <TableCell>
+
+                    <Typography
+                      fontWeight={700}
+                    >
+
+                      {formatCurrency(
+                        sale.total_amount
+                      )}
+
+                    </Typography>
+
+                  </TableCell>
+
+
+                  <TableCell>
+
+
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                    >
+
+
+                      {/* VIEW */}
+
+                      <Button
+                        size="small"
+                        variant="contained"
+                        sx={{
+                          minWidth:40,
+                          bgcolor:"#2563EB",
+                        }}
+                        onClick={() =>
+                          navigate(
+                            `/sales/${sale.id}`
+                          )
+                        }
+                      >
+
+                        <Visibility
+                          fontSize="small"
+                        />
+
+                      </Button>
 
 
 
+                      {/* EDIT */}
 
-          {/* Back Button */}
+                      <Button
+                        size="small"
+                        variant="contained"
+                        sx={{
+                          minWidth:40,
+                          bgcolor:"#F59E0B",
+                        }}
+                        onClick={() =>
+                          navigate(
+                            `/sales/edit/${sale.id}`
+                          )
+                        }
+                      >
 
-          <Button
+                        <Edit
+                          fontSize="small"
+                        />
 
-            variant="contained"
-
-            startIcon={
-              <ArrowBackIcon/>
-            }
-
-            onClick={()=>navigate("/sales")}
-
-            sx={{
-
-              textTransform:"none",
-
-              fontWeight:700
-
-            }}
-
-          >
-
-            Back To Sales
-
-
-          </Button>
+                      </Button>
 
 
 
+                      {/* DELETE */}
+
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="error"
+                        sx={{
+                          minWidth:40,
+                        }}
+                        onClick={() =>
+                          handleDelete(
+                            sale.id
+                          )
+                        }
+                      >
+
+                        <Delete
+                          fontSize="small"
+                        />
+
+                      </Button>
 
 
+                    </Stack>
 
 
-
-          {/* Edit Button */}
-
-
-          <Button
-
-            variant="contained"
-
-            color="warning"
-
-            startIcon={
-              <EditIcon/>
-            }
-
-            onClick={()=>
+                  </TableCell>
 
 
-              navigate(
-
-                `/sales/edit/${sale.id}`
+                </TableRow>
 
               )
+            )
 
 
-            }
-
-            sx={{
-
-              textTransform:"none",
-
-              fontWeight:700
-
-            }}
-
-          >
-
-            Edit Sale
-
-
-          </Button>
-
-
-
-
-
-
-
-
-
-          {/* Print Button */}
-
-
-          <Button
-
-            variant="outlined"
-
-            startIcon={
-              <PrintIcon/>
-            }
-
-            onClick={()=>window.print()}
-
-            sx={{
-
-              color:"#fff",
-
-              borderColor:"#64748b",
-
-              textTransform:"none"
-
-            }}
-
-          >
-
-            Print Invoice
-
-
-          </Button>
-
-
-
-
-
-        </Box>
-
-
-
-
-
-      </Container>
-
-
-
-
-
-
-
-      <Snackbar
-
-        open={snackbar.open}
-
-        autoHideDuration={3000}
-
-        onClose={()=>
-
-
-          setSnackbar({
-
-            ...snackbar,
-
-            open:false
-
-          })
-
-
+          )
         }
 
-      >
+
+      </TableBody>
 
 
-
-        <Alert
-
-          severity={snackbar.severity}
-
-          variant="filled"
-
-          onClose={()=>
+    </Table>
 
 
-            setSnackbar({
-
-              ...snackbar,
-
-              open:false
-
-            })
+  </TableContainer>
 
 
-          }
-
-        >
-
-          {snackbar.message}
+</Paper>
 
 
-        </Alert>
+{/* SNACKBAR */}
 
+<Snackbar
+  open={snackbar.open}
+  autoHideDuration={3000}
+  onClose={() =>
+    setSnackbar({
+      ...snackbar,
+      open:false,
+    })
+  }
+  anchorOrigin={{
+    vertical:"bottom",
+    horizontal:"right",
+  }}
+>
 
+  <Alert
+    severity={snackbar.severity}
+    variant="filled"
+    onClose={() =>
+      setSnackbar({
+        ...snackbar,
+        open:false,
+      })
+    }
+    sx={{
+      width:"100%",
+    }}
+  >
 
-      </Snackbar>
+    {snackbar.message}
 
+  </Alert>
 
+</Snackbar>
 
+</Container>
 
+</Box>
 
+</Box>
 
-
-    </Box>
-
-
-  );
-
-
+);
 }
+

@@ -1,101 +1,70 @@
 import api from "./axios";
 
 
-// ----------------------------
-// Types
-// ----------------------------
-
+// ============================
+// TYPES
+// ============================
 
 export interface SaleItem {
 
+  product_id: number;
 
-  product_id:number;
+  quantity: number;
 
+  unit_price: number;
 
-  quantity:number;
+  discount: number;
 
-
-  unit_price:number;
-
-
-  discount:number;
-
-
-  tax:number;
-
+  tax: number;
 
 }
-
 
 
 
 export interface SalePayload {
 
+  customer_name: string;
 
-  customer_name:string;
+  sale_date?: string;
 
+  sales_channel: string;
 
-  sale_date?:string;
+  payment_method: string;
 
-
-  sales_channel:string;
-
-
-  payment_method:string;
-
-
-  items:SaleItem[];
-
+  items: SaleItem[];
 
 }
-
 
 
 
 export interface SalesFilterParams {
 
+  start_date?: string;
 
-  start_date?:string;
+  end_date?: string;
 
+  category_id?: number;
 
-  end_date?:string;
+  sales_channel?: string;
 
-
-  category_id?:number;
-
-
-  sales_channel?:string;
-
-
-  payment_method?:string;
-
+  payment_method?: string;
 
 }
 
 
 
-
-
-// ----------------------------
-// Create Sale
-// ----------------------------
-
+// ============================
+// CREATE SALE
+// ============================
 
 export const createSale = async (
-
-  data:SalePayload
-
-)=>{
-
+  data: SalePayload
+) => {
 
   const response = await api.post(
-
     "/sales/",
-
     data
-
   );
-
 
   return response.data;
 
@@ -103,24 +72,15 @@ export const createSale = async (
 
 
 
+// ============================
+// GET ALL SALES
+// ============================
 
-
-
-
-// ----------------------------
-// Get All Sales
-// ----------------------------
-
-
-export const getSales = async ()=>{
-
+export const getSales = async () => {
 
   const response = await api.get(
-
     "/sales/"
-
   );
-
 
   return response.data;
 
@@ -128,29 +88,17 @@ export const getSales = async ()=>{
 
 
 
-
-
-
-
-
-// ----------------------------
-// Get Single Sale
-// ----------------------------
-
+// ============================
+// GET SINGLE SALE
+// ============================
 
 export const getSale = async (
-
   saleId:number
-
-)=>{
-
+) => {
 
   const response = await api.get(
-
     `/sales/${saleId}`
-
   );
-
 
   return response.data;
 
@@ -158,33 +106,19 @@ export const getSale = async (
 
 
 
-
-
-
-
-
-// ----------------------------
-// Update Sale
-// ----------------------------
-
+// ============================
+// UPDATE SALE
+// ============================
 
 export const updateSale = async (
-
   saleId:number,
-
   data:SalePayload
-
-)=>{
-
+) => {
 
   const response = await api.put(
-
     `/sales/${saleId}`,
-
     data
-
   );
-
 
   return response.data;
 
@@ -192,29 +126,17 @@ export const updateSale = async (
 
 
 
-
-
-
-
-
-// ----------------------------
-// Delete Sale
-// ----------------------------
-
+// ============================
+// DELETE SALE
+// ============================
 
 export const deleteSale = async (
-
   saleId:number
-
-)=>{
-
+) => {
 
   const response = await api.delete(
-
     `/sales/${saleId}`
-
   );
-
 
   return response.data;
 
@@ -222,40 +144,22 @@ export const deleteSale = async (
 
 
 
-
-
-
-
-
-
-// ----------------------------
-// Search Sales
-// ----------------------------
-
+// ============================
+// SEARCH SALES
+// ============================
 
 export const searchSales = async (
-
   keyword:string
-
-)=>{
-
+) => {
 
   const response = await api.get(
-
     "/sales/search",
-
     {
-
       params:{
-
-        keyword,
-
-      },
-
+        keyword
+      }
     }
-
   );
-
 
   return response.data;
 
@@ -263,36 +167,20 @@ export const searchSales = async (
 
 
 
-
-
-
-
-
-
-// ----------------------------
-// Filter Sales
-// ----------------------------
-
+// ============================
+// FILTER SALES
+// ============================
 
 export const filterSales = async (
-
   params:SalesFilterParams
-
-)=>{
-
+) => {
 
   const response = await api.get(
-
     "/sales/filter",
-
     {
-
-      params,
-
+      params
     }
-
   );
-
 
   return response.data;
 
@@ -300,44 +188,24 @@ export const filterSales = async (
 
 
 
-
-
-
-
-
-
-// ----------------------------
-// Sort Sales
-// ----------------------------
-
+// ============================
+// SORT SALES
+// ============================
 
 export const sortSales = async (
-
-  sort_by:string = "sale_date",
-
-  order:string = "desc"
-
-)=>{
-
+  sort_by:string="sale_date",
+  order:string="desc"
+) => {
 
   const response = await api.get(
-
     "/sales/sort",
-
     {
-
       params:{
-
         sort_by,
-
-        order,
-
-      },
-
+        order
+      }
     }
-
   );
-
 
   return response.data;
 
@@ -345,26 +213,15 @@ export const sortSales = async (
 
 
 
+// ============================
+// DASHBOARD SUMMARY
+// ============================
 
-
-
-
-
-
-// ----------------------------
-// Dashboard Summary
-// ----------------------------
-
-
-export const getSalesDashboard = async ()=>{
-
+export const getDashboardSummary = async () => {
 
   const response = await api.get(
-
     "/sales/dashboard"
-
   );
-
 
   return response.data;
 
@@ -372,40 +229,27 @@ export const getSalesDashboard = async ()=>{
 
 
 
+// Existing alias (optional use)
+export const getSalesDashboard = getDashboardSummary;
 
 
 
-
-
-
-// ----------------------------
-// Low Stock
-// ----------------------------
-
+// ============================
+// LOW STOCK PRODUCTS
+// ============================
 
 export const getLowStockProducts = async (
-
   threshold:number = 5
-
-)=>{
-
+) => {
 
   const response = await api.get(
-
     "/sales/low-stock",
-
     {
-
       params:{
-
-        threshold,
-
-      },
-
+        threshold
+      }
     }
-
   );
-
 
   return response.data;
 
@@ -413,26 +257,15 @@ export const getLowStockProducts = async (
 
 
 
+// ============================
+// OUT OF STOCK PRODUCTS
+// ============================
 
-
-
-
-
-
-// ----------------------------
-// Out Of Stock
-// ----------------------------
-
-
-export const getOutOfStockProducts = async ()=>{
-
+export const getOutOfStockProducts = async () => {
 
   const response = await api.get(
-
     "/sales/out-of-stock"
-
   );
-
 
   return response.data;
 
@@ -440,30 +273,17 @@ export const getOutOfStockProducts = async ()=>{
 
 
 
-
-
-
-
-
-
-// ----------------------------
-// Remaining Stock
-// ----------------------------
-
+// ============================
+// REMAINING STOCK
+// ============================
 
 export const getRemainingStock = async (
-
   productId:number
-
-)=>{
-
+) => {
 
   const response = await api.get(
-
     `/sales/remaining-stock/${productId}`
-
   );
-
 
   return response.data;
 

@@ -127,7 +127,20 @@ def login_user(db: Session, data: LoginRequest):
     )
 
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-    }
+    "access_token": access_token,
+    "refresh_token": refresh_token,
+    "token_type": "bearer",
+    "user": {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "company": user.company.name if user.company else "",
+        "last_login": (
+            user.last_login.isoformat()
+            if user.last_login
+            else None
+        ),
+        "status": user.status,
+    },
+}

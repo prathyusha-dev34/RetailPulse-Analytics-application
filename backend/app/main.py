@@ -33,12 +33,13 @@ from app.models.notification import Notification
 from app.routes.auth import router as auth_router
 from app.routes.profile import router as profile_router
 from app.routes.admin import router as admin_router
+from app.routes import audit
 from app.routes.token import router as token_router
 from app.routes.logout import router as logout_router
 from app.routes.password import router as password_router
 from app.routes.category import router as category_router
 from app.routes.product import router as product_router
-
+from app.routes.analytics import router as analytics_router
 from app.routes import sales
 from app.routes import inventory
 from app.routes import notification
@@ -98,6 +99,8 @@ app.include_router(admin_router)
 
 app.include_router(token_router)
 
+app.include_router(audit.router)
+
 app.include_router(logout_router)
 
 app.include_router(password_router)
@@ -115,6 +118,7 @@ app.include_router(notification.router)
 app.include_router(
     inventory_seed.router
 )
+app.include_router(analytics_router)
 
 # =========================
 # Root

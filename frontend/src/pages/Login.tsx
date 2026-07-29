@@ -51,10 +51,11 @@ export default function Login() {
 
     const response = await login(data);
 
-    await authLogin(
-      response.data.access_token,
-      response.data.refresh_token
-    );
+await authLogin(
+  response.data.access_token,
+  response.data.refresh_token,
+  response.data.user
+);
 
     navigate("/dashboard");
   } catch (err: any) {

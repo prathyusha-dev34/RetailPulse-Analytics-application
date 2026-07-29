@@ -1,15 +1,21 @@
 import { Routes, Route } from "react-router-dom";
 
+
+import Layout from "../layouts/Layout";
+
 import Login from "../pages/Login";
 import RegisterCompany from "../pages/RegisterCompany";
+
 import Dashboard from "../pages/Dashboard";
 import Profile from "../pages/Profile";
 
 import Categories from "../pages/Categories";
 import Products from "../pages/Products";
 import ProductDashboard from "../pages/ProductDashboard";
+
 import Inventory from "../pages/Inventory";
 import InventoryMovements from "../pages/InventoryMovements";
+
 import Reports from "../pages/Reports";
 import Analytics from "../pages/Analytics";
 
@@ -18,162 +24,461 @@ import AddSale from "../pages/AddSale";
 import EditSale from "../pages/EditSale";
 import SaleDetails from "../pages/SaleDetails";
 
-import ProtectedRoute from "../components/ProtectedRoute";
 import Notifications from "../pages/Notifications";
+import AuditLogs from "../pages/AuditLogs";
+
+import ProtectedRoute from "../components/ProtectedRoute";
+
+
+
 export default function AppRoutes() {
+
+
   return (
+
     <Routes>
-      {/* Public Routes */}
+
+
+      {/* PUBLIC ROUTES */}
+
+
       <Route
+
         path="/login"
+
         element={<Login />}
+
       />
 
+
       <Route
+
         path="/register"
+
         element={<RegisterCompany />}
+
       />
 
-      {/* Dashboard */}
+
+
+
+
+      {/* DASHBOARD */}
+
+
       <Route
+
         path="/"
+
         element={
+
           <ProtectedRoute>
-            <Dashboard />
+
+            <Layout>
+
+              <Dashboard />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
+
+
       <Route
+
         path="/dashboard"
+
         element={
+
           <ProtectedRoute>
-            <Dashboard />
+
+            <Layout>
+
+              <Dashboard />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
-      {/* Profile */}
+
+
+
+
+
+      {/* PROFILE */}
+
+
       <Route
+
         path="/profile"
+
         element={
+
           <ProtectedRoute>
-            <Profile />
+
+            <Layout>
+
+              <Profile />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
-      {/* Categories */}
+
+
+
+
+
+      {/* CATEGORIES */}
+
+
       <Route
+
         path="/categories"
+
         element={
+
           <ProtectedRoute>
-            <Categories />
+
+            <Layout>
+
+              <Categories />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
-      {/* Products */}
+
+
+
+
+
+      {/* PRODUCTS */}
+
+
       <Route
+
         path="/products"
+
         element={
+
           <ProtectedRoute>
-            <Products />
+
+            <Layout>
+
+              <Products />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
-      {/* Product Dashboard */}
+
+
       <Route
+
         path="/product-dashboard"
+
         element={
+
           <ProtectedRoute>
-            <ProductDashboard />
+
+            <Layout>
+
+              <ProductDashboard />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
-      {/* Inventory */}
+
+
+
+
+
+
+      {/* INVENTORY */}
+
+
       <Route
+
         path="/inventory"
-        element={
-          <ProtectedRoute>
-            <Inventory />
-          </ProtectedRoute>
-        }
-      />
-       
-       <Route
-  path="/inventory/movements"
-  element={
-    <ProtectedRoute>
-      <InventoryMovements />
-    </ProtectedRoute>
-  }
-/>
 
-    
-      {/* Sales */}
+        element={
+
+          <ProtectedRoute>
+
+            <Layout>
+
+              <Inventory />
+
+            </Layout>
+
+          </ProtectedRoute>
+
+        }
+
+      />
+
+
+
       <Route
+
+        path="/inventory/movements"
+
+        element={
+
+          <ProtectedRoute>
+
+            <Layout>
+
+              <InventoryMovements />
+
+            </Layout>
+
+          </ProtectedRoute>
+
+        }
+
+      />
+
+
+
+
+
+
+
+      {/* SALES */}
+
+
+      <Route
+
         path="/sales"
+
         element={
+
           <ProtectedRoute>
-            <Sales />
+
+            <Layout>
+
+              <Sales />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
+
+
       <Route
+
         path="/sales/add"
+
         element={
+
           <ProtectedRoute>
-            <AddSale />
+
+            <Layout>
+
+              <AddSale />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
+
+
       <Route
+
         path="/sales/edit/:id"
+
         element={
+
           <ProtectedRoute>
-            <EditSale />
+
+            <Layout>
+
+              <EditSale />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
+
+
       <Route
+
         path="/sales/:id"
+
         element={
+
           <ProtectedRoute>
-            <SaleDetails />
+
+            <Layout>
+
+              <SaleDetails />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
-      {/* Reports */}
+
+
+
+
+
+
+      {/* REPORTS */}
+
+
       <Route
+
         path="/reports"
+
         element={
+
           <ProtectedRoute>
-            <Reports />
+
+            <Layout>
+
+              <Reports />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
-      {/* Analytics */}
+
+
+
+
+
+
+      {/* ANALYTICS */}
+
+
       <Route
+
         path="/analytics"
+
         element={
+
           <ProtectedRoute>
-            <Analytics />
+
+            <Layout>
+
+              <Analytics />
+
+            </Layout>
+
           </ProtectedRoute>
+
         }
+
       />
 
+
+
+
+
+
+
+      {/* AUDIT LOGS */}
+
+
       <Route
-  path="/notifications"
-  element={<Notifications />}
-/>
+
+        path="/audit-logs"
+
+        element={
+
+          <ProtectedRoute>
+
+            <Layout>
+
+              <AuditLogs />
+
+            </Layout>
+
+          </ProtectedRoute>
+
+        }
+
+      />
+
+
+
+
+
+
+
+      {/* NOTIFICATIONS */}
+
+
+      <Route
+
+        path="/notifications"
+
+        element={
+
+          <ProtectedRoute>
+
+            <Layout>
+
+              <Notifications />
+
+            </Layout>
+
+          </ProtectedRoute>
+
+        }
+
+      />
+
+
     </Routes>
+
   );
+
 }

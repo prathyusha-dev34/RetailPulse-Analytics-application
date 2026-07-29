@@ -72,3 +72,12 @@ export const getAdminDashboard = () => {
   );
 
 };
+
+
+/* ===========================
+   AUDIT LOGS
+=========================== */
+
+export const getAuditLogs = () => {
+  return api.get("/audit/logs");
+};

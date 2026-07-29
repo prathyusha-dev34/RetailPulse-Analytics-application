@@ -28,15 +28,14 @@ import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
 
-import { logoutUser } from "../api/authApi";
-
+import { logout as logoutApi } from "../api/authApi";
 
 
 interface NavbarProps {
 
-  drawerWidth: number;
+  drawerWidth:number;
 
-  onDrawerToggle: () => void;
+  onDrawerToggle:()=>void;
 
 }
 
@@ -44,9 +43,13 @@ interface NavbarProps {
 
 
 export default function Navbar({
+
   drawerWidth,
+
   onDrawerToggle,
-}: NavbarProps) {
+
+}:NavbarProps){
+
 
 
   const navigate = useNavigate();
@@ -70,18 +73,20 @@ export default function Navbar({
 
 
 
-  const [anchorEl, setAnchorEl] =
+
+  const [anchorEl,setAnchorEl] =
     useState<null | HTMLElement>(null);
 
 
 
-  const open = Boolean(anchorEl);
+  const open =
+    Boolean(anchorEl);
 
 
 
 
   const handleOpen = (
-    event: React.MouseEvent<HTMLElement>
+    event:React.MouseEvent<HTMLElement>
   ) => {
 
     setAnchorEl(
@@ -89,6 +94,7 @@ export default function Navbar({
     );
 
   };
+
 
 
 
@@ -103,25 +109,32 @@ export default function Navbar({
 
 
 
-  const handleLogout = async () => {
 
-    try {
+  const handleLogout = async()=>{
 
-      await logoutUser();
 
-    } catch {
+    try{
+
+      await logoutApi();
+
+    }
+
+    catch(error){
 
       console.log(
-        "Logout API failed"
+        "Logout API failed",
+        error
       );
 
     }
+
 
 
     logout();
 
 
     navigate("/login");
+
 
   };
 
@@ -133,30 +146,41 @@ export default function Navbar({
 
   return (
 
+
     <AppBar
+
 
       position="fixed"
 
+
       elevation={0}
+
 
       sx={{
 
-        width: mobile
-          ? "100%"
-          : `calc(100% - ${drawerWidth}px)`,
 
-        ml: mobile
-          ? 0
-          : `${drawerWidth}px`,
+        width:mobile
+          ?"100%"
+          :`calc(100% - ${drawerWidth}px)`,
+
+
+        ml:mobile
+          ?0
+          :`${drawerWidth}px`,
+
 
         background:"#fff",
 
+
         color:"#111827",
+
 
         borderBottom:
           "1px solid #e5e7eb",
 
+
       }}
+
 
     >
 
@@ -192,15 +216,21 @@ export default function Navbar({
 
         <Typography
 
+
           variant="h6"
+
 
           sx={{
 
+
             fontWeight:700,
+
 
             flexGrow:1,
 
+
           }}
+
 
         >
 
@@ -227,7 +257,6 @@ export default function Navbar({
           >
 
             <NotificationsIcon />
-
 
           </Badge>
 
@@ -263,12 +292,16 @@ export default function Navbar({
 
             >
 
+
               {
                 user?.name
+
                 ? user.name
                     .charAt(0)
                     .toUpperCase()
+
                 : "U"
+
               }
 
 
@@ -303,9 +336,12 @@ export default function Navbar({
 
           anchorOrigin={{
 
+
             vertical:"bottom",
 
+
             horizontal:"right",
+
 
           }}
 
@@ -313,12 +349,14 @@ export default function Navbar({
 
           transformOrigin={{
 
+
             vertical:"top",
+
 
             horizontal:"right",
 
-          }}
 
+          }}
 
 
         >
@@ -329,15 +367,21 @@ export default function Navbar({
 
           <MenuItem
 
-            onClick={() => {
+
+            onClick={()=>{
+
 
               navigate("/profile");
 
+
               handleClose();
+
 
             }}
 
+
           >
+
 
 
             <AccountCircleIcon
@@ -360,7 +404,6 @@ export default function Navbar({
 
 
 
-
           <Divider />
 
 
@@ -373,7 +416,7 @@ export default function Navbar({
           <MenuItem
 
 
-            onClick={async () => {
+            onClick={async()=>{
 
 
               handleClose();
@@ -388,6 +431,7 @@ export default function Navbar({
           >
 
 
+
             <LogoutIcon
 
               sx={{
@@ -396,11 +440,12 @@ export default function Navbar({
 
             />
 
+
             Logout
 
 
-          </MenuItem>
 
+          </MenuItem>
 
 
 
@@ -412,8 +457,8 @@ export default function Navbar({
 
 
 
-      </Toolbar>
 
+      </Toolbar>
 
 
     </AppBar>

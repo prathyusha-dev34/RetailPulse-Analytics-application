@@ -13,7 +13,11 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (accessToken: string, refreshToken: string) => Promise<void>;
+  login: (
+    accessToken: string,
+    refreshToken: string,
+    userData: User
+  ) => Promise<void>;
   logoutUser: () => Promise<void>;
 }
 
@@ -29,17 +33,15 @@ export function AuthProvider({
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
+    const savedUser = localStorage.getItem("user");
 
-    if (token) {
-      setUser({
-        id: 1,
-        name: "Praveen",
-        email: "admin@test.com",
-        role: "Company Admin",
-        company: "RetailPulse",
-        last_login: new Date().toLocaleString(),
-        status: "Active",
-      });
+    if (token && savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (error) {
+        console.error("Failed to parse saved user:", error);
+        localStorage.removeItem("user");
+      }
     }
 
     setLoading(false);
@@ -47,26 +49,22 @@ export function AuthProvider({
 
   const login = async (
     accessToken: string,
-    refreshToken: string
+    refreshToken: string,
+    userData: User
   ) => {
     localStorage.setItem("accessToken", accessToken);
     localStorage.setItem("refreshToken", refreshToken);
+    localStorage.setItem("user", JSON.stringify(userData));
 
-    setUser({
-      id: 1,
-      name: "Praveen",
-      email: "admin@test.com",
-      role: "Company Admin",
-      company: "RetailPulse",
-      last_login: new Date().toLocaleString(),
-      status: "Active",
-    });
-
+    setUser(userData);
     setLoading(false);
   };
 
   const logoutUser = async () => {
-    localStorage.clear();
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+
     setUser(null);
   };
 
