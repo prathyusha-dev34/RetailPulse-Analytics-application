@@ -29,7 +29,7 @@ import AddCustomer from "../pages/customers/AddCustomer";
 import EditCustomer from "../pages/customers/EditCustomer";
 import CustomerProfile from "../pages/customers/CustomerProfile";
 import CustomerAnalytics from "../pages/customers/CustomerAnalytics";
-
+import TopCustomers from "../pages/customers/TopCustomers";
 import Notifications from "../pages/Notifications";
 import AuditLogs from "../pages/AuditLogs";
 
@@ -359,8 +359,18 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      
 
-
+      <Route
+  path="/customers/top-customers"
+  element={
+    <ProtectedRoute>
+      <Layout>
+        <TopCustomers />
+      </Layout>
+    </ProtectedRoute>
+  }
+/>
 
 
 

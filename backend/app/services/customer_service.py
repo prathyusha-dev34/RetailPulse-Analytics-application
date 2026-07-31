@@ -2598,154 +2598,124 @@ def get_customer_timeline(
 # CUSTOMER PROFILE
 # =====================================================
 
-
 def get_customer_profile(
-
     db: Session,
-
     company_id: int,
-
     customer_id: int,
-
 ):
 
-
     customer = (
-
         db.query(Customer)
-
         .options(
-
             joinedload(
-
                 Customer.purchase_summary
-
             )
-
         )
-
         .filter(
-
             Customer.company_id == company_id,
-
-
-            Customer.id == customer_id
-
+            Customer.id == customer_id,
         )
-
         .first()
-
     )
 
-
-
     if not customer:
-
         return None
 
 
-
-
-
-    recent_transactions = (
-
+    purchase_history = (
         db.query(Sale)
-
         .filter(
-
             Sale.company_id == company_id,
-
-
-            Sale.customer_id == customer.id
-
+            Sale.customer_id == customer.id,
         )
-
         .order_by(
-
             Sale.sale_date.desc()
-
         )
-
-        .limit(10)
-
         .all()
-
     )
-
-
-
 
 
     favourite_products = (
-
         get_frequently_purchased_products(
-
             db,
-
-            customer.id
-
+            customer.id,
         )
-
     )
 
 
-
-
-
-    timeline = get_customer_timeline(
-
-        db,
-
-        company_id,
-
-        customer.id
-
+    timeline = (
+        get_customer_activity_timeline(
+            db,
+            company_id,
+            customer.id,
+        )
     )
 
 
+    purchase_trend = (
+        get_customer_purchase_trend(
+            db,
+            customer.id,
+        )
+    )
 
 
+    revenue_distribution = (
+        get_customer_revenue_distribution(
+            db,
+            customer.id,
+        )
+    )
+
+
+    order_frequency = (
+        get_customer_order_frequency(
+            db,
+            customer.id,
+        )
+    )
+
+
+    spending_growth = (
+        get_customer_spending_growth(
+            db,
+            customer.id,
+        )
+    )
 
 
     return {
 
-
-        "customer":
-
-            customer,
-
-
+        "customer": customer,
 
         "purchase_summary":
-
             customer.purchase_summary,
 
-
+        "purchase_history":
+            purchase_history,
 
         "recent_transactions":
-
-            recent_transactions,
-
-
+            purchase_history[:10],
 
         "favourite_products":
-
             favourite_products,
 
-
-
         "timeline":
-
             timeline,
 
+        "purchase_trend":
+            purchase_trend,
+
+        "revenue_distribution":
+            revenue_distribution,
+
+        "order_frequency":
+            order_frequency,
+
+        "spending_growth":
+            spending_growth,
 
     }
-
-
-
-
-
-
 
 
 # =====================================================
@@ -4561,7 +4531,330 @@ def deactivate_customer(
 
     return customer
 
+# =====================================================
+# SYNC CUSTOMER SALES ANALYTICS
+# =====================================================
 
+def sync_customer_sales_analytics(
+    db: Session,
+    customer_id: int,
+):
+
+    customer = (
+        db.query(Customer)
+        .filter(
+            Customer.id == customer_id
+        )
+        .first()
+    )
+
+
+    if not customer:
+        return None
+
+
+    update_customer_purchase_summary(
+        db=db,
+        customer_id=customer_id
+    )
+
+
+    return customer
+
+
+
+
+# =====================================================
+# CUSTOMER PURCHASE TREND
+# =====================================================
+
+def get_customer_purchase_trend(
+    db: Session,
+    customer_id: int,
+):
+
+
+    rows = (
+
+        db.query(
+
+            func.date_trunc(
+                "month",
+                Sale.sale_date
+            ).label("month"),
+
+
+            func.sum(
+                Sale.total_amount
+            ).label("revenue")
+
+        )
+
+        .filter(
+
+            Sale.customer_id == customer_id
+
+        )
+
+        .group_by(
+
+            "month"
+
+        )
+
+        .order_by(
+
+            "month"
+
+        )
+
+        .all()
+
+    )
+
+
+    result = []
+
+
+    for row in rows:
+
+        result.append({
+
+            "month":
+                row.month.strftime(
+                    "%b %Y"
+                )
+                if row.month
+                else "",
+
+
+            "revenue":
+                float(
+                    row.revenue or 0
+                )
+
+        })
+
+
+    return result
+
+
+
+
+# =====================================================
+# CUSTOMER REVENUE DISTRIBUTION
+# =====================================================
+
+def get_customer_revenue_distribution(
+    db: Session,
+    customer_id: int,
+):
+
+
+    customer = (
+
+        db.query(Customer)
+
+        .filter(
+            Customer.id == customer_id
+        )
+
+        .first()
+
+    )
+
+
+    if not customer:
+
+        return []
+
+
+
+    revenue = float(
+        customer.lifetime_revenue or 0
+    )
+
+
+    return [
+
+        {
+            "name": "Revenue",
+            "value": revenue
+        },
+
+
+        {
+            "name": "Remaining",
+            "value": 0
+        }
+
+    ]
+
+
+
+
+
+# =====================================================
+# CUSTOMER ORDER FREQUENCY
+# =====================================================
+
+def get_customer_order_frequency(
+    db: Session,
+    customer_id: int,
+):
+
+
+    rows = (
+
+        db.query(
+
+            func.date_trunc(
+                "month",
+                Sale.sale_date
+            ).label("month"),
+
+
+            func.count(
+                Sale.id
+            ).label("orders")
+
+        )
+
+        .filter(
+
+            Sale.customer_id ==
+            customer_id
+
+        )
+
+        .group_by(
+
+            "month"
+
+        )
+
+        .order_by(
+
+            "month"
+
+        )
+
+        .all()
+
+    )
+
+
+    result = []
+
+
+    for row in rows:
+
+
+        result.append({
+
+            "month":
+
+                row.month.strftime(
+                    "%b %Y"
+                )
+                if row.month
+                else "",
+
+
+            "orders":
+
+                row.orders
+
+        })
+
+
+    return result
+
+
+
+
+# =====================================================
+# CUSTOMER SPENDING GROWTH
+# =====================================================
+
+def get_customer_spending_growth(
+    db: Session,
+    customer_id: int,
+):
+
+
+    rows = (
+
+        db.query(
+
+            func.date_trunc(
+                "month",
+                Sale.sale_date
+            ).label("month"),
+
+
+            func.sum(
+                Sale.total_amount
+            ).label("amount")
+
+        )
+
+
+        .filter(
+
+            Sale.customer_id ==
+            customer_id
+
+        )
+
+
+        .group_by(
+
+            "month"
+
+        )
+
+
+        .order_by(
+
+            "month"
+
+        )
+
+
+        .all()
+
+    )
+
+
+
+    result = []
+
+
+    for row in rows:
+
+
+        result.append({
+
+            "month":
+
+                row.month.strftime(
+                    "%b %Y"
+                )
+                if row.month
+                else "",
+
+
+            "amount":
+
+                float(
+                    row.amount or 0
+                )
+
+        })
+
+
+    return result
 # =====================================================
 # END OF CUSTOMER SERVICE
 # =====================================================

@@ -412,10 +412,10 @@ return response.data;
 
 
 
+
 // ===============================
 // CUSTOMER DASHBOARD
 // ===============================
-
 
 export const getCustomerDashboard =
 async()=>{
@@ -435,11 +435,9 @@ return response.data;
 
 
 
-
 // ===============================
 // CUSTOMER ANALYTICS
 // ===============================
-
 
 export const getCustomerAnalytics =
 async()=>{
@@ -447,7 +445,7 @@ async()=>{
 
 const response =
 await api.get(
-"/customers/analytics/dashboard"
+"/customers/analytics"
 );
 
 
@@ -455,9 +453,6 @@ return response.data;
 
 
 };
-
-
-
 
 
 // ===============================
@@ -704,7 +699,7 @@ async()=>{
 
 const response =
 await api.get(
-"/customers/analytics/new-returning"
+"/customers/analytics/new-vs-returning"
 );
 
 
@@ -734,5 +729,60 @@ await api.get(
 
 return response.data;
 
+
+};
+
+
+// ===============================
+// TOP CUSTOMERS
+// ===============================
+
+export const getTopCustomers =
+async()=>{
+
+  const response =
+  await api.get(
+    "/customers/analytics/top-customers"
+  );
+
+  return response.data;
+
+};
+
+
+
+
+// ===============================
+// CUSTOMER GROWTH TREND
+// ===============================
+
+export const getCustomerGrowthTrend =
+async()=>{
+
+  const response =
+  await api.get(
+    "/customers/analytics/growth-trend"
+  );
+
+  return response.data;
+
+};
+
+
+
+
+// ===============================
+// CUSTOMER SPENDING DISTRIBUTION
+// ===============================
+
+export const getCustomerSpendingDistribution =
+async()=>{
+
+  const response =
+  await api.get(
+    "/customers/analytics/spending-distribution"
+  );
+
+  return response.data;
 
 };

@@ -1,5 +1,6 @@
 from datetime import date
-from typing import List, Optional
+from typing import Optional, List
+
 
 from fastapi import (
     APIRouter,
@@ -7,79 +8,161 @@ from fastapi import (
     HTTPException,
 )
 
+
 from fastapi.responses import StreamingResponse
+
 
 from sqlalchemy.orm import Session
 
+
 from app.core.database import get_db
+
+
 from app.dependencies.auth import get_current_user
 
 
+
+# =====================================================
+# SCHEMAS
+# =====================================================
+
 from app.schemas.customer import (
+
     CustomerCreate,
+
     CustomerUpdate,
+
     CustomerResponse,
+
     CustomerListResponse,
+
     CustomerDashboardResponse,
+
 )
 
+
+
+# =====================================================
+# MODELS
+# =====================================================
 
 from app.models.customer import Customer
 
 
+
+# =====================================================
+# SERVICES
+# =====================================================
+
 from app.services.customer_service import (
 
+
+    # -------------------------
     # CRUD
+    # -------------------------
+
     create_customer,
+
     get_customers,
+
     get_customer,
+
     update_customer,
+
     delete_customer,
+
     activate_customer,
+
     deactivate_customer,
 
 
+
+    # -------------------------
     # Search Filter Sort
+    # -------------------------
+
     search_customers,
+
     filter_customers,
+
     sort_customers,
 
 
+
+    # -------------------------
     # Profile
+    # -------------------------
+
     get_customer_profile,
+
     get_recent_transactions,
+
     get_frequently_purchased_products,
+
     get_customer_activity_timeline,
 
 
+
+    # -------------------------
     # Analytics
+    # -------------------------
+
     get_customer_dashboard,
+
     get_top_customers,
+
     revenue_by_customer_type,
+
     get_customer_growth_trend,
+
     get_monthly_customer_acquisition,
+
     location_distribution,
+
     get_customer_spending_distribution,
+
     get_new_vs_returning_customers,
+
     get_recent_customer_activity,
+
     get_customer_revenue_contribution,
+
     get_dashboard_customer_widgets,
 
 
+
+    # -------------------------
     # Export
+    # -------------------------
+
     export_customers_csv,
+
     export_top_customers_csv,
+
     generate_customer_list_pdf,
+
     generate_top_customers_pdf,
+
     generate_customer_analytics_pdf,
 
 )
 
 
+
+# =====================================================
+# ROUTER
+# =====================================================
+
+
 router = APIRouter(
+
     prefix="/customers",
+
     tags=["Customers"]
+
 )
+
+
 
 
 
@@ -87,31 +170,51 @@ router = APIRouter(
 # CREATE CUSTOMER
 # =====================================================
 
+
 @router.post(
     "/",
     response_model=CustomerResponse
 )
 def create_customer_api(
+
     customer: CustomerCreate,
+
     db: Session = Depends(get_db),
+
     current_user = Depends(get_current_user),
+
 ):
+
 
     try:
 
         return create_customer(
+
             db=db,
+
             company_id=current_user.company_id,
+
             user_id=current_user.id,
+
             customer=customer,
+
         )
+
 
     except ValueError as e:
 
+
         raise HTTPException(
+
             status_code=400,
+
             detail=str(e)
+
         )
+
+
+
+
 
 
 
@@ -119,21 +222,24 @@ def create_customer_api(
 # GET ALL CUSTOMERS
 # =====================================================
 
+
 @router.get(
     "/",
     response_model=CustomerListResponse
 )
 def get_customers_api(
 
-    skip:int = 0,
+    skip: int = 0,
 
-    limit:int = 100,
+    limit: int = 100,
 
-    db:Session = Depends(get_db),
+
+    db: Session = Depends(get_db),
 
     current_user = Depends(get_current_user),
 
 ):
+
 
     customers = get_customers(
 
@@ -148,17 +254,34 @@ def get_customers_api(
     )
 
 
+
     return {
+
 
         "total": len(customers),
 
-        "page": (skip // limit) + 1,
 
-        "limit": limit,
+        "page":
 
-        "data": customers,
+            (skip // limit) + 1,
+
+
+        "limit":
+
+            limit,
+
+
+        "data":
+
+            customers,
+
 
     }
+
+
+
+
+
 
 
 
@@ -168,24 +291,32 @@ def get_customers_api(
 
 
 @router.get(
+
     "/search",
+
     response_model=List[CustomerResponse]
+
 )
 def search_customer_api(
 
-    keyword:str,
+    keyword: str,
 
-    db:Session = Depends(get_db),
+
+    db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
 ):
 
+
     return search_customers(
 
         db=db,
 
+
         company_id=current_user.company_id,
+
 
         keyword=keyword,
 
@@ -195,6 +326,7 @@ def search_customer_api(
 # =====================================================
 # FILTER CUSTOMERS
 # =====================================================
+
 
 @router.get(
     "/filter",
@@ -250,6 +382,8 @@ def filter_customer_api(
 
 
 
+
+
 # =====================================================
 # SORT CUSTOMERS
 # =====================================================
@@ -261,12 +395,13 @@ def filter_customer_api(
 )
 def sort_customer_api(
 
-    sort_by:str = "customer_since",
+    sort_by: str = "customer_since",
 
-    order:str = "desc",
+    order: str = "desc",
 
 
-    db:Session = Depends(get_db),
+    db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -279,11 +414,16 @@ def sort_customer_api(
 
         .filter(
 
-            Customer.company_id == current_user.company_id
+            Customer.company_id
+
+            ==
+
+            current_user.company_id
 
         )
 
     )
+
 
 
     result = sort_customers(
@@ -297,7 +437,9 @@ def sort_customer_api(
     )
 
 
+
     return result.all()
+
 
 
 
@@ -313,7 +455,7 @@ def sort_customer_api(
 )
 def customer_dashboard_api(
 
-    db:Session = Depends(get_db),
+    db: Session = Depends(get_db),
 
     current_user = Depends(get_current_user),
 
@@ -332,6 +474,8 @@ def customer_dashboard_api(
 
 
 
+
+
 # =====================================================
 # TOP CUSTOMERS
 # =====================================================
@@ -342,9 +486,11 @@ def customer_dashboard_api(
 )
 def top_customers_api(
 
-    limit:int = 10,
+    limit: int = 10,
 
-    db:Session = Depends(get_db),
+
+    db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -365,6 +511,8 @@ def top_customers_api(
 
 
 
+
+
 # =====================================================
 # REVENUE BY CUSTOMER TYPE
 # =====================================================
@@ -375,7 +523,8 @@ def top_customers_api(
 )
 def revenue_by_type_api(
 
-    db:Session = Depends(get_db),
+    db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -394,6 +543,9 @@ def revenue_by_type_api(
 
 
 
+
+
+
 # =====================================================
 # CUSTOMER GROWTH TREND
 # =====================================================
@@ -404,7 +556,8 @@ def revenue_by_type_api(
 )
 def growth_trend_api(
 
-    db:Session = Depends(get_db),
+    db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -423,6 +576,9 @@ def growth_trend_api(
 
 
 
+
+
+
 # =====================================================
 # MONTHLY CUSTOMER ACQUISITION
 # =====================================================
@@ -433,7 +589,8 @@ def growth_trend_api(
 )
 def monthly_acquisition_api(
 
-    db:Session = Depends(get_db),
+    db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -452,6 +609,8 @@ def monthly_acquisition_api(
 
 
 
+
+
 # =====================================================
 # LOCATION DISTRIBUTION
 # =====================================================
@@ -462,7 +621,8 @@ def monthly_acquisition_api(
 )
 def location_distribution_api(
 
-    db:Session = Depends(get_db),
+    db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -481,6 +641,8 @@ def location_distribution_api(
 
 
 
+
+
 # =====================================================
 # CUSTOMER SPENDING DISTRIBUTION
 # =====================================================
@@ -491,7 +653,8 @@ def location_distribution_api(
 )
 def spending_distribution_api(
 
-    db:Session = Depends(get_db),
+    db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -507,9 +670,16 @@ def spending_distribution_api(
     )
 
 
+
+
+
+
+
+
 # =====================================================
 # NEW VS RETURNING CUSTOMERS
 # =====================================================
+
 
 @router.get(
     "/analytics/new-vs-returning"
@@ -518,9 +688,11 @@ def new_vs_returning_api(
 
     db: Session = Depends(get_db),
 
+
     current_user = Depends(get_current_user),
 
 ):
+
 
     return get_new_vs_returning_customers(
 
@@ -531,11 +703,8 @@ def new_vs_returning_api(
     )
 
 
-
-
-
 # =====================================================
-# REVENUE CONTRIBUTION
+# CUSTOMER REVENUE CONTRIBUTION
 # =====================================================
 
 
@@ -550,6 +719,7 @@ def revenue_contribution_api(
 
 ):
 
+
     return get_customer_revenue_contribution(
 
         db=db,
@@ -557,6 +727,8 @@ def revenue_contribution_api(
         company_id=current_user.company_id,
 
     )
+
+
 
 
 
@@ -572,9 +744,11 @@ def revenue_contribution_api(
 )
 def recent_activity_api(
 
-    limit:int = 20,
+    limit: int = 20,
+
 
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -595,8 +769,10 @@ def recent_activity_api(
 
 
 
+
+
 # =====================================================
-# DASHBOARD WIDGETS
+# CUSTOMER DASHBOARD WIDGETS
 # =====================================================
 
 
@@ -606,6 +782,7 @@ def recent_activity_api(
 def dashboard_widgets_api(
 
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -624,102 +801,13 @@ def dashboard_widgets_api(
 
 
 
-# =====================================================
-# EXPORT CUSTOMERS CSV
-# =====================================================
 
-
-@router.get(
-    "/export/csv"
-)
-def export_csv_api(
-
-    db: Session = Depends(get_db),
-
-    current_user = Depends(get_current_user),
-
-):
-
-
-    file = export_customers_csv(
-
-        db=db,
-
-        company_id=current_user.company_id,
-
-        user_id=current_user.id,
-
-    )
-
-
-    return StreamingResponse(
-
-        iter([file.getvalue()]),
-
-        media_type="text/csv",
-
-        headers={
-
-            "Content-Disposition":
-
-            "attachment; filename=customers.csv"
-
-        },
-
-    )
-
-
-
-
-
-# =====================================================
-# EXPORT TOP CUSTOMERS CSV
-# =====================================================
-
-
-@router.get(
-    "/export/top-customers/csv"
-)
-def export_top_csv_api(
-
-    db: Session = Depends(get_db),
-
-    current_user = Depends(get_current_user),
-
-):
-
-
-    file = export_top_customers_csv(
-
-        db=db,
-
-        company_id=current_user.company_id,
-
-        user_id=current_user.id,
-
-    )
-
-
-    return StreamingResponse(
-
-        iter([file.getvalue()]),
-
-        media_type="text/csv",
-
-        headers={
-
-            "Content-Disposition":
-
-            "attachment; filename=top_customers.csv"
-
-        },
-
-    )
 
 
 # =====================================================
 # CUSTOMER PROFILE
 # =====================================================
+
 
 @router.get(
     "/{customer_id}/profile"
@@ -728,11 +816,14 @@ def customer_profile_api(
 
     customer_id: int,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
 ):
+
 
     profile = get_customer_profile(
 
@@ -745,7 +836,9 @@ def customer_profile_api(
     )
 
 
+
     if not profile:
+
 
         raise HTTPException(
 
@@ -756,15 +849,19 @@ def customer_profile_api(
         )
 
 
+
     return profile
 
 
 
 
 
+
+
 # =====================================================
-# RECENT TRANSACTIONS
+# CUSTOMER RECENT TRANSACTIONS
 # =====================================================
+
 
 @router.get(
     "/{customer_id}/transactions"
@@ -773,9 +870,12 @@ def customer_transactions_api(
 
     customer_id: int,
 
+
     limit: int = 10,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -798,9 +898,13 @@ def customer_transactions_api(
 
 
 
+
+
+
 # =====================================================
 # CUSTOMER ACTIVITY TIMELINE
 # =====================================================
+
 
 @router.get(
     "/{customer_id}/timeline"
@@ -809,7 +913,9 @@ def customer_timeline_api(
 
     customer_id: int,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -830,9 +936,13 @@ def customer_timeline_api(
 
 
 
+
+
+
 # =====================================================
-# FREQUENTLY PURCHASED PRODUCTS
+# CUSTOMER FAVORITE PRODUCTS
 # =====================================================
+
 
 @router.get(
     "/{customer_id}/favorite-products"
@@ -841,7 +951,9 @@ def favorite_products_api(
 
     customer_id: int,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -859,7 +971,9 @@ def favorite_products_api(
     )
 
 
+
     if not customer:
+
 
         raise HTTPException(
 
@@ -868,6 +982,7 @@ def favorite_products_api(
             detail="Customer not found"
 
         )
+
 
 
     return get_frequently_purchased_products(
@@ -879,34 +994,32 @@ def favorite_products_api(
     )
 
 
-
-
-
 # =====================================================
 # UPDATE CUSTOMER
 # =====================================================
 
+
 @router.put(
-
     "/{customer_id}",
-
     response_model=CustomerResponse
-
 )
 def update_customer_api(
 
     customer_id: int,
 
+
     customer: CustomerUpdate,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
 ):
 
 
-    updated = update_customer(
+    updated_customer = update_customer(
 
         db=db,
 
@@ -921,7 +1034,9 @@ def update_customer_api(
     )
 
 
-    if not updated:
+
+    if not updated_customer:
+
 
         raise HTTPException(
 
@@ -932,7 +1047,10 @@ def update_customer_api(
         )
 
 
-    return updated
+
+    return updated_customer
+
+
 
 
 
@@ -942,6 +1060,7 @@ def update_customer_api(
 # DELETE CUSTOMER
 # =====================================================
 
+
 @router.delete(
     "/{customer_id}"
 )
@@ -949,7 +1068,9 @@ def delete_customer_api(
 
     customer_id: int,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -969,7 +1090,9 @@ def delete_customer_api(
     )
 
 
+
     if not deleted:
+
 
         raise HTTPException(
 
@@ -980,13 +1103,21 @@ def delete_customer_api(
         )
 
 
+
     return {
+
 
         "success": True,
 
-        "message": "Customer deleted successfully"
+
+        "message":
+
+            "Customer deleted successfully"
 
     }
+
+
+
 
 
 
@@ -996,18 +1127,18 @@ def delete_customer_api(
 # ACTIVATE CUSTOMER
 # =====================================================
 
+
 @router.patch(
-
     "/{customer_id}/activate",
-
     response_model=CustomerResponse
-
 )
 def activate_customer_api(
 
     customer_id: int,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -1027,7 +1158,9 @@ def activate_customer_api(
     )
 
 
+
     if not customer:
+
 
         raise HTTPException(
 
@@ -1038,7 +1171,11 @@ def activate_customer_api(
         )
 
 
+
     return customer
+
+
+
 
 
 
@@ -1048,18 +1185,18 @@ def activate_customer_api(
 # DEACTIVATE CUSTOMER
 # =====================================================
 
+
 @router.patch(
-
     "/{customer_id}/deactivate",
-
     response_model=CustomerResponse
-
 )
 def deactivate_customer_api(
 
     customer_id: int,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -1079,7 +1216,9 @@ def deactivate_customer_api(
     )
 
 
+
     if not customer:
+
 
         raise HTTPException(
 
@@ -1090,7 +1229,252 @@ def deactivate_customer_api(
         )
 
 
+
     return customer
+
+
+
+
+
+
+
+# =====================================================
+# EXPORT CUSTOMER CSV
+# =====================================================
+
+
+@router.get(
+    "/export/csv"
+)
+def export_customer_csv_api(
+
+    db: Session = Depends(get_db),
+
+
+    current_user = Depends(get_current_user),
+
+):
+
+
+    file = export_customers_csv(
+
+        db=db,
+
+        company_id=current_user.company_id,
+
+        user_id=current_user.id,
+
+    )
+
+
+
+    return StreamingResponse(
+
+    file,
+
+    media_type="application/pdf",
+
+    headers={
+
+        "Content-Disposition":
+
+        "attachment; filename=customers.pdf"
+
+    }
+
+)
+
+
+
+
+
+
+
+
+# =====================================================
+# EXPORT TOP CUSTOMERS CSV
+# =====================================================
+
+
+@router.get(
+    "/export/top-customers/csv"
+)
+def export_top_customers_csv_api(
+
+    db: Session = Depends(get_db),
+
+
+    current_user = Depends(get_current_user),
+
+):
+
+
+    file = export_top_customers_csv(
+
+        db=db,
+
+        company_id=current_user.company_id,
+
+        user_id=current_user.id,
+
+    )
+
+
+
+    return StreamingResponse(
+
+    file,
+
+    media_type="application/pdf",
+
+    headers={
+
+        "Content-Disposition":
+
+        "attachment; filename=customers.pdf"
+
+    }
+
+)
+
+
+# =====================================================
+# EXPORT CUSTOMER LIST PDF
+# =====================================================
+
+
+@router.get(
+    "/export/pdf"
+)
+def export_customer_pdf_api(
+
+    db: Session = Depends(get_db),
+
+
+    current_user = Depends(get_current_user),
+
+):
+
+
+    file = generate_customer_list_pdf(
+
+    db=db,
+
+    company_id=current_user.company_id,
+
+)
+
+
+
+    return StreamingResponse(
+
+    file,
+
+    media_type="application/pdf",
+
+    headers={
+
+        "Content-Disposition":
+
+        "attachment; filename=customers.pdf"
+
+    }
+
+)
+
+
+
+
+# =====================================================
+# EXPORT TOP CUSTOMERS PDF
+# =====================================================
+
+
+@router.get(
+    "/export/top-customers/pdf"
+)
+def export_top_customers_pdf_api(
+
+    db: Session = Depends(get_db),
+
+
+    current_user = Depends(get_current_user),
+
+):
+
+
+    file = generate_top_customers_pdf(
+
+    db=db,
+
+    company_id=current_user.company_id,
+
+)
+
+
+
+    return StreamingResponse(
+
+    file,
+
+    media_type="application/pdf",
+
+    headers={
+
+        "Content-Disposition":
+
+        "attachment; filename=customers.pdf"
+
+    }
+
+)
+
+
+# =====================================================
+# EXPORT CUSTOMER ANALYTICS PDF
+# =====================================================
+
+
+@router.get(
+    "/export/analytics/pdf"
+)
+def export_customer_analytics_pdf_api(
+
+    db: Session = Depends(get_db),
+
+
+    current_user = Depends(get_current_user),
+
+):
+
+
+    file = generate_customer_analytics_pdf(
+
+    db=db,
+
+    company_id=current_user.company_id,
+
+)
+
+
+
+    return StreamingResponse(
+
+    file,
+
+    media_type="application/pdf",
+
+    headers={
+
+        "Content-Disposition":
+
+        "attachment; filename=customers.pdf"
+
+    }
+
+)
+
+
 
 
 
@@ -1101,18 +1485,18 @@ def deactivate_customer_api(
 # KEEP THIS ROUTE LAST
 # =====================================================
 
+
 @router.get(
-
     "/{customer_id}",
-
     response_model=CustomerResponse
-
 )
 def get_customer_api(
 
     customer_id: int,
 
+
     db: Session = Depends(get_db),
+
 
     current_user = Depends(get_current_user),
 
@@ -1130,7 +1514,9 @@ def get_customer_api(
     )
 
 
+
     if not customer:
+
 
         raise HTTPException(
 
@@ -1139,6 +1525,7 @@ def get_customer_api(
             detail="Customer not found"
 
         )
+
 
 
     return customer

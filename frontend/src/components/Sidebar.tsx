@@ -9,6 +9,7 @@ import {
   PointOfSale,
   History,
   People,
+  Insights,
 } from "@mui/icons-material";
 
 
@@ -39,11 +40,13 @@ const menus = [
     path: "/",
   },
 
+
   {
     text: "Categories",
     icon: <Category />,
     path: "/categories",
   },
+
 
   {
     text: "Products",
@@ -51,11 +54,13 @@ const menus = [
     path: "/products",
   },
 
+
   {
     text: "Product Dashboard",
     icon: <Assessment />,
     path: "/product-dashboard",
   },
+
 
   {
     text: "Inventory",
@@ -63,11 +68,13 @@ const menus = [
     path: "/inventory",
   },
 
+
   {
     text: "Sales",
     icon: <PointOfSale />,
     path: "/sales",
   },
+
 
   {
     text: "Customers",
@@ -75,11 +82,20 @@ const menus = [
     path: "/customers",
   },
 
+
+  {
+    text: "Customer Analytics",
+    icon: <Insights />,
+    path: "/customers/analytics",
+  },
+
+
   {
     text: "Reports",
     icon: <Assessment />,
     path: "/reports",
   },
+
 
   {
     text: "Analytics",
@@ -87,11 +103,13 @@ const menus = [
     path: "/analytics",
   },
 
+
   {
     text: "Audit Logs",
     icon: <History />,
     path: "/audit-logs",
   },
+
 
   {
     text: "Profile",
@@ -109,18 +127,42 @@ export default function Sidebar() {
   const location = useLocation();
 
 
+
+  const isSelected = (path:string)=>{
+
+
+    if(path === "/"){
+
+      return location.pathname === "/";
+
+    }
+
+
+    if(path === "/customers"){
+
+      return location.pathname === "/customers";
+
+    }
+
+
+    return location.pathname.startsWith(path);
+
+  };
+
+
+
   return (
 
     <Box
       sx={{
-        width: 260,
-        height: "100vh",
-        bgcolor: "#111827",
-        color: "white",
-        position: "fixed",
-        left: 0,
-        top: 0,
-        borderRight: "1px solid #1E293B",
+        width:260,
+        height:"100vh",
+        bgcolor:"#111827",
+        color:"white",
+        position:"fixed",
+        left:0,
+        top:0,
+        borderRight:"1px solid #1E293B",
       }}
     >
 
@@ -143,7 +185,7 @@ export default function Sidebar() {
 
       <Divider
         sx={{
-          bgcolor: "#334155",
+          bgcolor:"#334155",
         }}
       />
 
@@ -151,177 +193,184 @@ export default function Sidebar() {
 
       <List
         sx={{
-          mt: 1,
-          px: 1,
+          mt:1,
+          px:1,
         }}
       >
 
 
-        {menus.map((item) => (
+        {
+          menus.map((item)=>(
 
 
-          <ListItemButton
+            <ListItemButton
 
 
-            key={item.text}
+              key={item.text}
 
 
-            component={Link}
+              component={Link}
 
 
-            to={item.path}
+              to={item.path}
 
 
-            selected={
-              location.pathname === item.path
-            }
+              selected={
+                isSelected(item.path)
+              }
 
 
-            sx={{
+
+              sx={{
 
 
-              mb: 0.8,
+                mb:0.8,
 
 
-              borderRadius: "12px",
+                borderRadius:"12px",
 
 
-              color: "#CBD5E1",
+                color:"#CBD5E1",
 
 
-              transition:
+                transition:
                 "all 0.25s ease",
 
 
 
-              "& .MuiListItemIcon-root": {
+                "& .MuiListItemIcon-root":{
 
 
-                color: "#CBD5E1",
+                  color:"#CBD5E1",
 
 
-                minWidth: 40,
+                  minWidth:40,
 
 
-                transition:
+                  transition:
                   "all 0.25s ease",
 
-
-              },
-
-
-
-              "& .MuiListItemText-primary": {
-
-
-                fontWeight: 500,
-
-
-              },
+                },
 
 
 
-              "&.Mui-selected": {
+                "& .MuiListItemText-primary":{
 
 
-                background:
-                  "linear-gradient(90deg, #2563EB 0%, #3B82F6 100%)",
+                  fontWeight:500,
+
+                },
 
 
-                color: "#FFFFFF",
 
 
-                boxShadow:
+                "&.Mui-selected":{
+
+
+                  background:
+                  "linear-gradient(90deg,#2563EB 0%,#3B82F6 100%)",
+
+
+                  color:"#FFFFFF",
+
+
+                  boxShadow:
                   "0 6px 16px rgba(37,99,235,0.35)",
 
 
 
 
-                "& .MuiListItemIcon-root": {
+                  "& .MuiListItemIcon-root":{
 
 
-                  color: "#FFFFFF",
+                    color:"#FFFFFF",
+
+                  },
+
+
+
+                  "& .MuiListItemText-primary":{
+
+
+                    fontWeight:700,
+
+                  },
+
+
+                },
+
+
+
+
+
+                "&.Mui-selected:hover":{
+
+
+                  background:
+                  "linear-gradient(90deg,#2563EB 0%,#3B82F6 100%)",
 
 
                 },
 
 
 
-                "& .MuiListItemText-primary": {
 
 
-                  fontWeight: 700,
+                "&:hover":{
 
 
-                },
+                  bgcolor:"#1E293B",
 
 
-              },
-
-
-
-              "&.Mui-selected:hover": {
-
-
-                background:
-                  "linear-gradient(90deg, #2563EB 0%, #3B82F6 100%)",
-
-
-              },
+                  color:"#FFFFFF",
 
 
 
-              "&:hover": {
+                  "& .MuiListItemIcon-root":{
 
 
-                bgcolor: "#1E293B",
+                    color:"#FFFFFF",
 
-
-                color: "#FFFFFF",
-
-
-
-                "& .MuiListItemIcon-root": {
-
-
-                  color: "#FFFFFF",
+                  },
 
 
                 },
 
-
-              },
-
-
-            }}
-
-
-          >
-
-
-
-            <ListItemIcon
-              sx={{
-                color: "inherit",
-                minWidth: 40,
               }}
+
             >
 
-              {item.icon}
-
-            </ListItemIcon>
 
 
 
-            <ListItemText
-              primary={item.text}
-            />
+              <ListItemIcon
+                sx={{
+                  color:"inherit",
+                  minWidth:40,
+                }}
+              >
+
+                {item.icon}
+
+              </ListItemIcon>
 
 
-          </ListItemButton>
 
 
-        ))}
+
+              <ListItemText
+                primary={item.text}
+              />
+
+
+
+
+            </ListItemButton>
+
+
+          ))
+        }
+
 
 
       </List>

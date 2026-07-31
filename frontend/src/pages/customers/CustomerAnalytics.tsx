@@ -8,48 +8,94 @@ import {
   Box,
   Card,
   CardContent,
+  Typography,
   Grid,
-  Typography
+  CircularProgress
 } from "@mui/material";
 
 
 import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
   PieChart,
   Pie,
   Cell,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
-  LineChart,
-  Line
+  Legend
 } from "recharts";
 
 
 import {
-  getCustomerAnalytics
+  getCustomerDashboard,
+  getTopCustomers,
+  getCustomerRevenueContribution,
+  getNewVsReturningCustomers,
+  getCustomerGrowthTrend,
+  getCustomerSpendingDistribution
 } from "../../services/customerService";
 
 
 
-// ================================
-// COMPONENT
-// ================================
+const COLORS = [
+  "#3B82F6",
+  "#10B981",
+  "#F59E0B",
+  "#EF4444",
+  "#8B5CF6"
+];
+
+
+
 
 export default function CustomerAnalytics(){
 
 
-const [data,setData] =
-useState<any>({});
+const [loading,setLoading] = useState(true);
+
+
+const [dashboard,setDashboard] = useState<any>({});
+
+
+const [topCustomers,setTopCustomers] = useState<any[]>([]);
+
+
+const [revenueContribution,setRevenueContribution] = useState<any[]>([]);
+
+
+const [newReturning,setNewReturning] = useState<any[]>([]);
+
+
+const [growth,setGrowth] = useState<any[]>([]);
+
+
+const [spending,setSpending] = useState<any[]>([]);
 
 
 
-// ================================
-// LOAD ANALYTICS
-// ================================
+
+const normalizeArray=(data:any)=>{
+
+
+if(Array.isArray(data))
+return data;
+
+
+if(Array.isArray(data?.data))
+return data.data;
+
+
+return [];
+
+};
+
+
+
+
 
 const loadAnalytics = async()=>{
 
@@ -57,27 +103,337 @@ const loadAnalytics = async()=>{
 try{
 
 
-const response =
-await getCustomerAnalytics();
+setLoading(true);
 
 
-console.log(
-" CUSTOMER ANALYTICS DATA:",
-response
+
+const [
+
+dashboardData,
+
+topData,
+
+revenueData,
+
+newData,
+
+growthData,
+
+spendingData
+
+] = await Promise.all([
+
+
+getCustomerDashboard(),
+
+getTopCustomers(),
+
+getCustomerRevenueContribution(),
+
+getNewVsReturningCustomers(),
+
+getCustomerGrowthTrend(),
+
+getCustomerSpendingDistribution()
+
+]);
+
+
+
+
+
+setDashboard(
+
+dashboardData?.data ??
+
+dashboardData ??
+
+{}
+
 );
 
 
-setData(response);
+
+
+
+setTopCustomers(
+
+normalizeArray(topData).map((item:any)=>({
+
+name:
+
+item.customer_name ??
+
+item.name ??
+
+item.full_name ??
+
+"Customer",
+
+
+
+revenue:
+
+Number(
+
+item.lifetime_revenue ??
+
+item.total_revenue ??
+
+item.revenue ??
+
+0
+
+)
+
+}))
+
+);
+
+
+
+
+
+setRevenueContribution(
+
+normalizeArray(revenueData).map((item:any)=>({
+
+name:
+
+item.customer_name ??
+
+item.name ??
+
+"Customer",
+
+
+
+value:
+
+Number(
+
+item.revenue ??
+
+item.total_revenue ??
+
+item.amount ??
+
+0
+
+)
+
+}))
+
+);
+
+
+
+
+
+setGrowth(
+
+normalizeArray(growthData).map((item:any)=>({
+
+month:
+
+item.month ??
+
+item.date ??
+
+item.period ??
+
+"",
+
+
+
+customers:
+
+Number(
+
+item.total_customers ??
+
+item.customer_count ??
+
+item.customers ??
+
+0
+
+)
+
+}))
+
+);
+
+
+// New vs Returning
+
+if(Array.isArray(newData)){
+
+
+setNewReturning(
+
+newData.map((item:any)=>({
+
+name:
+
+item.name ??
+
+item.customer_type ??
+
+"Customers",
+
+
+new_customers:
+
+Number(
+
+item.new_customers ??
+
+item.new ??
+
+0
+
+),
+
+
+returning_customers:
+
+Number(
+
+item.returning_customers ??
+
+item.returning ??
+
+0
+
+)
+
+}))
+
+);
+
+
+}
+else{
+
+
+setNewReturning([
+
+{
+
+name:"Customers",
+
+
+new_customers:
+
+Number(
+
+newData?.new_customers ??
+
+newData?.new ??
+
+0
+
+),
+
+
+returning_customers:
+
+Number(
+
+newData?.returning_customers ??
+
+newData?.returning ??
+
+0
+
+)
+
+}
+
+]);
 
 
 }
 
+
+
+
+
+
+// Spending
+
+if(Array.isArray(spendingData)){
+
+
+setSpending(
+
+spendingData.map((item:any)=>({
+
+name:
+
+item.name ??
+
+item.customer_type ??
+
+"Unknown",
+
+
+value:
+
+Number(
+
+item.value ??
+
+item.amount ??
+
+item.revenue ??
+
+0
+
+)
+
+}))
+
+);
+
+
+}
+else{
+
+
+setSpending(
+
+Object.entries(spendingData ?? {})
+
+.map(([key,value])=>({
+
+name:key,
+
+value:Number(value)
+
+}))
+
+);
+
+
+}
+
+
+
+}
 catch(error){
 
-console.log(
-"Analytics error",
-error
-);
+
+console.error(error);
+
+
+}
+finally{
+
+
+setLoading(false);
+
 
 }
 
@@ -86,9 +442,14 @@ error
 
 
 
+
+
+
 useEffect(()=>{
 
+
 loadAnalytics();
+
 
 },[]);
 
@@ -96,89 +457,51 @@ loadAnalytics();
 
 
 
-// ================================
-// CHART DATA MAPPING
-// ================================
+
+if(loading){
 
 
+return(
 
-const segmentData =
-Object.entries(
-data.customer_segments || {}
-).map(
-([key,value])=>({
 
-name:key,
+<Box
 
-value:Number(value)
+sx={{
 
-})
+height:"100vh",
+
+display:"flex",
+
+justifyContent:"center",
+
+alignItems:"center",
+
+background:"#0F172A"
+
+}}
+
+>
+
+
+<CircularProgress/>
+
+
+</Box>
+
+
 );
 
 
-
-
-
-const revenueData =
-Array.isArray(
-data.revenue_contribution
-)
-?
-data.revenue_contribution.map(
-(item:any)=>({
-
-name:
-item.customer_type ||
-item.name ||
-"Unknown",
-
-value:
-Number(
-item.revenue || 
-item.value || 
-0
-)
-
-})
-)
-:
-[];
+}
 
 
 
 
 
 
-const growthData =
-Array.isArray(
-data.growth
-)
-?
-data.growth.map(
-(item:any)=>({
 
-month:
-item.date ||
-item.month ||
-"",
+return(
 
-customers:
-Number(
-item.total_customers ||
-item.customers ||
-0
-)
-
-})
-)
-:
-[];
-
-
-
-
-
-return (
 
 <Box
 
@@ -186,9 +509,11 @@ sx={{
 
 p:3,
 
+minHeight:"100vh",
+
 background:"#0F172A",
 
-minHeight:"100vh"
+color:"white"
 
 }}
 
@@ -201,26 +526,22 @@ variant="h4"
 
 fontWeight="bold"
 
-color="white"
-
 mb={3}
 
 >
 
-Customer Analytics
+Customer Analytics Dashboard
 
 </Typography>
 
 
 
-
-
-{/* ================= CARDS ================= */}
 
 
 <Grid container spacing={3}>
 
 
+
 <Grid item xs={12} md={3}>
 
 <Card
@@ -238,21 +559,22 @@ color:"white"
 <CardContent>
 
 
-<Typography>
+<Typography color="#94A3B8">
+
 Total Customers
+
 </Typography>
 
 
-<Typography variant="h3">
+<Typography variant="h4">
 
-{
-data.total_customers || 0
-}
+{dashboard.total_customers ?? 0}
 
 </Typography>
 
 
 </CardContent>
+
 
 </Card>
 
@@ -279,21 +601,22 @@ color:"white"
 <CardContent>
 
 
-<Typography>
-New Customers
+<Typography color="#94A3B8">
+
+Total Revenue
+
 </Typography>
 
 
-<Typography variant="h3">
+<Typography variant="h4">
 
-{
-data.new_customers || 0
-}
+₹ {dashboard.total_revenue_generated ?? 0}
 
 </Typography>
 
 
 </CardContent>
+
 
 </Card>
 
@@ -320,35 +643,80 @@ color:"white"
 <CardContent>
 
 
-<Typography>
+<Typography color="#94A3B8">
+
+Average Spend
+
+</Typography>
+
+
+<Typography variant="h4">
+
+₹ {dashboard.average_customer_spend ?? 0}
+
+</Typography>
+
+
+</CardContent>
+
+
+</Card>
+
+</Grid>
+
+
+
+
+
+<Grid item xs={12} md={3}>
+
+<Card
+
+sx={{
+
+background:"#1E293B",
+
+color:"white"
+
+}}
+
+>
+
+<CardContent>
+
+
+<Typography color="#94A3B8">
+
 VIP Customers
+
 </Typography>
 
 
-<Typography variant="h3">
+<Typography variant="h4">
 
-{
-data.vip_customers || 0
-}
+{dashboard.vip_customers ?? 0}
 
 </Typography>
 
 
 </CardContent>
 
+
 </Card>
+
+</Grid>
+
 
 </Grid>
 
 
 
 
-
-<Grid item xs={12} md={3}>
-
 <Card
 
 sx={{
+
+mt:3,
 
 background:"#1E293B",
 
@@ -361,61 +729,17 @@ color:"white"
 <CardContent>
 
 
-<Typography>
-Active Customers
-</Typography>
+<Typography variant="h6">
 
-
-<Typography variant="h3">
-
-{
-data.active_customers || 0
-}
+Customer Growth Trend
 
 </Typography>
 
 
-</CardContent>
 
-</Card>
-
-</Grid>
-
-
-</Grid>
-
-
-
-
-
-
-{/* ================= CHARTS ================= */}
-
-
-<Grid
-
-container
-
-spacing={3}
-
-mt={2}
-
->
-
-
-
-
-{/* PIE CHART */}
-
-
-<Grid item xs={12} md={4}>
-
-
-<Card
+<Box
 
 sx={{
-
-background:"#1E293B",
 
 height:350
 
@@ -424,28 +748,226 @@ height:350
 >
 
 
-<CardContent>
+<ResponsiveContainer
 
+width="100%"
 
-<Typography
-
-color="white"
-
-mb={2}
+height="100%"
 
 >
 
-Customer Segments
+
+<LineChart
+
+data={growth}
+
+>
+
+
+<XAxis
+
+dataKey="month"
+
+/>
+
+
+<YAxis/>
+
+
+<Tooltip/>
+
+
+<Line
+
+type="monotone"
+
+dataKey="customers"
+
+stroke="#3B82F6"
+
+strokeWidth={3}
+
+/>
+
+
+</LineChart>
+
+
+</ResponsiveContainer>
+
+
+</Box>
+
+
+</CardContent>
+
+
+</Card>
+
+
+
+
+
+
+
+
+<Card
+
+sx={{
+
+mt:3,
+
+background:"#1E293B",
+
+color:"white"
+
+}}
+
+>
+
+
+<CardContent>
+
+
+<Typography variant="h6">
+
+Top Customers Revenue
 
 </Typography>
 
+
+
+<Box
+
+sx={{
+
+height:350
+
+}}
+
+>
 
 
 <ResponsiveContainer
 
 width="100%"
 
-height={250}
+height="100%"
+
+>
+
+
+<BarChart
+
+data={topCustomers}
+
+margin={{
+
+top:20,
+
+right:20,
+
+left:20,
+
+bottom:50
+
+}}
+
+>
+
+
+<XAxis
+
+dataKey="name"
+
+interval={0}
+
+angle={-25}
+
+textAnchor="end"
+
+/>
+
+
+<YAxis/>
+
+
+<Tooltip/>
+
+
+<Bar
+
+dataKey="revenue"
+
+fill="#10B981"
+
+/>
+
+
+</BarChart>
+
+
+</ResponsiveContainer>
+
+
+</Box>
+
+
+
+</CardContent>
+
+
+</Card>
+
+
+
+
+
+
+
+
+<Card
+
+sx={{
+
+mt:3,
+
+background:"#1E293B",
+
+color:"white"
+
+}}
+
+>
+
+
+<CardContent>
+
+
+<Typography variant="h6">
+
+Revenue Contribution
+
+</Typography>
+
+
+
+<Box
+
+sx={{
+
+height:350
+
+}}
+
+>
+
+
+<ResponsiveContainer
+
+width="100%"
+
+height="100%"
 
 >
 
@@ -453,31 +975,41 @@ height={250}
 <PieChart>
 
 
+
 <Pie
 
-data={segmentData}
+data={revenueContribution}
 
 dataKey="value"
 
 nameKey="name"
 
-outerRadius={90}
+outerRadius={110}
+
+label
 
 >
 
 
 {
-segmentData.map(
-(
-entry,
-index
-)=>(
+
+revenueContribution.map(
+
+(_,index)=>(
+
 
 <Cell
 
 key={index}
 
+fill={
+
+COLORS[index % COLORS.length]
+
+}
+
 />
+
 
 )
 
@@ -486,10 +1018,13 @@ key={index}
 }
 
 
+
 </Pie>
 
 
+
 <Tooltip/>
+
 
 <Legend/>
 
@@ -497,8 +1032,11 @@ key={index}
 </PieChart>
 
 
-
 </ResponsiveContainer>
+
+
+</Box>
+
 
 
 </CardContent>
@@ -507,28 +1045,15 @@ key={index}
 </Card>
 
 
-</Grid>
-
-
-
-
-
-
-
-{/* BAR CHART */}
-
-
-
-<Grid item xs={12} md={4}>
-
-
 <Card
 
 sx={{
 
+mt:3,
+
 background:"#1E293B",
 
-height:350
+color:"white"
 
 }}
 
@@ -538,33 +1063,49 @@ height:350
 <CardContent>
 
 
-<Typography
+<Typography variant="h6">
 
-color="white"
-
-mb={2}
-
->
-
-Revenue By Type
+New vs Returning Customers
 
 </Typography>
 
 
+
+<Box
+
+sx={{
+
+height:350
+
+}}
+
+>
 
 
 <ResponsiveContainer
 
 width="100%"
 
-height={250}
+height="100%"
 
 >
 
 
 <BarChart
 
-data={revenueData}
+data={newReturning}
+
+margin={{
+
+top:20,
+
+right:20,
+
+left:20,
+
+bottom:20
+
+}}
 
 >
 
@@ -585,11 +1126,29 @@ dataKey="name"
 <Legend/>
 
 
+
 <Bar
 
-dataKey="value"
+dataKey="new_customers"
+
+fill="#3B82F6"
+
+name="New Customers"
 
 />
+
+
+
+<Bar
+
+dataKey="returning_customers"
+
+fill="#10B981"
+
+name="Returning Customers"
+
+/>
+
 
 
 </BarChart>
@@ -598,6 +1157,8 @@ dataKey="value"
 </ResponsiveContainer>
 
 
+</Box>
+
 
 </CardContent>
 
@@ -605,28 +1166,21 @@ dataKey="value"
 </Card>
 
 
-</Grid>
 
 
 
 
-
-
-
-{/* LINE CHART */}
-
-
-
-<Grid item xs={12} md={4}>
 
 
 <Card
 
 sx={{
 
+mt:3,
+
 background:"#1E293B",
 
-height:350
+color:"white"
 
 }}
 
@@ -636,44 +1190,82 @@ height:350
 <CardContent>
 
 
-<Typography
+<Typography variant="h6">
 
-color="white"
-
-mb={2}
-
->
-
-Customer Growth
+Customer Spending Distribution
 
 </Typography>
 
+
+
+<Box
+
+sx={{
+
+height:350
+
+}}
+
+>
 
 
 <ResponsiveContainer
 
 width="100%"
 
-height={250}
+height="100%"
 
 >
 
 
-<LineChart
+<PieChart>
 
-data={growthData}
+
+
+<Pie
+
+data={spending}
+
+dataKey="value"
+
+nameKey="name"
+
+outerRadius={120}
+
+label
 
 >
 
 
-<XAxis
+{
 
-dataKey="month"
+spending.map(
+
+(_,index)=>(
+
+
+<Cell
+
+key={index}
+
+fill={
+
+COLORS[index % COLORS.length]
+
+}
 
 />
 
 
-<YAxis/>
+)
+
+)
+
+}
+
+
+
+</Pie>
 
 
 <Tooltip/>
@@ -682,19 +1274,13 @@ dataKey="month"
 <Legend/>
 
 
-<Line
-
-type="monotone"
-
-dataKey="customers"
-
-/>
-
-
-</LineChart>
+</PieChart>
 
 
 </ResponsiveContainer>
+
+
+</Box>
 
 
 
@@ -704,17 +1290,14 @@ dataKey="customers"
 </Card>
 
 
-</Grid>
 
-
-
-
-</Grid>
 
 
 
 </Box>
 
+
 );
+
 
 }
