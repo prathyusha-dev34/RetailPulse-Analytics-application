@@ -1,0 +1,3 @@
+Customer ID,Customer Name,Email,Phone,Customer Type,Status,Segment,City,State,Country,Total Orders,Lifetime Revenue,Average Order Value,Last Purchase,Customer Since
+CUS-2026-000002,prathyusha,kudalaprathyusha@gmail.com,7893430498,Retail,ACTIVE,New,Bangalore Urban,Karnataka,India,0,0.0,0.0,,2026-07-30 16:53:20.471489+05:30
+CUS-2026-000001,Ravi Kumar,ravi.kumar@gmail.com,9876543210,Retail,ACTIVE,Regular,Bangalore,Karnataka,India,3,2980.0,993.33,,2026-07-30 15:21:29.787112+05:30
