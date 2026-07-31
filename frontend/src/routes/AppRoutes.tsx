@@ -24,6 +24,12 @@ import AddSale from "../pages/AddSale";
 import EditSale from "../pages/EditSale";
 import SaleDetails from "../pages/SaleDetails";
 
+import Customers from "../pages/customers/Customers";
+import AddCustomer from "../pages/customers/AddCustomer";
+import EditCustomer from "../pages/customers/EditCustomer";
+import CustomerProfile from "../pages/customers/CustomerProfile";
+import CustomerAnalytics from "../pages/customers/CustomerAnalytics";
+
 import Notifications from "../pages/Notifications";
 import AuditLogs from "../pages/AuditLogs";
 
@@ -43,20 +49,14 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/login"
-
         element={<Login />}
-
       />
 
 
       <Route
-
         path="/register"
-
         element={<RegisterCompany />}
-
       />
 
 
@@ -67,47 +67,28 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Dashboard />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
 
       <Route
-
         path="/dashboard"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Dashboard />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
-
 
 
 
@@ -117,25 +98,15 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/profile"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Profile />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
-
 
 
 
@@ -145,25 +116,15 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/categories"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Categories />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
-
 
 
 
@@ -173,47 +134,28 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/products"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Products />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
 
       <Route
-
         path="/product-dashboard"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <ProductDashboard />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
-
 
 
 
@@ -224,45 +166,27 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/inventory"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Inventory />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
 
       <Route
-
         path="/inventory/movements"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <InventoryMovements />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
@@ -275,89 +199,125 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/sales"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Sales />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
 
       <Route
-
         path="/sales/add"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <AddSale />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
 
       <Route
-
         path="/sales/edit/:id"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <EditSale />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
 
       <Route
-
         path="/sales/:id"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <SaleDetails />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
+      />
 
+
+
+
+
+
+
+      {/* CUSTOMERS */}
+
+
+      <Route
+        path="/customers"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Customers />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+
+
+      <Route
+        path="/customers/add"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <AddCustomer />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+
+
+      <Route
+        path="/customers/:id/edit"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <EditCustomer />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+
+
+      <Route
+        path="/customers/:id/profile"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <CustomerProfile />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+
+
+      <Route
+        path="/customers/analytics"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <CustomerAnalytics />
+            </Layout>
+          </ProtectedRoute>
+        }
       />
 
 
@@ -370,23 +330,14 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/reports"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Reports />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
@@ -399,23 +350,14 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/analytics"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Analytics />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
@@ -428,23 +370,14 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/audit-logs"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <AuditLogs />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 
@@ -457,23 +390,14 @@ export default function AppRoutes() {
 
 
       <Route
-
         path="/notifications"
-
         element={
-
           <ProtectedRoute>
-
             <Layout>
-
               <Notifications />
-
             </Layout>
-
           </ProtectedRoute>
-
         }
-
       />
 
 

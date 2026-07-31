@@ -1,4 +1,10 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    ForeignKey,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -6,21 +12,39 @@ from app.core.database import Base
 
 
 class User(Base):
+
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
 
     company_id = Column(
         Integer,
-        ForeignKey("companies.id", ondelete="CASCADE"),
+        ForeignKey(
+            "companies.id",
+            ondelete="CASCADE",
+        ),
         nullable=False,
     )
 
-    name = Column(String, nullable=False)
+    name = Column(
+        String,
+        nullable=False,
+    )
 
-    email = Column(String, nullable=False, unique=True)
+    email = Column(
+        String,
+        nullable=False,
+        unique=True,
+    )
 
-    password = Column(String, nullable=False)
+    password = Column(
+        String,
+        nullable=False,
+    )
 
     role = Column(
         String,
@@ -43,6 +67,10 @@ class User(Base):
         server_default=func.now(),
     )
 
+    # =====================================================
+    # RELATIONSHIPS
+    # =====================================================
+
     company = relationship(
         "Company",
         back_populates="users",
@@ -51,5 +79,12 @@ class User(Base):
     sales = relationship(
         "Sale",
         back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    customers = relationship(
+        "Customer",
+        back_populates="created_by_user",
+        foreign_keys="Customer.created_by",
         cascade="all, delete-orphan",
     )

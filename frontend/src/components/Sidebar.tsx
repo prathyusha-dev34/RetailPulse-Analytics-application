@@ -8,7 +8,9 @@ import {
   Person,
   PointOfSale,
   History,
+  People,
 } from "@mui/icons-material";
+
 
 import {
   Box,
@@ -21,10 +23,12 @@ import {
   Typography,
 } from "@mui/material";
 
+
 import {
   Link,
   useLocation,
 } from "react-router-dom";
+
 
 
 const menus = [
@@ -66,6 +70,12 @@ const menus = [
   },
 
   {
+    text: "Customers",
+    icon: <People />,
+    path: "/customers",
+  },
+
+  {
     text: "Reports",
     icon: <Assessment />,
     path: "/reports",
@@ -92,7 +102,9 @@ const menus = [
 ];
 
 
+
 export default function Sidebar() {
+
 
   const location = useLocation();
 
@@ -112,7 +124,9 @@ export default function Sidebar() {
       }}
     >
 
+
       <Toolbar>
+
 
         <Typography
           variant="h6"
@@ -122,7 +136,9 @@ export default function Sidebar() {
           RetailPulse
         </Typography>
 
+
       </Toolbar>
+
 
 
       <Divider
@@ -132,6 +148,7 @@ export default function Sidebar() {
       />
 
 
+
       <List
         sx={{
           mt: 1,
@@ -139,104 +156,149 @@ export default function Sidebar() {
         }}
       >
 
+
         {menus.map((item) => (
+
 
           <ListItemButton
 
+
             key={item.text}
+
 
             component={Link}
 
+
             to={item.path}
+
 
             selected={
               location.pathname === item.path
             }
 
+
             sx={{
+
 
               mb: 0.8,
 
+
               borderRadius: "12px",
 
+
               color: "#CBD5E1",
+
 
               transition:
                 "all 0.25s ease",
 
 
+
               "& .MuiListItemIcon-root": {
+
 
                 color: "#CBD5E1",
 
+
                 minWidth: 40,
+
 
                 transition:
                   "all 0.25s ease",
 
+
               },
+
 
 
               "& .MuiListItemText-primary": {
 
+
                 fontWeight: 500,
+
 
               },
 
 
+
               "&.Mui-selected": {
+
 
                 background:
                   "linear-gradient(90deg, #2563EB 0%, #3B82F6 100%)",
 
+
                 color: "#FFFFFF",
+
 
                 boxShadow:
                   "0 6px 16px rgba(37,99,235,0.35)",
 
 
+
+
                 "& .MuiListItemIcon-root": {
+
 
                   color: "#FFFFFF",
 
+
                 },
+
 
 
                 "& .MuiListItemText-primary": {
 
+
                   fontWeight: 700,
+
 
                 },
 
+
               },
+
 
 
               "&.Mui-selected:hover": {
 
+
                 background:
                   "linear-gradient(90deg, #2563EB 0%, #3B82F6 100%)",
 
+
               },
+
 
 
               "&:hover": {
 
+
                 bgcolor: "#1E293B",
+
 
                 color: "#FFFFFF",
 
 
+
                 "& .MuiListItemIcon-root": {
+
 
                   color: "#FFFFFF",
 
+
                 },
+
 
               },
 
+
             }}
 
+
           >
+
+
 
             <ListItemIcon
               sx={{
@@ -250,12 +312,14 @@ export default function Sidebar() {
             </ListItemIcon>
 
 
+
             <ListItemText
               primary={item.text}
             />
 
 
           </ListItemButton>
+
 
         ))}
 

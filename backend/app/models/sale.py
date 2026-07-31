@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     UniqueConstraint,
+    Boolean,
 )
 
 from sqlalchemy.sql import func
@@ -15,26 +16,17 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
-
 class Sale(Base):
 
     __tablename__ = "sales"
 
 
-    # ------------------------------------------
-    # Company + Invoice Unique Constraint
-    # ------------------------------------------
-
     __table_args__ = (
 
         UniqueConstraint(
-
             "company_id",
-
             "invoice_number",
-
             name="unique_company_invoice"
-
         ),
 
     )
@@ -50,7 +42,6 @@ class Sale(Base):
         index=True,
 
     )
-
 
 
 
@@ -71,6 +62,25 @@ class Sale(Base):
 
 
 
+    # FIX ADDED
+    # Customer relation
+
+    customer_id = Column(
+
+        Integer,
+
+        ForeignKey(
+            "customers.id",
+            ondelete="CASCADE"
+        ),
+
+        nullable=False,
+
+        index=True,
+
+    )
+
+
 
     invoice_number = Column(
 
@@ -84,7 +94,6 @@ class Sale(Base):
 
 
 
-
     customer_name = Column(
 
         String(200),
@@ -92,7 +101,6 @@ class Sale(Base):
         nullable=False,
 
     )
-
 
 
 
@@ -108,7 +116,6 @@ class Sale(Base):
 
 
 
-
     sales_channel = Column(
 
         String(50),
@@ -116,7 +123,6 @@ class Sale(Base):
         nullable=False,
 
     )
-
 
 
 
@@ -130,7 +136,6 @@ class Sale(Base):
 
 
 
-
     total_amount = Column(
 
         Numeric(12,2),
@@ -140,7 +145,6 @@ class Sale(Base):
         default=0,
 
     )
-
 
 
 
@@ -158,6 +162,20 @@ class Sale(Base):
 
 
 
+    # FIX ADDED
+    # soft delete support
+
+    is_deleted = Column(
+
+        Boolean,
+
+        default=False,
+
+        nullable=False,
+
+    )
+
+
 
     created_at = Column(
 
@@ -166,7 +184,6 @@ class Sale(Base):
         server_default=func.now(),
 
     )
-
 
 
 
@@ -182,10 +199,9 @@ class Sale(Base):
 
 
 
-
-    # ------------------------------------------
-    # Relationships
-    # ------------------------------------------
+    # =========================
+    # RELATIONSHIPS
+    # =========================
 
 
     company = relationship(
@@ -198,7 +214,6 @@ class Sale(Base):
 
 
 
-
     user = relationship(
 
         "User",
@@ -207,6 +222,13 @@ class Sale(Base):
 
     )
 
+
+
+    customer = relationship(
+
+        "Customer",
+
+    )
 
 
 

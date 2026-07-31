@@ -48,6 +48,8 @@ from app.services.sales_service import (
 
     get_remaining_stock,
 
+    get_top_customers,
+
 )
 
 
@@ -292,7 +294,33 @@ def sales_dashboard(
     )
 
 
+# ------------------------------------------
+# Top Customers
+# ------------------------------------------
 
+@router.get(
+    "/top-customers"
+)
+def top_customers_route(
+
+    limit: int = 10,
+
+    db: Session = Depends(get_db),
+
+    current_user: User = Depends(get_current_user),
+
+):
+
+
+    return get_top_customers(
+
+        db=db,
+
+        company_id=current_user.company_id,
+
+        limit=limit
+
+    )
 
 
 
