@@ -1,0 +1,6 @@
+Product,Category,Brand,Current Stock,Historical Sales,Predicted Demand,Forecast Period,Growth %,Confidence Score,Accuracy,Recommendation,Forecast Value
+Office Chair,Furniture,Godrej,3,6,6,13_days,0.0,40.0,100.0,Reorder Soon,35994.00
+Office Chair,Furniture,Godrej,3,6,6,30_days,0.0,40.0,100.0,Reorder Soon,35994.00
+Office Chair,Furniture,Godrej,3,6,6,7_days,0.0,40.0,100.0,Reorder Soon,35994.00
+Office Chair,Furniture,Godrej,3,6,6,90_days,0.0,40.0,100.0,Reorder Soon,35994.00
+Office Chair,Furniture,Godrej,3,6,1,7_DAYS,-83.33,40.0,16.67,Reorder Soon,5999.00
