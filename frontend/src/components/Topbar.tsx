@@ -33,39 +33,54 @@ export default function Topbar() {
 
 
   useEffect(() => {
-  const fetchUnreadNotifications = async () => {
-    try {
-      const data = await getUnreadNotifications();
 
-      const notifications = Array.isArray(data)
-        ? data
-        : data.notifications || data.data || [];
+    const fetchUnreadNotifications = async () => {
 
-      setUnreadCount(notifications.length);
-    } catch (error) {
-      console.error(
-        "Failed to fetch unread notifications",
-        error
-      );
-    }
-  };
+      try {
 
-  fetchUnreadNotifications();
+        const data = await getUnreadNotifications();
 
-  const interval = setInterval(() => {
+        const notifications = Array.isArray(data)
+          ? data
+          : data.notifications || data.data || [];
+
+        setUnreadCount(notifications.length);
+
+      } catch (error) {
+
+        console.error(
+          "Failed to fetch unread notifications",
+          error
+        );
+
+      }
+
+    };
+
+
     fetchUnreadNotifications();
-  }, 5000);
 
-  return () => clearInterval(interval);
-}, []);
+
+    const interval = setInterval(() => {
+
+      fetchUnreadNotifications();
+
+    }, 5000);
+
+
+    return () => clearInterval(interval);
+
+
+  }, []);
+
 
 
   function handleLogout() {
 
-    localStorage.removeItem("access_token");
-
-    localStorage.removeItem("refresh_token");
-
+    // Same keys used in AuthContext
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
 
     navigate("/login");
 
@@ -115,11 +130,9 @@ export default function Topbar() {
         >
 
           <Search
-
             sx={{
               color: "#94A3B8",
             }}
-
           />
 
 
@@ -140,6 +153,7 @@ export default function Topbar() {
 
 
 
+
         {/* Right Side */}
 
 
@@ -154,8 +168,7 @@ export default function Topbar() {
         >
 
 
-
-          {/* Notification Bell */}
+          {/* Notifications */}
 
 
           <IconButton
@@ -165,13 +178,11 @@ export default function Topbar() {
             }
 
             sx={{
-
               bgcolor: "#1E293B",
 
               "&:hover": {
                 bgcolor: "#334155",
               },
-
             }}
 
           >
@@ -191,7 +202,7 @@ export default function Topbar() {
               <Notifications
 
                 sx={{
-                  color: "#fff",
+                  color:"#fff",
                 }}
 
               />
@@ -205,10 +216,13 @@ export default function Topbar() {
 
 
 
+          {/* User Info */}
+
+
           <Box
 
             sx={{
-              textAlign: "right",
+              textAlign:"right",
             }}
 
           >
@@ -246,15 +260,18 @@ export default function Topbar() {
 
 
 
+          {/* Profile Avatar */}
+
+
           <Avatar
 
             sx={{
 
-              bgcolor: "#3B82F6",
+              bgcolor:"#3B82F6",
 
-              fontWeight: 700,
+              fontWeight:700,
 
-              cursor: "pointer",
+              cursor:"pointer",
 
             }}
 
@@ -265,8 +282,8 @@ export default function Topbar() {
           >
 
             {
-              user?.name?.[0]?.toUpperCase() ||
-              "U"
+              user?.name?.[0]?.toUpperCase()
+              || "U"
             }
 
 
@@ -276,16 +293,19 @@ export default function Topbar() {
 
 
 
+          {/* Logout */}
+
+
           <IconButton
 
             onClick={handleLogout}
 
             sx={{
 
-              bgcolor: "#1E293B",
+              bgcolor:"#1E293B",
 
-              "&:hover": {
-                bgcolor: "#334155",
+              "&:hover":{
+                bgcolor:"#334155",
               },
 
             }}
@@ -295,7 +315,7 @@ export default function Topbar() {
             <Logout
 
               sx={{
-                color: "#fff",
+                color:"#fff",
               }}
 
             />
