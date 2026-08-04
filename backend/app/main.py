@@ -15,23 +15,49 @@ from app.models import (
     AuditLog,
 )
 
+
 from app.models.category import Category
 from app.models.product import Product
+
 
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 
+
 from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
+
 
 from app.models.notification import Notification
 
 
-# Customer Models
+# =====================================================
+# CUSTOMER MODELS
+# =====================================================
+
 from app.models.customer import Customer
+
 from app.models.customer_purchase_summary import (
     CustomerPurchaseSummary
 )
+
+
+
+# =====================================================
+# FORECAST MODELS  (TASK 7)
+# =====================================================
+
+from app.models.demand_forecast import (
+    DemandForecast
+)
+
+
+from app.models.forecast_history import (
+    ForecastHistory
+)
+
+
+
 
 
 # =====================================================
@@ -52,11 +78,16 @@ from app.routes.logout import router as logout_router
 
 from app.routes.password import router as password_router
 
+
 from app.routes.category import router as category_router
 
 from app.routes.product import router as product_router
 
-from app.routes.analytics import router as analytics_router
+
+from app.routes.analytics import (
+    router as analytics_router
+)
+
 
 
 from app.routes import sales
@@ -68,10 +99,26 @@ from app.routes import notification
 from app.routes import inventory_seed
 
 
-# Customer Router
+
+# =====================================================
+# CUSTOMER ROUTER
+# =====================================================
+
 from app.routes.customer import (
     router as customer_router
 )
+
+
+
+# =====================================================
+# FORECAST ROUTER (TASK 7)
+# =====================================================
+
+from app.routes.forecast import (
+    router as forecast_router
+)
+
+
 
 
 
@@ -82,6 +129,8 @@ from app.routes.customer import (
 Base.metadata.create_all(
     bind=engine
 )
+
+
 
 
 
@@ -99,6 +148,8 @@ app = FastAPI(
     "Multi-Tenant Retail Analytics Platform API"
 
 )
+
+
 
 
 
@@ -128,6 +179,8 @@ app.add_middleware(
 
 
 
+
+
 # =====================================================
 # REGISTER ROUTES
 # =====================================================
@@ -138,9 +191,11 @@ app.include_router(
 )
 
 
+
 app.include_router(
     profile_router
 )
+
 
 
 app.include_router(
@@ -148,9 +203,11 @@ app.include_router(
 )
 
 
+
 app.include_router(
     token_router
 )
+
 
 
 app.include_router(
@@ -158,9 +215,11 @@ app.include_router(
 )
 
 
+
 app.include_router(
     logout_router
 )
+
 
 
 app.include_router(
@@ -168,9 +227,11 @@ app.include_router(
 )
 
 
+
 app.include_router(
     category_router
 )
+
 
 
 app.include_router(
@@ -178,24 +239,32 @@ app.include_router(
 )
 
 
+
+# Sales Module
 app.include_router(
     sales.router
 )
 
 
+
+# Inventory Module
 app.include_router(
     inventory.router
 )
 
 
+
+# Notification Module
 app.include_router(
     notification.router
 )
 
 
+
 app.include_router(
     inventory_seed.router
 )
+
 
 
 # Customer Module
@@ -204,9 +273,22 @@ app.include_router(
 )
 
 
+
+# Analytics Module
 app.include_router(
     analytics_router
 )
+
+
+
+# Forecast Module (TASK 7)
+app.include_router(
+    forecast_router
+)
+
+
+
+
 
 
 
@@ -232,6 +314,10 @@ def root():
         "success",
 
     }
+
+
+
+
 
 
 

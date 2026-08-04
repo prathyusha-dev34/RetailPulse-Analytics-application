@@ -10,6 +10,7 @@ import {
   History,
   People,
   Insights,
+  TrendingUp,
 } from "@mui/icons-material";
 
 
@@ -102,7 +103,14 @@ const menus = [
     icon: <Analytics />,
     path: "/analytics",
   },
+  
 
+
+  {
+    text: "Demand Forecast",
+    icon: <TrendingUp />,
+    path: "/forecast",
+  },
 
   {
     text: "Audit Logs",

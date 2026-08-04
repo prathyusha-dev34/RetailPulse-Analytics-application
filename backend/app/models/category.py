@@ -19,6 +19,7 @@ class Category(Base):
     __tablename__ = "categories"
 
 
+
     id = Column(
         Integer,
         primary_key=True,
@@ -26,15 +27,17 @@ class Category(Base):
     )
 
 
+
     company_id = Column(
         Integer,
         ForeignKey(
             "companies.id",
-            ondelete="CASCADE"
+            ondelete="CASCADE",
         ),
         nullable=False,
         index=True,
     )
+
 
 
     name = Column(
@@ -43,10 +46,12 @@ class Category(Base):
     )
 
 
+
     description = Column(
         Text,
         nullable=True,
     )
+
 
 
     status = Column(
@@ -56,10 +61,12 @@ class Category(Base):
     )
 
 
+
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
+
 
 
     updated_at = Column(
@@ -81,6 +88,7 @@ class Category(Base):
     )
 
 
+
     products = relationship(
         "Product",
         back_populates="category",
@@ -88,7 +96,21 @@ class Category(Base):
     )
 
 
+
     sales = relationship(
         "SaleItem",
         back_populates="category",
+    )
+
+
+
+    # =====================================================
+    # TASK 7 - DEMAND FORECAST RELATIONSHIP
+    # =====================================================
+
+
+    demand_forecasts = relationship(
+        "DemandForecast",
+        back_populates="category",
+        cascade="all, delete-orphan",
     )

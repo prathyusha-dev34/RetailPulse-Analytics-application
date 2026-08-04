@@ -1,8 +1,15 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+)
+
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+
 
 
 class Company(Base):
@@ -68,11 +75,13 @@ class Company(Base):
     )
 
 
+
     categories = relationship(
         "Category",
         back_populates="company",
         cascade="all, delete-orphan"
     )
+
 
 
     products = relationship(
@@ -82,6 +91,7 @@ class Company(Base):
     )
 
 
+
     sales = relationship(
         "Sale",
         back_populates="company",
@@ -89,8 +99,22 @@ class Company(Base):
     )
 
 
+
     customers = relationship(
         "Customer",
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
+
+
+
+    # =====================================================
+    # TASK 7 - DEMAND FORECAST RELATIONSHIP
+    # =====================================================
+
+
+    demand_forecasts = relationship(
+        "DemandForecast",
         back_populates="company",
         cascade="all, delete-orphan"
     )

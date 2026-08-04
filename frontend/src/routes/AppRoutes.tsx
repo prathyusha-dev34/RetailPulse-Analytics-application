@@ -32,8 +32,9 @@ import CustomerAnalytics from "../pages/customers/CustomerAnalytics";
 import TopCustomers from "../pages/customers/TopCustomers";
 import Notifications from "../pages/Notifications";
 import AuditLogs from "../pages/AuditLogs";
-
+import Forecast from "../pages/Forecast";
 import ProtectedRoute from "../components/ProtectedRoute";
+
 
 
 
@@ -390,7 +391,16 @@ export default function AppRoutes() {
         }
       />
 
-
+      <Route
+  path="/forecast"
+  element={
+    <ProtectedRoute>
+      <Layout>
+        <Forecast />
+      </Layout>
+    </ProtectedRoute>
+  }
+/>
 
 
 
