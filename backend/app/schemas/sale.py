@@ -1,128 +1,92 @@
-
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import (
     BaseModel,
-    Field,
     ConfigDict,
+    Field,
 )
 
 
 # ============================================================
-# SALE ITEM CREATE
+# SALE ITEM
 # ============================================================
 
-class SaleItemCreate(BaseModel):
-
-    product_id: int = Field(
-        ...,
-        gt=0,
-    )
-
+class SaleItemBase(BaseModel):
+    product_id: int
     quantity: int = Field(
         ...,
         gt=0,
     )
-
-    unit_price: Decimal = Field(
-        ...,
-        ge=0,
-    )
-
-    discount: Decimal = Field(
-        default=Decimal("0.00"),
-        ge=0,
-    )
-
-    tax: Decimal = Field(
-        default=Decimal("0.00"),
-        ge=0,
-    )
+    unit_price: Decimal
+    discount: Decimal = Decimal("0.00")
+    tax: Decimal = Decimal("0.00")
 
 
-# ============================================================
-# SALE ITEM RESPONSE
-# ============================================================
+class SaleItemCreate(SaleItemBase):
+    pass
+
 
 class SaleItemResponse(BaseModel):
-
     id: int
-
     product_id: int
 
-    category_id: Optional[int] = None
-
-    # Product details required for invoice / frontend
+    # Product information
     product_name: Optional[str] = None
-
     sku: Optional[str] = None
 
+    # Category information
+    category_id: Optional[int] = None
+    category_name: Optional[str] = None
+
     quantity: int
-
     unit_price: Decimal
-
     discount: Decimal
-
     tax: Decimal
-
     total: Decimal
 
     model_config = ConfigDict(
         from_attributes=True,
     )
+
+
 # ============================================================
-# CREATE SALE
+# SALE CREATE
 # ============================================================
 
 class SaleCreate(BaseModel):
-
-    customer_id: int = Field(
-        ...,
-        gt=0,
-    )
-
-    sales_channel: str = Field(
-        default="STORE",
-        min_length=1,
-    )
-
-    payment_method: str = Field(
-        ...,
-        min_length=1,
-    )
-
-    items: List[SaleItemCreate] = Field(
-        ...,
-        min_length=1,
-    )
-
-
-# ============================================================
-# UPDATE SALE
-# ============================================================
-
-class SaleUpdate(BaseModel):
-
-    customer_id: Optional[int] = Field(
-        default=None,
-        gt=0,
-    )
-
-    sales_channel: Optional[str] = Field(
-        default=None,
-        min_length=1,
-    )
-
-    payment_method: Optional[str] = Field(
-        default=None,
-        min_length=1,
-    )
+    customer_id: int
 
     sale_date: Optional[datetime] = None
 
-    items: Optional[List[SaleItemCreate]] = None
+    sales_channel: Optional[str] = "STORE"
+
+    payment_method: str
+
+    payment_status: Optional[str] = "PAID"
+
+    invoice_number: Optional[str] = None
+
+    items: list[SaleItemCreate]
+
+
+# ============================================================
+# SALE UPDATE
+# ============================================================
+
+class SaleUpdate(BaseModel):
+    customer_id: Optional[int] = None
+
+    sale_date: Optional[datetime] = None
+
+    sales_channel: Optional[str] = None
+
+    payment_method: Optional[str] = None
+
+    payment_status: Optional[str] = None
+
+    items: Optional[list[SaleItemCreate]] = None
 
 
 # ============================================================
@@ -130,41 +94,32 @@ class SaleUpdate(BaseModel):
 # ============================================================
 
 class SaleResponse(BaseModel):
-
     id: int
 
-    invoice_number: str
+    company_id: int
 
-    customer_id: int
+    customer_id: Optional[int] = None
 
-    customer_name: str
+    customer_name: Optional[str] = None
 
-    sale_date: datetime
+    invoice_number: Optional[str] = None
 
-    sales_channel: str
+    sale_date: Optional[datetime] = None
 
-    payment_method: str
+    sales_channel: Optional[str] = None
+
+    payment_method: Optional[str] = None
+
+    payment_status: Optional[str] = None
 
     total_amount: Decimal
 
-    items: List[SaleItemResponse]
+    created_by: Optional[int] = None
+
+    is_deleted: bool = False
+
+    items: list[SaleItemResponse] = []
 
     model_config = ConfigDict(
         from_attributes=True,
     )
-
-
-# ============================================================
-# SALES DASHBOARD SUMMARY
-# ============================================================
-
-class SalesDashboardSummary(BaseModel):
-
-    total_sales: int
-
-    total_revenue: Decimal
-
-    total_orders: int
-
-    average_order_value: Decimal
-

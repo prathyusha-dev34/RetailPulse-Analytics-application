@@ -1,4 +1,3 @@
-
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -32,6 +31,7 @@ def to_decimal(value):
     """
     Safely convert a value to Decimal.
     """
+
     if value is None:
         return Decimal("0.00")
 
@@ -45,19 +45,18 @@ def money(value):
     """
     Convert value to 2-decimal monetary value.
     """
+
     return to_decimal(value).quantize(
         Decimal("0.01"),
         rounding=ROUND_HALF_UP,
     )
 
 
-def calculate_subtotal(
-    unit_price,
-    quantity,
-):
+def calculate_subtotal(unit_price, quantity):
     """
     Calculate subtotal before discount and tax.
     """
+
     unit_price = to_decimal(unit_price)
     quantity = int(quantity or 0)
 
@@ -87,7 +86,7 @@ def calculate_line_total(
 
     Formula:
 
-    subtotal - discount + tax
+        subtotal - discount + tax
     """
 
     unit_price = to_decimal(unit_price)
@@ -161,7 +160,7 @@ def validate_stock(product, quantity):
 
 def update_stock_status(product):
     """
-    Update stock status when Product model
+    Update stock status if Product model
     contains stock_status.
     """
 
@@ -189,22 +188,22 @@ def get_number_of_items(sale):
     Number of sale line items.
 
     Example:
+
         Product A x 5
         Product B x 2
 
-    Number of Items = 2 line items.
+        Number of Items = 2
     """
 
-    return len(
-        sale.items or []
-    )
+    return len(sale.items or [])
 
 
 def get_total_quantity(sale):
     """
-    Total physical units sold in a sale.
+    Total physical units sold.
 
     Example:
+
         Product A x 5
         Product B x 2
 
@@ -246,7 +245,7 @@ def generate_invoice_number(
     company_id: int,
 ):
     """
-    Generate a company-specific invoice number.
+    Generate company-specific invoice number.
 
     Example:
         INV-000001
@@ -274,7 +273,6 @@ def generate_invoice_number(
         f"INV-{next_number:06d}"
     )
 
-    # Extra safety check.
     while invoice_exists(
         db=db,
         company_id=company_id,
@@ -308,12 +306,9 @@ def create_sale(
         customer = (
             db.query(Customer)
             .filter(
-                Customer.id
-                == sale_data.customer_id,
-                Customer.company_id
-                == company_id,
-                Customer.status
-                == "ACTIVE",
+                Customer.id == sale_data.customer_id,
+                Customer.company_id == company_id,
+                Customer.status == "ACTIVE",
             )
             .first()
         )
@@ -377,9 +372,7 @@ def create_sale(
                 if sale_data.sales_channel
                 else "STORE"
             ),
-            payment_method=(
-                sale_data.payment_method
-            ),
+            payment_method=sale_data.payment_method,
             payment_status=(
                 getattr(
                     sale_data,
@@ -404,30 +397,27 @@ def create_sale(
 
         for item in sale_data.items:
 
-            # ----------------------------------------------
-            # PRODUCT VALIDATION
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # PRODUCT
+            # ------------------------------------------------
 
             product = (
                 db.query(Product)
                 .filter(
-                    Product.id
-                    == item.product_id,
-                    Product.company_id
-                    == company_id,
+                    Product.id == item.product_id,
+                    Product.company_id == company_id,
                 )
                 .first()
             )
 
             if not product:
                 raise ValueError(
-                    f"Product "
-                    f"{item.product_id} not found"
+                    f"Product {item.product_id} not found"
                 )
 
-            # ----------------------------------------------
-            # STOCK VALIDATION
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # STOCK
+            # ------------------------------------------------
 
             quantity = int(
                 item.quantity or 0
@@ -438,9 +428,9 @@ def create_sale(
                 quantity=quantity,
             )
 
-            # ----------------------------------------------
-            # PRICE VALIDATION
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # PRICE
+            # ------------------------------------------------
 
             unit_price = to_decimal(
                 item.unit_price
@@ -469,9 +459,9 @@ def create_sale(
                     "Tax cannot be negative"
                 )
 
-            # ----------------------------------------------
-            # CALCULATE LINE TOTAL
-            # ----------------------------------------------
+            # ------------------------------------------------
+            # TOTAL
+            # ------------------------------------------------
 
             line_total = calculate_line_total(
                 unit_price=unit_price,
@@ -480,9 +470,9 @@ def create_sale(
                 tax=tax,
             )
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # CATEGORY
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             category_id = getattr(
                 product,
@@ -490,9 +480,9 @@ def create_sale(
                 None,
             )
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # SALE ITEM
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             sale_item = SaleItem(
                 sale_id=sale.id,
@@ -507,15 +497,12 @@ def create_sale(
 
             db.add(sale_item)
 
-            # ----------------------------------------------
+            # ------------------------------------------------
             # REDUCE STOCK
-            # ----------------------------------------------
+            # ------------------------------------------------
 
             product.stock_quantity = (
-                int(
-                    product.stock_quantity
-                    or 0
-                )
+                int(product.stock_quantity or 0)
                 - quantity
             )
 
@@ -643,8 +630,7 @@ def get_sales(
 
     if payment_method:
         query = query.filter(
-            Sale.payment_method
-            == payment_method
+            Sale.payment_method == payment_method
         )
 
     # --------------------------------------------------------
@@ -653,8 +639,7 @@ def get_sales(
 
     if payment_status:
         query = query.filter(
-            Sale.payment_status
-            == payment_status
+            Sale.payment_status == payment_status
         )
 
     # --------------------------------------------------------
@@ -662,17 +647,13 @@ def get_sales(
     # --------------------------------------------------------
 
     if start_date:
-
         try:
-            start_datetime = (
-                datetime.fromisoformat(
-                    start_date
-                )
+            start_datetime = datetime.fromisoformat(
+                start_date
             )
 
             query = query.filter(
-                Sale.sale_date
-                >= start_datetime
+                Sale.sale_date >= start_datetime
             )
 
         except ValueError:
@@ -686,27 +667,21 @@ def get_sales(
     # --------------------------------------------------------
 
     if end_date:
-
         try:
-            end_datetime = (
-                datetime.fromisoformat(
-                    end_date
-                )
+            end_datetime = datetime.fromisoformat(
+                end_date
             )
 
             if len(end_date) == 10:
-                end_datetime = (
-                    end_datetime.replace(
-                        hour=23,
-                        minute=59,
-                        second=59,
-                        microsecond=999999,
-                    )
+                end_datetime = end_datetime.replace(
+                    hour=23,
+                    minute=59,
+                    second=59,
+                    microsecond=999999,
                 )
 
             query = query.filter(
-                Sale.sale_date
-                <= end_datetime
+                Sale.sale_date <= end_datetime
             )
 
         except ValueError:
@@ -722,15 +697,11 @@ def get_sales(
     sort_columns = {
         "date": Sale.sale_date,
         "sale_date": Sale.sale_date,
-
         "amount": Sale.total_amount,
         "total_amount": Sale.total_amount,
-
         "id": Sale.id,
-
         "invoice": Sale.invoice_number,
         "invoice_number": Sale.invoice_number,
-
         "customer": Sale.customer_name,
         "customer_name": Sale.customer_name,
     }
@@ -748,10 +719,6 @@ def get_sales(
         query = query.order_by(
             sort_column.desc()
         )
-
-    # --------------------------------------------------------
-    # PAGINATION
-    # --------------------------------------------------------
 
     return (
         query
@@ -833,28 +800,22 @@ def filter_sales(
 
     if payment_method:
         query = query.filter(
-            Sale.payment_method
-            == payment_method
+            Sale.payment_method == payment_method
         )
 
     if payment_status:
         query = query.filter(
-            Sale.payment_status
-            == payment_status
+            Sale.payment_status == payment_status
         )
 
     if start_date:
-
         try:
-            start_datetime = (
-                datetime.fromisoformat(
-                    start_date
-                )
+            start_datetime = datetime.fromisoformat(
+                start_date
             )
 
             query = query.filter(
-                Sale.sale_date
-                >= start_datetime
+                Sale.sale_date >= start_datetime
             )
 
         except ValueError:
@@ -864,27 +825,21 @@ def filter_sales(
             )
 
     if end_date:
-
         try:
-            end_datetime = (
-                datetime.fromisoformat(
-                    end_date
-                )
+            end_datetime = datetime.fromisoformat(
+                end_date
             )
 
             if len(end_date) == 10:
-                end_datetime = (
-                    end_datetime.replace(
-                        hour=23,
-                        minute=59,
-                        second=59,
-                        microsecond=999999,
-                    )
+                end_datetime = end_datetime.replace(
+                    hour=23,
+                    minute=59,
+                    second=59,
+                    microsecond=999999,
                 )
 
             query = query.filter(
-                Sale.sale_date
-                <= end_datetime
+                Sale.sale_date <= end_datetime
             )
 
         except ValueError:
@@ -920,15 +875,11 @@ def sort_sales(
     sort_columns = {
         "date": Sale.sale_date,
         "sale_date": Sale.sale_date,
-
         "amount": Sale.total_amount,
         "total_amount": Sale.total_amount,
-
         "id": Sale.id,
-
         "invoice": Sale.invoice_number,
         "invoice_number": Sale.invoice_number,
-
         "customer": Sale.customer_name,
         "customer_name": Sale.customer_name,
     }
@@ -1015,6 +966,17 @@ def get_dashboard_summary(
 
     # --------------------------------------------------------
     # TOTAL ITEMS SOLD
+    #
+    # IMPORTANT:
+    # SUM(SaleItem.quantity)
+    #
+    # Example:
+    # Sale 1 -> Product A quantity 5
+    # Sale 2 -> Product B quantity 3
+    #
+    # Total Items Sold = 8
+    #
+    # NOT number of sale records.
     # --------------------------------------------------------
 
     total_items_sold = (
@@ -1031,10 +993,8 @@ def get_dashboard_summary(
             Sale.id == SaleItem.sale_id,
         )
         .filter(
-            Sale.company_id
-            == company_id,
-            Sale.is_deleted
-            == False,
+            Sale.company_id == company_id,
+            Sale.is_deleted == False,
         )
         .scalar()
         or 0
@@ -1051,26 +1011,20 @@ def get_dashboard_summary(
     # --------------------------------------------------------
 
     average_order_value = (
-        to_decimal(
-            total_revenue
-        )
+        to_decimal(total_revenue)
         / Decimal(total_orders)
         if total_orders
         else Decimal("0.00")
     )
 
     return {
-        "total_sales": int(
-            total_sales
-        ),
+        "total_sales": int(total_sales),
 
         "total_revenue": money(
             total_revenue
         ),
 
-        "total_orders": int(
-            total_orders
-        ),
+        "total_orders": int(total_orders),
 
         "total_items_sold": int(
             total_items_sold
@@ -1105,16 +1059,12 @@ def get_top_customers(
         )
         .join(
             Sale,
-            Sale.customer_id
-            == Customer.id,
+            Sale.customer_id == Customer.id,
         )
         .filter(
-            Sale.company_id
-            == company_id,
-            Sale.is_deleted
-            == False,
-            Customer.company_id
-            == company_id,
+            Sale.company_id == company_id,
+            Sale.is_deleted == False,
+            Customer.company_id == company_id,
         )
         .group_by(
             Customer.id,
@@ -1143,12 +1093,9 @@ def get_low_stock_products(
     return (
         db.query(Product)
         .filter(
-            Product.company_id
-            == company_id,
-            Product.stock_quantity
-            <= threshold,
-            Product.stock_quantity
-            > 0,
+            Product.company_id == company_id,
+            Product.stock_quantity <= threshold,
+            Product.stock_quantity > 0,
         )
         .order_by(
             Product.stock_quantity.asc()
@@ -1169,10 +1116,8 @@ def get_out_of_stock_products(
     return (
         db.query(Product)
         .filter(
-            Product.company_id
-            == company_id,
-            Product.stock_quantity
-            <= 0,
+            Product.company_id == company_id,
+            Product.stock_quantity <= 0,
         )
         .order_by(
             Product.name.asc()
@@ -1195,8 +1140,7 @@ def get_remaining_stock(
         db.query(Product)
         .filter(
             Product.id == product_id,
-            Product.company_id
-            == company_id,
+            Product.company_id == company_id,
         )
         .first()
     )
@@ -1208,28 +1152,19 @@ def get_remaining_stock(
 
     return {
         "product_id": product.id,
+
         "product_name": product.name,
+
+        "sku": getattr(
+            product,
+            "sku",
+            None,
+        ),
+
         "remaining_stock": int(
             product.stock_quantity or 0
         ),
     }
-
-
-
-# ============================================================
-# PART 2
-# sales_service.py
-# ============================================================
-
-from decimal import Decimal
-
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_
-
-from app.models.sale import Sale
-from app.models.sale_item import SaleItem
-from app.models.product import Product
-from app.models.customer import Customer
 
 
 # ============================================================
@@ -1241,6 +1176,7 @@ def get_sale_by_id(
     sale_id: int,
     company_id: int,
 ):
+
     sale = (
         db.query(Sale)
         .options(
@@ -1257,7 +1193,9 @@ def get_sale_by_id(
     )
 
     if not sale:
-        raise ValueError("Sale not found")
+        raise ValueError(
+            "Sale not found"
+        )
 
     return sale
 
@@ -1271,6 +1209,7 @@ def get_sale(
     sale_id: int,
     company_id: int,
 ):
+
     return get_sale_by_id(
         db=db,
         sale_id=sale_id,
@@ -1285,14 +1224,15 @@ def get_sale(
 def update_sale(
     db: Session,
     sale_id: int,
-    sale_data,
+    sale_data: SaleUpdate,
     company_id: int,
     user_id: int,
 ):
+
     try:
 
         # ----------------------------------------------------
-        # GET EXISTING SALE
+        # GET SALE
         # ----------------------------------------------------
 
         sale = (
@@ -1309,12 +1249,14 @@ def update_sale(
         )
 
         if not sale:
-            raise ValueError("Sale not found")
+            raise ValueError(
+                "Sale not found"
+            )
 
         old_customer_id = sale.customer_id
 
         # ----------------------------------------------------
-        # UPDATE CUSTOMER
+        # CUSTOMER
         # ----------------------------------------------------
 
         if sale_data.customer_id is not None:
@@ -1338,21 +1280,23 @@ def update_sale(
             sale.customer_name = customer.full_name
 
         # ----------------------------------------------------
-        # UPDATE SALE DATE
+        # DATE
         # ----------------------------------------------------
 
         if sale_data.sale_date is not None:
             sale.sale_date = sale_data.sale_date
 
         # ----------------------------------------------------
-        # UPDATE SALES CHANNEL
+        # SALES CHANNEL
         # ----------------------------------------------------
 
         if sale_data.sales_channel is not None:
-            sale.sales_channel = sale_data.sales_channel
+            sale.sales_channel = (
+                sale_data.sales_channel
+            )
 
         # ----------------------------------------------------
-        # UPDATE PAYMENT METHOD
+        # PAYMENT METHOD
         # ----------------------------------------------------
 
         if sale_data.payment_method is not None:
@@ -1361,7 +1305,7 @@ def update_sale(
             )
 
         # ----------------------------------------------------
-        # UPDATE PAYMENT STATUS
+        # PAYMENT STATUS
         # ----------------------------------------------------
 
         payment_status = getattr(
@@ -1381,13 +1325,7 @@ def update_sale(
 
             db.flush()
 
-            # Update old customer analytics
             if old_customer_id:
-
-                from app.services.customer_service import (
-                    sync_customer_sales_analytics,
-                    update_customer_purchase_summary,
-                )
 
                 sync_customer_sales_analytics(
                     db=db,
@@ -1399,13 +1337,7 @@ def update_sale(
                     customer_id=old_customer_id,
                 )
 
-            # Update new customer analytics
             if sale.customer_id:
-
-                from app.services.customer_service import (
-                    sync_customer_sales_analytics,
-                    update_customer_purchase_summary,
-                )
 
                 sync_customer_sales_analytics(
                     db=db,
@@ -1451,7 +1383,7 @@ def update_sale(
 
             product.stock_quantity = (
                 int(product.stock_quantity or 0)
-                + int(old_item.quantity)
+                + int(old_item.quantity or 0)
             )
 
             update_stock_status(product)
@@ -1487,7 +1419,9 @@ def update_sale(
                     f"Product {item.product_id} not found"
                 )
 
-            quantity = int(item.quantity)
+            quantity = int(
+                item.quantity or 0
+            )
 
             validate_stock(
                 product=product,
@@ -1506,10 +1440,6 @@ def update_sale(
                 item.tax
             )
 
-            # ------------------------------------------------
-            # POSITIVE PRICE VALIDATION
-            # ------------------------------------------------
-
             if unit_price < Decimal("0.00"):
                 raise ValueError(
                     "Unit price cannot be negative"
@@ -1524,10 +1454,6 @@ def update_sale(
                 raise ValueError(
                     "Tax cannot be negative"
                 )
-
-            # ------------------------------------------------
-            # CALCULATE LINE TOTAL
-            # ------------------------------------------------
 
             line_total = calculate_line_total(
                 unit_price=unit_price,
@@ -1546,9 +1472,9 @@ def update_sale(
                 sale_id=sale.id,
                 product_id=product.id,
                 quantity=quantity,
-                unit_price=unit_price,
-                discount=discount,
-                tax=tax,
+                unit_price=money(unit_price),
+                discount=money(discount),
+                tax=money(tax),
                 total=line_total,
                 category_id=category_id,
             )
@@ -1569,7 +1495,7 @@ def update_sale(
             total_amount += line_total
 
         # ----------------------------------------------------
-        # UPDATE SALE TOTAL
+        # UPDATE TOTAL
         # ----------------------------------------------------
 
         sale.total_amount = money(
@@ -1581,11 +1507,6 @@ def update_sale(
         # ----------------------------------------------------
         # CUSTOMER ANALYTICS
         # ----------------------------------------------------
-
-        from app.services.customer_service import (
-            sync_customer_sales_analytics,
-            update_customer_purchase_summary,
-        )
 
         if old_customer_id:
 
@@ -1616,9 +1537,6 @@ def update_sale(
         # ----------------------------------------------------
 
         try:
-            from app.services.audit_service import (
-                create_audit_log,
-            )
 
             create_audit_log(
                 db=db,
@@ -1630,6 +1548,7 @@ def update_sale(
                 ),
                 entity_name="Sale",
             )
+
         except Exception:
             pass
 
@@ -1658,6 +1577,7 @@ def delete_sale(
     company_id: int,
     user_id: int,
 ):
+
     try:
 
         sale = (
@@ -1704,7 +1624,7 @@ def delete_sale(
 
             product.stock_quantity = (
                 int(product.stock_quantity or 0)
-                + int(item.quantity)
+                + int(item.quantity or 0)
             )
 
             update_stock_status(product)
@@ -1723,11 +1643,6 @@ def delete_sale(
 
         if customer_id:
 
-            from app.services.customer_service import (
-                sync_customer_sales_analytics,
-                update_customer_purchase_summary,
-            )
-
             sync_customer_sales_analytics(
                 db=db,
                 customer_id=customer_id,
@@ -1743,10 +1658,6 @@ def delete_sale(
         # ----------------------------------------------------
 
         try:
-
-            from app.services.audit_service import (
-                create_audit_log,
-            )
 
             create_audit_log(
                 db=db,
@@ -1791,6 +1702,7 @@ def cancel_sale(
     company_id: int,
     user_id: int,
 ):
+
     return delete_sale(
         db=db,
         sale_id=sale_id,
@@ -1809,6 +1721,7 @@ def restore_sale(
     company_id: int,
     user_id: int,
 ):
+
     try:
 
         sale = (
@@ -1850,8 +1763,7 @@ def restore_sale(
 
             if not product:
                 raise ValueError(
-                    f"Product {item.product_id} "
-                    f"not found"
+                    f"Product {item.product_id} not found"
                 )
 
             validate_stock(
@@ -1862,7 +1774,7 @@ def restore_sale(
             products.append(
                 (
                     product,
-                    int(item.quantity),
+                    int(item.quantity or 0),
                 )
             )
 
@@ -1893,11 +1805,6 @@ def restore_sale(
 
         if customer_id:
 
-            from app.services.customer_service import (
-                sync_customer_sales_analytics,
-                update_customer_purchase_summary,
-            )
-
             sync_customer_sales_analytics(
                 db=db,
                 customer_id=customer_id,
@@ -1913,10 +1820,6 @@ def restore_sale(
         # ----------------------------------------------------
 
         try:
-
-            from app.services.audit_service import (
-                create_audit_log,
-            )
 
             create_audit_log(
                 db=db,
@@ -1954,6 +1857,7 @@ def get_active_sales(
     db: Session,
     company_id: int,
 ):
+
     return (
         db.query(Sale)
         .options(
@@ -1980,6 +1884,7 @@ def get_deleted_sales(
     db: Session,
     company_id: int,
 ):
+
     return (
         db.query(Sale)
         .options(
@@ -2007,6 +1912,7 @@ def get_customer_sales(
     customer_id: int,
     company_id: int,
 ):
+
     return (
         db.query(Sale)
         .options(
@@ -2036,6 +1942,7 @@ def get_recent_customer_sales(
     company_id: int,
     limit: int = 10,
 ):
+
     return (
         db.query(Sale)
         .options(
@@ -2069,7 +1976,9 @@ def get_customer_purchase_total(
     total = (
         db.query(
             func.coalesce(
-                func.sum(Sale.total_amount),
+                func.sum(
+                    Sale.total_amount
+                ),
                 0,
             )
         )
@@ -2157,7 +2066,9 @@ def get_sale_by_invoice(
     )
 
     if not sale:
-        raise ValueError("Sale not found")
+        raise ValueError(
+            "Sale not found"
+        )
 
     return sale
 
@@ -2188,7 +2099,9 @@ def get_complete_sale_details(
     )
 
     if not sale:
-        raise ValueError("Sale not found")
+        raise ValueError(
+            "Sale not found"
+        )
 
     items = []
 
@@ -2197,7 +2110,7 @@ def get_complete_sale_details(
         product = item.product
 
         # ----------------------------------------------------
-        # CATEGORY NAME
+        # CATEGORY
         # ----------------------------------------------------
 
         category_name = None
@@ -2211,15 +2124,34 @@ def get_complete_sale_details(
             )
 
             if category is not None:
+
                 category_name = getattr(
                     category,
                     "name",
                     None,
                 )
 
+        # ----------------------------------------------------
+        # SKU
+        # ----------------------------------------------------
+
+        sku = None
+
+        if product is not None:
+            sku = getattr(
+                product,
+                "sku",
+                None,
+            )
+
+        # ----------------------------------------------------
+        # ITEM
+        # ----------------------------------------------------
+
         items.append(
             {
                 "sale_item_id": item.id,
+
                 "product_id": item.product_id,
 
                 "product_name": (
@@ -2228,15 +2160,9 @@ def get_complete_sale_details(
                     else None
                 ),
 
-                "sku": (
-                    getattr(
-                        product,
-                        "sku",
-                        None,
-                    )
-                    if product
-                    else None
-                ),
+                # IMPORTANT:
+                # SKU is returned here
+                "sku": sku,
 
                 "category_id": getattr(
                     item,
@@ -2279,8 +2205,12 @@ def get_complete_sale_details(
     for item in sale.items:
 
         subtotal += (
-            to_decimal(item.unit_price)
-            * Decimal(int(item.quantity))
+            to_decimal(
+                item.unit_price
+            )
+            * Decimal(
+                int(item.quantity or 0)
+            )
         )
 
         discount_total += to_decimal(
@@ -2294,35 +2224,21 @@ def get_complete_sale_details(
     return {
         "sale_id": sale.id,
 
-        "invoice_number": (
-            sale.invoice_number
-        ),
+        "invoice_number": sale.invoice_number,
 
-        "customer_id": (
-            sale.customer_id
-        ),
+        "customer_id": sale.customer_id,
 
-        "customer_name": (
-            sale.customer_name
-        ),
+        "customer_name": sale.customer_name,
 
         "sale_date": sale.sale_date,
 
-        "sales_channel": (
-            sale.sales_channel
-        ),
+        "sales_channel": sale.sales_channel,
 
-        "payment_method": (
-            sale.payment_method
-        ),
+        "payment_method": sale.payment_method,
 
-        "payment_status": (
-            sale.payment_status
-        ),
+        "payment_status": sale.payment_status,
 
-        "created_by": (
-            sale.created_by
-        ),
+        "created_by": sale.created_by,
 
         "subtotal": money(
             subtotal
@@ -2340,9 +2256,7 @@ def get_complete_sale_details(
             sale.total_amount
         ),
 
-        "is_deleted": (
-            sale.is_deleted
-        ),
+        "is_deleted": sale.is_deleted,
 
         "items": items,
     }
@@ -2374,7 +2288,9 @@ def get_sale_export_data(
     )
 
     if not sale:
-        raise ValueError("Sale not found")
+        raise ValueError(
+            "Sale not found"
+        )
 
     export_items = []
 
@@ -2415,11 +2331,26 @@ def get_sale_export_data(
         discount_total += discount
         tax_total += tax
 
+        # ----------------------------------------------------
+        # SKU
+        # ----------------------------------------------------
+
+        sku = None
+
+        if product is not None:
+            sku = getattr(
+                product,
+                "sku",
+                None,
+            )
+
+        # ----------------------------------------------------
+        # EXPORT ITEM
+        # ----------------------------------------------------
+
         export_items.append(
             {
-                "product_id": (
-                    item.product_id
-                ),
+                "product_id": item.product_id,
 
                 "product_name": (
                     product.name
@@ -2427,15 +2358,8 @@ def get_sale_export_data(
                     else None
                 ),
 
-                "sku": (
-                    getattr(
-                        product,
-                        "sku",
-                        None,
-                    )
-                    if product
-                    else None
-                ),
+                # IMPORTANT FOR PDF / EXPORT
+                "sku": sku,
 
                 "quantity": quantity,
 
@@ -2451,6 +2375,10 @@ def get_sale_export_data(
                     tax
                 ),
 
+                "line_subtotal": float(
+                    money(line_subtotal)
+                ),
+
                 "line_total": float(
                     line_total
                 ),
@@ -2462,33 +2390,21 @@ def get_sale_export_data(
         )
 
     return {
-        "invoice_number": (
-            sale.invoice_number
-        ),
+        "invoice_number": sale.invoice_number,
 
         "sale_id": sale.id,
 
-        "customer_id": (
-            sale.customer_id
-        ),
+        "customer_id": sale.customer_id,
 
-        "customer_name": (
-            sale.customer_name
-        ),
+        "customer_name": sale.customer_name,
 
         "sale_date": sale.sale_date,
 
-        "sales_channel": (
-            sale.sales_channel
-        ),
+        "sales_channel": sale.sales_channel,
 
-        "payment_method": (
-            sale.payment_method
-        ),
+        "payment_method": sale.payment_method,
 
-        "payment_status": (
-            sale.payment_status
-        ),
+        "payment_status": sale.payment_status,
 
         "subtotal": float(
             money(subtotal)

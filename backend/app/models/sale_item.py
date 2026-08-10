@@ -1,56 +1,20 @@
-
 from sqlalchemy import (
     Column,
     Integer,
     Numeric,
     ForeignKey,
-    CheckConstraint,
 )
-
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
 
 class SaleItem(Base):
-
     __tablename__ = "sale_items"
 
-    # ========================================================
-    # TABLE CONSTRAINTS
-    # ========================================================
-
-    __table_args__ = (
-
-        CheckConstraint(
-            "quantity > 0",
-            name="check_sale_quantity_positive",
-        ),
-
-        CheckConstraint(
-            "unit_price >= 0",
-            name="check_sale_unit_price_positive",
-        ),
-
-        CheckConstraint(
-            "discount >= 0",
-            name="check_sale_discount_positive",
-        ),
-
-        CheckConstraint(
-            "tax >= 0",
-            name="check_sale_tax_positive",
-        ),
-
-        CheckConstraint(
-            "total >= 0",
-            name="check_sale_total_positive",
-        ),
-    )
-
-    # ========================================================
+    # ============================================================
     # PRIMARY KEY
-    # ========================================================
+    # ============================================================
 
     id = Column(
         Integer,
@@ -58,9 +22,9 @@ class SaleItem(Base):
         index=True,
     )
 
-    # ========================================================
+    # ============================================================
     # SALE
-    # ========================================================
+    # ============================================================
 
     sale_id = Column(
         Integer,
@@ -72,9 +36,14 @@ class SaleItem(Base):
         index=True,
     )
 
-    # ========================================================
+    sale = relationship(
+        "Sale",
+        back_populates="items",
+    )
+
+    # ============================================================
     # PRODUCT
-    # ========================================================
+    # ============================================================
 
     product_id = Column(
         Integer,
@@ -86,9 +55,14 @@ class SaleItem(Base):
         index=True,
     )
 
-    # ========================================================
+    product = relationship(
+        "Product",
+        back_populates="sale_items",
+    )
+
+    # ============================================================
     # CATEGORY
-    # ========================================================
+    # ============================================================
 
     category_id = Column(
         Integer,
@@ -96,71 +70,100 @@ class SaleItem(Base):
             "categories.id",
             ondelete="CASCADE",
         ),
-        nullable=False,
+        nullable=True,
         index=True,
-    )
-
-    # ========================================================
-    # QUANTITY
-    # ========================================================
-
-    quantity = Column(
-        Integer,
-        nullable=False,
-    )
-
-    # ========================================================
-    # UNIT PRICE
-    # ========================================================
-
-    unit_price = Column(
-        Numeric(10, 2),
-        nullable=False,
-    )
-
-    # ========================================================
-    # DISCOUNT
-    # ========================================================
-
-    discount = Column(
-        Numeric(10, 2),
-        nullable=False,
-        default=0,
-    )
-
-    # ========================================================
-    # TAX
-    # ========================================================
-
-    tax = Column(
-        Numeric(10, 2),
-        nullable=False,
-        default=0,
-    )
-
-    # ========================================================
-    # LINE TOTAL
-    # ========================================================
-
-    total = Column(
-        Numeric(12, 2),
-        nullable=False,
-    )
-
-    # ========================================================
-    # RELATIONSHIPS
-    # ========================================================
-
-    sale = relationship(
-        "Sale",
-        back_populates="items",
-    )
-
-    product = relationship(
-        "Product",
     )
 
     category = relationship(
         "Category",
         back_populates="sales",
     )
+
+    # ============================================================
+    # SALE ITEM VALUES
+    # ============================================================
+
+    quantity = Column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    unit_price = Column(
+        Numeric(
+            12,
+            2,
+        ),
+        nullable=False,
+        default=0,
+    )
+
+    discount = Column(
+        Numeric(
+            12,
+            2,
+        ),
+        nullable=False,
+        default=0,
+    )
+
+    tax = Column(
+        Numeric(
+            12,
+            2,
+        ),
+        nullable=False,
+        default=0,
+    )
+
+    total = Column(
+        Numeric(
+            12,
+            2,
+        ),
+        nullable=False,
+        default=0,
+    )
+
+    # ============================================================
+    # RESPONSE HELPER PROPERTIES
+    # ============================================================
+
+    @property
+    def product_name(self):
+        """
+        Get product name from Product relationship.
+        """
+        if self.product:
+            return self.product.name
+
+        return None
+
+    @property
+    def sku(self):
+        """
+        Get SKU from Product relationship.
+        """
+        if self.product:
+            return self.product.sku
+
+        return None
+
+    @property
+    def category_name(self):
+        """
+        Get category name from Category relationship.
+        """
+        if self.category:
+            return self.category.name
+
+        # Fallback to Product category if SaleItem
+        # category relationship is not available.
+        if self.product and getattr(
+            self.product,
+            "category",
+            None,
+        ):
+            return self.product.category.name
+
+        return None
