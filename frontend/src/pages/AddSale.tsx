@@ -28,841 +28,1097 @@ import {
   getProducts,
 } from "../api/productApi";
 
+import api from "../api/axios";
 
-export default function AddSale(){
+// ============================================================
+// TYPES
+// ============================================================
+
+interface Customer {
+  id: number;
+  customer_id?: string;
+  full_name: string;
+  email?: string;
+  phone_number?: string;
+  status?: string;
+  company_id?: number;
+}
+
+// ============================================================
+// ADD SALE
+// ============================================================
+
+export default function AddSale() {
 
   const navigate = useNavigate();
 
+  // ==========================================================
+  // PRODUCTS
+  // ==========================================================
 
-  const [products,setProducts] =
+  const [products, setProducts] =
     useState<any[]>([]);
 
+  // ==========================================================
+  // CUSTOMERS
+  // ==========================================================
 
-  const [customerName,setCustomerName] =
+  const [customers, setCustomers] =
+    useState<Customer[]>([]);
+
+  const [customerId, setCustomerId] =
     useState("");
 
+  // ==========================================================
+  // SALE DETAILS
+  // ==========================================================
 
-  const [saleDate,setSaleDate] =
+  const [saleDate, setSaleDate] =
     useState(
       new Date()
-      .toISOString()
-      .slice(0,16)
+        .toISOString()
+        .slice(0, 16)
     );
 
-
-  const [productId,setProductId] =
+  const [productId, setProductId] =
     useState("");
 
-
-  const [productName,setProductName] =
+  const [productName, setProductName] =
     useState("");
 
-
-  const [category,setCategory] =
+  const [category, setCategory] =
     useState("");
 
-
-  const [sku,setSku] =
+  const [sku, setSku] =
     useState("");
 
-
-  const [availableStock,setAvailableStock] =
+  const [availableStock, setAvailableStock] =
     useState(0);
 
-
-  const [quantity,setQuantity] =
+  const [quantity, setQuantity] =
     useState(1);
 
-
-  const [unitPrice,setUnitPrice] =
+  const [unitPrice, setUnitPrice] =
     useState(0);
 
-
-  const [discount,setDiscount] =
+  const [discount, setDiscount] =
     useState(0);
 
-
-  const [tax,setTax] =
+  const [tax, setTax] =
     useState(0);
 
+  const [salesChannel, setSalesChannel] =
+    useState("STORE");
 
-  const [salesChannel,setSalesChannel] =
-    useState("Retail Store");
+  const [paymentMethod, setPaymentMethod] =
+    useState("CASH");
 
+  // ==========================================================
+  // LOADING
+  // ==========================================================
 
-  const [paymentMethod,setPaymentMethod] =
-    useState("Cash");
-
-
-  const [loading,setLoading] =
+  const [loading, setLoading] =
     useState(false);
 
+  const [loadingCustomers, setLoadingCustomers] =
+    useState(false);
 
-  const [snackbar,setSnackbar] =
+  const [loadingProducts, setLoadingProducts] =
+    useState(false);
+
+  // ==========================================================
+  // SNACKBAR
+  // ==========================================================
+
+  const [snackbar, setSnackbar] =
     useState({
-
-      open:false,
-
-      message:"",
-
-      type:"success" as
-      "success" | "error"
-
+      open: false,
+      message: "",
+      type: "success" as
+        "success" | "error",
     });
 
-
+  // ==========================================================
+  // TEXT FIELD STYLE
+  // ==========================================================
 
   const textFieldStyle = {
 
-    width:"100%",
+    width: "100%",
 
-
-    "& .MuiInputLabel-root":{
-      color:"#cbd5e1"
+    "& .MuiInputLabel-root": {
+      color: "#cbd5e1",
     },
 
+    "& .MuiOutlinedInput-root": {
 
-    "& .MuiOutlinedInput-root":{
+      color: "#fff",
 
-      color:"#fff",
+      background: "#1e293b",
 
-      background:"#1e293b",
-
-
-      "& fieldset":{
-        borderColor:"#475569"
+      "& fieldset": {
+        borderColor: "#475569",
       },
 
-
-      "&:hover fieldset":{
-        borderColor:"#60a5fa"
+      "&:hover fieldset": {
+        borderColor: "#60a5fa",
       },
 
+      "&.Mui-focused fieldset": {
+        borderColor: "#3b82f6",
+      },
+    },
 
-      "&.Mui-focused fieldset":{
-        borderColor:"#3b82f6"
-      }
-
-    }
-
+    "& .MuiSelect-icon": {
+      color: "#fff",
+    },
   };
 
+  // ==========================================================
+  // LOAD CUSTOMERS
+  // ==========================================================
 
+  useEffect(() => {
 
-  useEffect(()=>{
+    const loadCustomers =
+      async () => {
 
+        try {
 
-    const loadProducts = async()=>{
+          setLoadingCustomers(true);
 
+          const response =
+            await api.get(
+              "/customers/"
+            );
 
-      try{
+          const responseData =
+            response.data;
 
+          const customerList =
+            responseData?.data ??
+            responseData?.customers ??
+            responseData?.items ??
+            responseData ??
+            [];
 
-        const response:any =
-          await getProducts();
+          const activeCustomers =
+            Array.isArray(customerList)
+              ? customerList.filter(
+                  (customer: Customer) =>
+                    !customer.status ||
+                    customer.status.toUpperCase() ===
+                      "ACTIVE"
+                )
+              : [];
 
+          setCustomers(
+            activeCustomers
+          );
 
+        } catch (error) {
 
-        const productList =
+          console.error(
+            "Customer loading error:",
+            error
+          );
 
-          response.data.products ??
+          setSnackbar({
+            open: true,
+            message:
+              "Failed to load customers",
+            type: "error",
+          });
 
-          response.data.data ??
+        } finally {
 
-          response.data.items ??
+          setLoadingCustomers(false);
 
-          response.data;
+        }
 
+      };
 
+    loadCustomers();
 
-        setProducts(
-          productList || []
-        );
+  }, []);
 
+  // ==========================================================
+  // LOAD PRODUCTS
+  // ==========================================================
 
-      }
-      catch(error){
+  useEffect(() => {
 
+    const loadProducts =
+      async () => {
 
-        console.error(
-          "Product loading error",
-          error
-        );
+        try {
 
+          setLoadingProducts(true);
 
-      }
+          const response: any =
+            await getProducts();
 
+          const productList =
+            response?.data?.products ??
+            response?.data?.data ??
+            response?.data?.items ??
+            response?.data ??
+            response ??
+            [];
 
-    };
+          setProducts(
+            Array.isArray(productList)
+              ? productList
+              : []
+          );
 
+        } catch (error) {
+
+          console.error(
+            "Product loading error:",
+            error
+          );
+
+          setSnackbar({
+            open: true,
+            message:
+              "Failed to load products",
+            type: "error",
+          });
+
+        } finally {
+
+          setLoadingProducts(false);
+
+        }
+
+      };
 
     loadProducts();
 
+  }, []);
 
-  },[]);
+  // ==========================================================
+  // PRODUCT CHANGE
+  // ==========================================================
 
+  const handleProductChange =
+    (id: string) => {
 
+      setProductId(id);
 
+      const product =
+        products.find(
+          (item: any) =>
+            item.id === Number(id)
+        );
 
-  const handleProductChange = (
-    id:string
-  )=>{
+      if (!product) {
 
+        setProductName("");
+        setCategory("");
+        setSku("");
+        setUnitPrice(0);
+        setAvailableStock(0);
 
-    setProductId(id);
+        return;
+      }
 
-
-
-    const product =
-
-      products.find(
-        (item:any)=>
-          item.id === Number(id)
-      );
-
-
-
-    if(product){
-
+      // Product name
 
       setProductName(
-        product.name || "-"
+        product.name ||
+        product.product_name ||
+        "-"
       );
 
-
+      // Category
 
       setCategory(
-
         product.category?.name ||
-
         product.category_name ||
-
         String(
-          product.category_id || "-"
+          product.category_id ||
+          "-"
         )
-
       );
 
-
+      // SKU
 
       setSku(
-        product.sku || "-"
+        product.sku ||
+        product.SKU ||
+        "-"
       );
 
-
+      // Unit price
 
       setUnitPrice(
         Number(
-          product.unit_price || 0
+          product.unit_price ??
+          product.price ??
+          product.selling_price ??
+          0
         )
       );
 
-
+      // Available stock
 
       setAvailableStock(
-
         Number(
-
           product.stock_quantity ??
-
           product.stock ??
-
           product.available_stock ??
-
+          product.quantity_in_stock ??
           0
-
         )
-
       );
 
+      // Reset quantity
 
-    }
+      setQuantity(1);
 
+    };
 
-  };
+  // ==========================================================
+  // BILLING CALCULATIONS
+  // ==========================================================
 
-    const subtotal = useMemo(()=>{
+  const subtotal =
+    useMemo(() => {
 
-    return (
+      return (
+        Number(quantity) *
+        Number(unitPrice)
+      );
 
-      Number(quantity) *
+    }, [
+      quantity,
+      unitPrice,
+    ]);
 
-      Number(unitPrice)
+  // ----------------------------------------------------------
+  // DISCOUNT AMOUNT
+  // ----------------------------------------------------------
 
-    );
+  const discountAmount =
+    useMemo(() => {
 
-  },[
-    quantity,
-    unitPrice
-  ]);
+      return (
+        subtotal *
+        Number(discount)
+      ) / 100;
 
+    }, [
+      subtotal,
+      discount,
+    ]);
 
+  // ----------------------------------------------------------
+  // TAX AMOUNT
+  // ----------------------------------------------------------
 
-  const discountAmount = useMemo(()=>{
+  const taxAmount =
+    useMemo(() => {
 
-    return (
+      return (
+        (
+          subtotal -
+          discountAmount
+        ) *
+        Number(tax)
+      ) / 100;
 
-      subtotal *
+    }, [
+      subtotal,
+      discountAmount,
+      tax,
+    ]);
 
-      Number(discount)
+  // ----------------------------------------------------------
+  // GRAND TOTAL
+  // ----------------------------------------------------------
 
-    ) / 100;
+  const totalAmount =
+    useMemo(() => {
 
-  },[
-    subtotal,
-    discount
-  ]);
-
-
-
-  const taxAmount = useMemo(()=>{
-
-    return (
-
-      (
-
+      return (
         subtotal -
-
-        discountAmount
-
-      )
-
-      *
-
-      Number(tax)
-
-    ) / 100;
-
-  },[
-    subtotal,
-    discountAmount,
-    tax
-  ]);
-
-
-
-  const totalAmount = useMemo(()=>{
-
-    return (
-
-      subtotal -
-
-      discountAmount +
-
-      taxAmount
-
-    );
-
-  },[
-    subtotal,
-    discountAmount,
-    taxAmount
-  ]);
-
-
-
-  const handleSubmit = async()=>{
-
-
-    if(!customerName.trim()){
-
-      setSnackbar({
-
-        open:true,
-
-        message:"Customer name required",
-
-        type:"error"
-
-      });
-
-      return;
-
-    }
-
-
-
-    if(!productId){
-
-      setSnackbar({
-
-        open:true,
-
-        message:"Please select product",
-
-        type:"error"
-
-      });
-
-      return;
-
-    }
-
-
-
-    if(quantity <= 0){
-
-      setSnackbar({
-
-        open:true,
-
-        message:"Quantity must be greater than zero",
-
-        type:"error"
-
-      });
-
-      return;
-
-    }
-
-
-
-    if(unitPrice < 0){
-
-      setSnackbar({
-
-        open:true,
-
-        message:"Unit price cannot be negative",
-
-        type:"error"
-
-      });
-
-      return;
-
-    }
-
-
-
-    if(discountAmount > subtotal){
-
-      setSnackbar({
-
-        open:true,
-
-        message:"Discount cannot exceed product value",
-
-        type:"error"
-
-      });
-
-      return;
-
-    }
-
-
-
-    if(tax < 0){
-
-      setSnackbar({
-
-        open:true,
-
-        message:"Tax cannot be negative",
-
-        type:"error"
-
-      });
-
-      return;
-
-    }
-
-
-
-    if(quantity > availableStock){
-
-      setSnackbar({
-
-        open:true,
-
-        message:"Insufficient stock",
-
-        type:"error"
-
-      });
-
-      return;
-
-    }
-
-
-
-    try{
-
-      setLoading(true);
-
-
-
-      await createSale({
-
-        customer_name:customerName,
-
-        sale_date:saleDate,
-
-        sales_channel:salesChannel,
-
-        payment_method:paymentMethod,
-
-        items:[
-
-          {
-
-            product_id:Number(productId),
-
-            quantity:Number(quantity),
-
-            unit_price:Number(unitPrice),
-
-            discount:Number(discount),
-
-            tax:Number(tax)
-
-          }
-
-        ]
-
-      });
-
-
-
-      setSnackbar({
-
-        open:true,
-
-        message:"Sale created successfully",
-
-        type:"success"
-
-      });
-
-
-
-      setTimeout(()=>{
-
-        navigate("/sales");
-
-      },1000);
-
-    }
-
-    catch(error){
-
-      console.error(
-        "Create sale error",
-        error
+        discountAmount +
+        taxAmount
       );
 
-      setSnackbar({
+    }, [
+      subtotal,
+      discountAmount,
+      taxAmount,
+    ]);
 
-        open:true,
+  // ==========================================================
+  // SUBMIT SALE
+  // ==========================================================
 
-        message:"Failed to create sale",
+  const handleSubmit =
+    async () => {
 
-        type:"error"
+      // ------------------------------------------------------
+      // CUSTOMER VALIDATION
+      // ------------------------------------------------------
 
-      });
+      if (!customerId) {
 
-    }
+        setSnackbar({
+          open: true,
+          message:
+            "Please select a customer",
+          type: "error",
+        });
 
-    finally{
+        return;
+      }
 
-      setLoading(false);
+      // ------------------------------------------------------
+      // PRODUCT VALIDATION
+      // ------------------------------------------------------
 
-    }
+      if (!productId) {
 
-  };
+        setSnackbar({
+          open: true,
+          message:
+            "Please select a product",
+          type: "error",
+        });
 
+        return;
+      }
 
+      // ------------------------------------------------------
+      // QUANTITY VALIDATION
+      // ------------------------------------------------------
+
+      if (
+        !Number.isInteger(
+          Number(quantity)
+        ) ||
+        Number(quantity) <= 0
+      ) {
+
+        setSnackbar({
+          open: true,
+          message:
+            "Quantity must be greater than zero",
+          type: "error",
+        });
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // STOCK VALIDATION
+      // ------------------------------------------------------
+
+      if (
+        Number(quantity) >
+        Number(availableStock)
+      ) {
+
+        setSnackbar({
+          open: true,
+          message:
+            `Insufficient stock. Available stock: ${availableStock}`,
+          type: "error",
+        });
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // PRICE VALIDATION
+      // ------------------------------------------------------
+
+      if (
+        Number(unitPrice) <= 0
+      ) {
+
+        setSnackbar({
+          open: true,
+          message:
+            "Unit price must be greater than zero",
+          type: "error",
+        });
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // DISCOUNT VALIDATION
+      // ------------------------------------------------------
+
+      if (
+        Number(discount) < 0 ||
+        Number(discount) > 100
+      ) {
+
+        setSnackbar({
+          open: true,
+          message:
+            "Discount must be between 0 and 100",
+          type: "error",
+        });
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // TAX VALIDATION
+      // ------------------------------------------------------
+
+      if (
+        Number(tax) < 0
+      ) {
+
+        setSnackbar({
+          open: true,
+          message:
+            "Tax cannot be negative",
+          type: "error",
+        });
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // DISCOUNT VALUE VALIDATION
+      // ------------------------------------------------------
+
+      if (
+        discountAmount >
+        subtotal
+      ) {
+
+        setSnackbar({
+          open: true,
+          message:
+            "Discount cannot exceed product value",
+          type: "error",
+        });
+
+        return;
+      }
+
+      try {
+
+        setLoading(true);
+
+        // ----------------------------------------------------
+        // BACKEND PAYLOAD
+        // ----------------------------------------------------
+
+        const payload = {
+
+          customer_id:
+            Number(customerId),
+
+          sale_date:
+            saleDate,
+
+          sales_channel:
+            salesChannel,
+
+          payment_method:
+            paymentMethod,
+
+          items: [
+
+            {
+
+              product_id:
+                Number(productId),
+
+              quantity:
+                Number(quantity),
+
+              unit_price:
+                Number(unitPrice),
+
+              discount:
+                Number(discount),
+
+              tax:
+                Number(tax),
+
+            },
+
+          ],
+
+        };
+
+        console.log(
+          "CREATE SALE PAYLOAD:",
+          payload
+        );
+
+        const createdSale =
+          await createSale(
+            payload
+          );
+
+        console.log(
+          "SALE CREATED:",
+          createdSale
+        );
+
+        setSnackbar({
+          open: true,
+          message:
+            "Sale created successfully",
+          type: "success",
+        });
+
+        // ----------------------------------------------------
+        // NAVIGATE TO SALES
+        // ----------------------------------------------------
+
+        setTimeout(() => {
+
+          navigate("/sales");
+
+        }, 1000);
+
+      } catch (error: any) {
+
+        console.error(
+          "Create sale error:",
+          error
+        );
+
+        // ----------------------------------------------------
+        // BACKEND ERROR MESSAGE
+        // ----------------------------------------------------
+
+        const backendMessage =
+          error?.response?.data?.detail;
+
+        setSnackbar({
+          open: true,
+
+          message:
+            backendMessage ||
+            "Failed to create sale",
+
+          type: "error",
+        });
+
+      } finally {
+
+        setLoading(false);
+
+      }
+
+    };
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
 
     <Box
-
       sx={{
-
-        minHeight:"100vh",
+        minHeight: "100vh",
 
         background:
           "linear-gradient(135deg,#020617,#0f172a,#1e293b)",
 
-        py:5
-
+        py: 5,
       }}
-
     >
 
       <Container
-
         maxWidth="lg"
-
         sx={{
-
-          py:2
-
+          py: 2,
         }}
-
       >
 
         <Paper
-
           sx={{
+            p: 5,
 
-            p:5,
+            background: "#111827",
 
-            background:"#111827",
+            borderRadius: 4,
 
-            borderRadius:4,
+            color: "#fff",
 
-            color:"#fff",
+            border:
+              "1px solid #334155",
 
-            border:"1px solid #334155",
-
-            boxShadow:"0 10px 30px rgba(0,0,0,0.35)"
-
+            boxShadow:
+              "0 10px 30px rgba(0,0,0,0.35)",
           }}
-
         >
 
+          {/* ==================================================
+              TITLE
+          ================================================== */}
+
           <Typography
-
             variant="h4"
-
             fontWeight="700"
-
             mb={4}
-
           >
-
             Add Sale
-
           </Typography>
 
+          {/* ==================================================
+              FORM
+          ================================================== */}
+
           <Box
-
             display="grid"
-
             gridTemplateColumns={{
-
-              xs:"1fr",
-
-              md:"repeat(2,1fr)"
-
+              xs: "1fr",
+              md: "repeat(2,1fr)",
             }}
-
             gap={3}
-
           >
 
-                      <TextField
+            {/* ------------------------------------------------
+                INVOICE NUMBER
+            ------------------------------------------------ */}
+
+            <TextField
               label="Invoice Number"
               value="Auto Generated"
               fullWidth
               InputProps={{
-                readOnly:true
+                readOnly: true,
               }}
               sx={textFieldStyle}
             />
+
+            {/* ------------------------------------------------
+                SALE DATE
+            ------------------------------------------------ */}
 
             <TextField
               label="Sale Date & Time"
               type="datetime-local"
               value={saleDate}
               fullWidth
-              onChange={(e)=>
+              onChange={(e) =>
                 setSaleDate(
                   e.target.value
                 )
               }
               InputLabelProps={{
-                shrink:true
+                shrink: true,
               }}
               sx={textFieldStyle}
             />
 
+            {/* ------------------------------------------------
+                CUSTOMER
+            ------------------------------------------------ */}
+
             <TextField
-              label="Customer Name"
-              value={customerName}
+              select
+              label="Customer"
+              value={customerId}
               fullWidth
-              onChange={(e)=>
-                setCustomerName(
+              onChange={(e) =>
+                setCustomerId(
                   e.target.value
                 )
               }
+              disabled={
+                loadingCustomers
+              }
               sx={textFieldStyle}
-            />
+            >
+
+              <MenuItem value="">
+                Select Customer
+              </MenuItem>
+
+              {customers.length > 0 ? (
+
+                customers.map(
+                  (customer) => (
+
+                    <MenuItem
+                      key={customer.id}
+                      value={customer.id}
+                    >
+
+                      {customer.full_name}
+
+                      {customer.customer_id
+                        ? ` (${customer.customer_id})`
+                        : ""}
+
+                    </MenuItem>
+
+                  )
+                )
+
+              ) : (
+
+                <MenuItem disabled>
+                  {loadingCustomers
+                    ? "Loading customers..."
+                    : "No active customers available"}
+                </MenuItem>
+
+              )}
+
+            </TextField>
+
+            {/* ------------------------------------------------
+                PRODUCT
+            ------------------------------------------------ */}
 
             <TextField
               select
               label="Product"
               value={productId}
               fullWidth
-              onChange={(e)=>
+              onChange={(e) =>
                 handleProductChange(
                   e.target.value
                 )
               }
+              disabled={
+                loadingProducts
+              }
               sx={textFieldStyle}
             >
-              {
-                products.length > 0
-                ?
+
+              <MenuItem value="">
+                Select Product
+              </MenuItem>
+
+              {products.length > 0 ? (
+
                 products.map(
-                  (product:any)=>(
+                  (product: any) => (
+
                     <MenuItem
                       key={product.id}
                       value={product.id}
                     >
-                      {product.name}
+                      {product.name ||
+                        product.product_name}
                     </MenuItem>
+
                   )
                 )
-                :
+
+              ) : (
+
                 <MenuItem disabled>
-                  No products available
+                  {loadingProducts
+                    ? "Loading products..."
+                    : "No products available"}
                 </MenuItem>
-              }
+
+              )}
+
             </TextField>
+
+            {/* ------------------------------------------------
+                CATEGORY
+            ------------------------------------------------ */}
 
             <TextField
               label="Category"
               value={category}
               fullWidth
               InputProps={{
-                readOnly:true
+                readOnly: true,
               }}
               sx={textFieldStyle}
             />
+
+            {/* ------------------------------------------------
+                SKU
+            ------------------------------------------------ */}
 
             <TextField
               label="SKU"
               value={sku}
               fullWidth
               InputProps={{
-                readOnly:true
+                readOnly: true,
               }}
               sx={textFieldStyle}
             />
+
+            {/* ------------------------------------------------
+                AVAILABLE STOCK
+            ------------------------------------------------ */}
 
             <TextField
               label="Available Stock"
               value={availableStock}
               fullWidth
               InputProps={{
-                readOnly:true
+                readOnly: true,
               }}
               sx={textFieldStyle}
             />
+
+            {/* ------------------------------------------------
+                QUANTITY
+            ------------------------------------------------ */}
 
             <TextField
               label="Quantity"
               type="number"
               value={quantity}
               fullWidth
-              onChange={(e)=>
+              onChange={(e) =>
                 setQuantity(
-                  Number(e.target.value)
+                  Number(
+                    e.target.value
+                  )
                 )
               }
               inputProps={{
-                min:1
+                min: 1,
+                max: availableStock,
               }}
+              error={
+                quantity > availableStock &&
+                productId !== ""
+              }
+              helperText={
+                productId &&
+                quantity > availableStock
+                  ? `Only ${availableStock} available`
+                  : ""
+              }
               sx={textFieldStyle}
             />
+
+            {/* ------------------------------------------------
+                UNIT PRICE
+            ------------------------------------------------ */}
 
             <TextField
               label="Unit Price"
               type="number"
               value={unitPrice}
               fullWidth
-              onChange={(e)=>
-                setUnitPrice(
-                  Number(e.target.value)
-                )
-              }
+              InputProps={{
+                readOnly: true,
+              }}
               inputProps={{
-                min:0
+                min: 0,
               }}
               sx={textFieldStyle}
             />
+
+            {/* ------------------------------------------------
+                DISCOUNT
+            ------------------------------------------------ */}
 
             <TextField
               label="Discount (%)"
               type="number"
               value={discount}
               fullWidth
-              onChange={(e)=>
+              onChange={(e) =>
                 setDiscount(
-                  Number(e.target.value)
+                  Number(
+                    e.target.value
+                  )
                 )
               }
               inputProps={{
-                min:0,
-                max:100
+                min: 0,
+                max: 100,
               }}
               sx={textFieldStyle}
             />
+
+            {/* ------------------------------------------------
+                TAX
+            ------------------------------------------------ */}
 
             <TextField
               label="Tax (%)"
               type="number"
               value={tax}
               fullWidth
-              onChange={(e)=>
+              onChange={(e) =>
                 setTax(
-                  Number(e.target.value)
+                  Number(
+                    e.target.value
+                  )
                 )
               }
               inputProps={{
-                min:0
+                min: 0,
               }}
               sx={textFieldStyle}
             />
+
+            {/* ------------------------------------------------
+                SALES CHANNEL
+            ------------------------------------------------ */}
 
             <TextField
               select
               label="Sales Channel"
               value={salesChannel}
               fullWidth
-              onChange={(e)=>
+              onChange={(e) =>
                 setSalesChannel(
                   e.target.value
                 )
               }
               sx={textFieldStyle}
             >
-              <MenuItem value="Retail Store">
-                Retail Store
+
+              <MenuItem value="STORE">
+                Store
               </MenuItem>
 
-              <MenuItem value="Online Store">
-                Online Store
+              <MenuItem value="ONLINE">
+                Online
               </MenuItem>
 
-              <MenuItem value="Marketplace">
+              <MenuItem value="MARKETPLACE">
                 Marketplace
               </MenuItem>
+
             </TextField>
+
+            {/* ------------------------------------------------
+                PAYMENT METHOD
+            ------------------------------------------------ */}
 
             <TextField
               select
               label="Payment Method"
               value={paymentMethod}
               fullWidth
-              onChange={(e)=>
+              onChange={(e) =>
                 setPaymentMethod(
                   e.target.value
                 )
               }
               sx={textFieldStyle}
             >
-              <MenuItem value="Cash">
+
+              <MenuItem value="CASH">
                 Cash
               </MenuItem>
 
-              <MenuItem value="Card">
+              <MenuItem value="CARD">
                 Card
               </MenuItem>
 
@@ -870,23 +1126,34 @@ export default function AddSale(){
                 UPI
               </MenuItem>
 
-              <MenuItem value="Bank Transfer">
+              <MenuItem value="BANK_TRANSFER">
                 Bank Transfer
               </MenuItem>
+
             </TextField>
 
           </Box>
 
+          {/* ==================================================
+              INVOICE SUMMARY
+          ================================================== */}
 
-                    <Paper
+          <Paper
             sx={{
-              mt:5,
-              p:4,
-              background:"#1e293b",
-              border:"1px solid #334155",
-              borderRadius:3,
-              color:"#fff",
-              boxShadow:"0 8px 20px rgba(0,0,0,0.25)"
+              mt: 5,
+              p: 4,
+
+              background: "#1e293b",
+
+              border:
+                "1px solid #334155",
+
+              borderRadius: 3,
+
+              color: "#fff",
+
+              boxShadow:
+                "0 8px 20px rgba(0,0,0,0.25)",
             }}
           >
 
@@ -901,50 +1168,84 @@ export default function AddSale(){
             <Box
               display="grid"
               gridTemplateColumns={{
-                xs:"1fr",
-                md:"repeat(2,1fr)"
+                xs: "1fr",
+                md: "repeat(2,1fr)",
               }}
               gap={2}
             >
 
               <Typography>
-                <strong>Product :</strong>{" "}
+                <strong>
+                  Customer :
+                </strong>{" "}
+                {
+                  customers.find(
+                    (customer) =>
+                      customer.id ===
+                      Number(customerId)
+                  )?.full_name ||
+                  "-"
+                }
+              </Typography>
+
+              <Typography>
+                <strong>
+                  Product :
+                </strong>{" "}
                 {productName || "-"}
               </Typography>
 
               <Typography>
-                <strong>Category :</strong>{" "}
+                <strong>
+                  Category :
+                </strong>{" "}
                 {category || "-"}
               </Typography>
 
               <Typography>
-                <strong>SKU :</strong>{" "}
+                <strong>
+                  SKU :
+                </strong>{" "}
                 {sku || "-"}
               </Typography>
 
               <Typography>
-                <strong>Quantity :</strong>{" "}
+                <strong>
+                  Quantity :
+                </strong>{" "}
                 {quantity}
               </Typography>
 
               <Typography>
-                <strong>Unit Price :</strong>{" "}
-                ₹{unitPrice.toFixed(2)}
+                <strong>
+                  Unit Price :
+                </strong>{" "}
+                ₹
+                {unitPrice.toFixed(2)}
               </Typography>
 
               <Typography>
-                <strong>Subtotal :</strong>{" "}
-                ₹{subtotal.toFixed(2)}
+                <strong>
+                  Subtotal :
+                </strong>{" "}
+                ₹
+                {subtotal.toFixed(2)}
               </Typography>
 
               <Typography>
-                <strong>Discount :</strong>{" "}
-                ₹{discountAmount.toFixed(2)}
+                <strong>
+                  Discount :
+                </strong>{" "}
+                ₹
+                {discountAmount.toFixed(2)}
               </Typography>
 
               <Typography>
-                <strong>Tax :</strong>{" "}
-                ₹{taxAmount.toFixed(2)}
+                <strong>
+                  Tax :
+                </strong>{" "}
+                ₹
+                {taxAmount.toFixed(2)}
               </Typography>
 
             </Box>
@@ -954,18 +1255,23 @@ export default function AddSale(){
               pt={2}
               borderTop="1px solid #475569"
             >
+
               <Typography
                 variant="h5"
                 fontWeight="700"
                 color="#60a5fa"
               >
-                Total Amount : ₹{totalAmount.toFixed(2)}
+                Total Amount : ₹
+                {totalAmount.toFixed(2)}
               </Typography>
+
             </Box>
 
           </Paper>
 
-
+          {/* ==================================================
+              BUTTONS
+          ================================================== */}
 
           <Box
             display="flex"
@@ -976,54 +1282,75 @@ export default function AddSale(){
 
             <Button
               variant="outlined"
-              onClick={()=>navigate("/sales")}
+              onClick={() =>
+                navigate("/sales")
+              }
+              disabled={loading}
               sx={{
-                px:4,
-                textTransform:"none",
-                fontWeight:600,
-                borderColor:"#64748b",
-                color:"#fff",
-                "&:hover":{
-                  borderColor:"#94a3b8",
-                  background:"#1e293b"
-                }
+                px: 4,
+                textTransform:
+                  "none",
+                fontWeight: 600,
+
+                borderColor:
+                  "#64748b",
+
+                color: "#fff",
+
+                "&:hover": {
+                  borderColor:
+                    "#94a3b8",
+                  background:
+                    "#1e293b",
+                },
               }}
             >
               Cancel
             </Button>
 
-
-
             <Button
               variant="contained"
               disabled={
                 loading ||
+                loadingCustomers ||
+                loadingProducts ||
+                !customerId ||
                 !productId ||
                 quantity <= 0 ||
-                quantity > availableStock
+                quantity >
+                  availableStock ||
+                unitPrice <= 0
               }
-              onClick={handleSubmit}
+              onClick={
+                handleSubmit
+              }
               sx={{
-                px:4,
-                textTransform:"none",
-                fontWeight:700,
-                background:"#2563eb",
-                "&:hover":{
-                  background:"#1d4ed8"
+                px: 4,
+                textTransform:
+                  "none",
+                fontWeight: 700,
+
+                background:
+                  "#2563eb",
+
+                "&:hover": {
+                  background:
+                    "#1d4ed8",
                 },
-                "&.Mui-disabled":{
-                  background:"#334155",
-                  color:"#94a3b8"
-                }
+
+                "&.Mui-disabled": {
+                  background:
+                    "#334155",
+                  color:
+                    "#94a3b8",
+                },
               }}
             >
-              {
-                loading
-                ?
-                "Saving..."
-                :
-                "Save Sale"
-              }
+
+              {loading
+                ? "Saving..."
+                : "Save Sale"}
+
             </Button>
 
           </Box>
@@ -1032,25 +1359,29 @@ export default function AddSale(){
 
       </Container>
 
-
+      {/* ======================================================
+          SNACKBAR
+      ====================================================== */}
 
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}
-        onClose={()=>
+        onClose={() =>
           setSnackbar({
             ...snackbar,
-            open:false
+            open: false,
           })
         }
       >
 
         <Alert
-          severity={snackbar.type}
-          onClose={()=>
+          severity={
+            snackbar.type
+          }
+          onClose={() =>
             setSnackbar({
               ...snackbar,
-              open:false
+              open: false,
             })
           }
         >
@@ -1060,7 +1391,5 @@ export default function AddSale(){
       </Snackbar>
 
     </Box>
-
   );
-
 }

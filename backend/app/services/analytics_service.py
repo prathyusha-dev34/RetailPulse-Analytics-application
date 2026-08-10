@@ -1663,59 +1663,198 @@ def get_customer_spending_distribution(
 def get_dashboard_summary(
     db: Session,
     company_id: int,
+    filters=None,
 ):
+    """
+    Complete Business Analytics Dashboard.
+    """
 
-    total_customers = (
-        db.query(Customer)
-        .filter(
-            Customer.company_id == company_id
-        )
-        .count()
-    )
+    # ---------------------------------------------
+    # SALES QUERY
+    # ---------------------------------------------
 
-    total_revenue = (
-        db.query(
-            func.sum(Customer.lifetime_revenue)
-        )
-        .filter(
-            Customer.company_id == company_id
-        )
-        .scalar()
-        or Decimal("0.00")
-    )
-
-    total_orders = (
+    sales_query = (
         db.query(Sale)
         .filter(
             Sale.company_id == company_id
         )
-        .count()
     )
 
-    vip_customers = (
-        db.query(Customer)
+    if filters:
+
+        if filters.get("from_date"):
+            sales_query = sales_query.filter(
+                Sale.sale_date >= filters["from_date"]
+            )
+
+        if filters.get("to_date"):
+            sales_query = sales_query.filter(
+                Sale.sale_date <= filters["to_date"]
+            )
+
+        if filters.get("payment_method"):
+            sales_query = sales_query.filter(
+                Sale.payment_method
+                == filters["payment_method"]
+            )
+
+        if filters.get("sales_channel"):
+            sales_query = sales_query.filter(
+                Sale.sales_channel
+                == filters["sales_channel"]
+            )
+
+    sales = sales_query.all()
+
+    # ---------------------------------------------
+    # TOTAL REVENUE
+    # ---------------------------------------------
+
+    total_revenue = sum(
+        (
+            Decimal(str(sale.total_amount or 0))
+            for sale in sales
+        ),
+        Decimal("0.00"),
+    )
+
+    # ---------------------------------------------
+    # TOTAL ORDERS
+    # ---------------------------------------------
+
+    total_orders = len(sales)
+
+    # ---------------------------------------------
+    # TOTAL PRODUCTS SOLD
+    # ---------------------------------------------
+
+    total_products_sold = (
+        db.query(
+            func.coalesce(
+                func.sum(SaleItem.quantity),
+                0
+            )
+        )
+        .join(
+            Sale,
+            Sale.id == SaleItem.sale_id
+        )
         .filter(
-            Customer.company_id == company_id,
-            Customer.customer_segment == "VIP",
+            Sale.company_id == company_id
+        )
+        .scalar()
+        or 0
+    )
+
+    # ---------------------------------------------
+    # AVERAGE ORDER VALUE
+    # ---------------------------------------------
+
+    average_order_value = (
+        total_revenue
+        / Decimal(str(total_orders))
+        if total_orders
+        else Decimal("0.00")
+    )
+
+    # ---------------------------------------------
+    # INVENTORY VALUE
+    # ---------------------------------------------
+
+    inventory_value = (
+        db.query(
+            func.coalesce(
+                func.sum(
+                    Inventory.available_stock
+                    * Product.unit_price
+                ),
+                0
+            )
+        )
+        .join(
+            Product,
+            Product.id == Inventory.product_id
+        )
+        .filter(
+            Inventory.company_id == company_id
+        )
+        .scalar()
+        or 0
+    )
+
+    total_inventory_value = Decimal(
+        str(inventory_value)
+    )
+
+    # ---------------------------------------------
+    # LOW STOCK
+    # ---------------------------------------------
+
+    low_stock_products = (
+        db.query(Inventory)
+        .filter(
+            Inventory.company_id == company_id,
+            Inventory.stock_status.in_(
+                [
+                    "Low Stock",
+                    "LOW_STOCK",
+                    "low_stock",
+                    "Low",
+                    "LOW",
+                ]
+            )
         )
         .count()
     )
 
-    active_customers = (
-        db.query(Customer)
+    # ---------------------------------------------
+    # OUT OF STOCK
+    # ---------------------------------------------
+
+    out_of_stock_products = (
+        db.query(Inventory)
         .filter(
-            Customer.company_id == company_id,
-            Customer.status == "ACTIVE",
+            Inventory.company_id == company_id,
+            Inventory.stock_status.in_(
+                [
+                    "Out of Stock",
+                    "OUT_OF_STOCK",
+                    "out_of_stock",
+                    "Out",
+                    "OUT",
+                ]
+            )
+        )
+        .count()
+    )
+
+    # ---------------------------------------------
+    # TOTAL CATEGORIES
+    # ---------------------------------------------
+
+    total_categories = (
+        db.query(Category)
+        .filter(
+            Category.company_id == company_id
         )
         .count()
     )
 
     return {
-        "total_customers": total_customers,
-        "total_orders": total_orders,
         "total_revenue": total_revenue,
-        "vip_customers": vip_customers,
-        "active_customers": active_customers,
+        "total_orders": total_orders,
+        "total_products_sold": int(
+            total_products_sold
+        ),
+        "average_order_value": average_order_value,
+        "total_inventory_value":
+            total_inventory_value,
+        "low_stock_products":
+            low_stock_products,
+        "out_of_stock_products":
+            out_of_stock_products,
+        "total_categories":
+            total_categories,
     }
 
 
@@ -1732,68 +1871,49 @@ def get_revenue_trend(
 
     query = (
         db.query(
-            func.date_trunc(
-                "month",
+            func.date(
                 Sale.sale_date
-            ).label("period"),
+            ).label("date"),
 
             func.sum(
                 Sale.total_amount
-            ).label("revenue")
+            ).label("revenue"),
         )
         .filter(
             Sale.company_id == company_id
         )
     )
 
-
     if filters:
 
         if filters.get("from_date"):
-
             query = query.filter(
-                Sale.sale_date >= filters["from_date"]
+                Sale.sale_date
+                >= filters["from_date"]
             )
-
 
         if filters.get("to_date"):
-
             query = query.filter(
-                Sale.sale_date <= filters["to_date"]
+                Sale.sale_date
+                <= filters["to_date"]
             )
-
 
     rows = (
         query
-        .group_by(
-            "period"
-        )
-        .order_by(
-            "period"
-        )
+        .group_by("date")
+        .order_by("date")
         .all()
     )
 
-
-    result = []
-
-
-    for row in rows:
-
-        result.append(
-            {
-                "period":
-                    row.period.strftime("%b %Y")
-                    if row.period
-                    else None,
-
-                "revenue":
-                    float(row.revenue or 0)
-            }
-        )
-
-
-    return result
+    return [
+        {
+            "date": str(row.date),
+            "revenue": Decimal(
+                str(row.revenue or 0)
+            ),
+        }
+        for row in rows
+    ]
 
 
 # =====================================================
@@ -1809,78 +1929,51 @@ def get_sales_trend(
 
     query = (
         db.query(
-            func.date_trunc(
-                "month",
+            func.date(
                 Sale.sale_date
-            ).label("period"),
+            ).label("date"),
 
             func.count(
                 Sale.id
-            ).label("orders"),
-
-            func.sum(
-                Sale.total_amount
-            ).label("sales")
+            ).label("sales"),
         )
         .filter(
             Sale.company_id == company_id
         )
     )
 
-
     if filters:
 
         if filters.get("from_date"):
-
             query = query.filter(
-                Sale.sale_date >= filters["from_date"]
+                Sale.sale_date
+                >= filters["from_date"]
             )
-
 
         if filters.get("to_date"):
-
             query = query.filter(
-                Sale.sale_date <= filters["to_date"]
+                Sale.sale_date
+                <= filters["to_date"]
             )
-
 
     rows = (
         query
-        .group_by(
-            "period"
-        )
-        .order_by(
-            "period"
-        )
+        .group_by("date")
+        .order_by("date")
         .all()
     )
 
+    return [
+        {
+            "date": str(row.date),
+            "sales": int(row.sales or 0),
+        }
+        for row in rows
+    ]
 
-    result = []
-
-
-    for row in rows:
-
-        result.append(
-            {
-                "period":
-                    row.period.strftime("%b %Y")
-                    if row.period
-                    else None,
-
-                "orders":
-                    row.orders,
-
-                "sales":
-                    float(row.sales or 0)
-            }
-        )
-
-
-    return result
 
 # =====================================================
-# TOP PRODUCTS ANALYTICS
+# TOP PRODUCTS
 # =====================================================
 
 def get_top_products(
@@ -1892,48 +1985,56 @@ def get_top_products(
 
     query = (
         db.query(
-            Product.name.label("product"),
+            Product.id.label(
+                "product_id"
+            ),
+
+            Product.name.label(
+                "product_name"
+            ),
+
             func.sum(
                 SaleItem.quantity
             ).label("quantity"),
 
             func.sum(
-                SaleItem.quantity * SaleItem.unit_price
-            ).label("revenue")
+                SaleItem.quantity
+                * SaleItem.unit_price
+            ).label("revenue"),
         )
         .join(
             SaleItem,
-            SaleItem.product_id == Product.id
+            SaleItem.product_id
+            == Product.id
         )
         .join(
             Sale,
-            Sale.id == SaleItem.sale_id
+            Sale.id
+            == SaleItem.sale_id
         )
         .filter(
             Sale.company_id == company_id
         )
     )
 
-
     if filters:
 
         if filters.get("from_date"):
-
             query = query.filter(
-                Sale.sale_date >= filters["from_date"]
+                Sale.sale_date
+                >= filters["from_date"]
             )
-
 
         if filters.get("to_date"):
-
             query = query.filter(
-                Sale.sale_date <= filters["to_date"]
+                Sale.sale_date
+                <= filters["to_date"]
             )
-
 
     rows = (
         query
         .group_by(
+            Product.id,
             Product.name
         )
         .order_by(
@@ -1945,22 +2046,28 @@ def get_top_products(
         .all()
     )
 
-
     return [
-
         {
-            "product": row.product,
-            "quantity": row.quantity,
-            "revenue": float(row.revenue or 0)
+            "product_id":
+                row.product_id,
+
+            "product_name":
+                row.product_name,
+
+            "quantity":
+                int(row.quantity or 0),
+
+            "revenue":
+                Decimal(
+                    str(row.revenue or 0)
+                ),
         }
-
         for row in rows
-
     ]
 
 
 # =====================================================
-# TOP CATEGORIES ANALYTICS
+# TOP CATEGORIES
 # =====================================================
 
 def get_top_categories(
@@ -1972,54 +2079,61 @@ def get_top_categories(
 
     query = (
         db.query(
-            Category.name.label("category"),
+            Category.id.label(
+                "category_id"
+            ),
+
+            Category.name.label(
+                "category_name"
+            ),
 
             func.sum(
                 SaleItem.quantity
             ).label("quantity"),
 
             func.sum(
-                SaleItem.quantity *
-                SaleItem.unit_price
-            ).label("revenue")
+                SaleItem.quantity
+                * SaleItem.unit_price
+            ).label("revenue"),
         )
         .join(
             Product,
-            Product.id == SaleItem.product_id
+            Product.category_id
+            == Category.id
         )
         .join(
-            Category,
-            Category.id == Product.category_id
+            SaleItem,
+            SaleItem.product_id
+            == Product.id
         )
         .join(
             Sale,
-            Sale.id == SaleItem.sale_id
+            Sale.id
+            == SaleItem.sale_id
         )
         .filter(
             Sale.company_id == company_id
         )
     )
 
-
     if filters:
 
         if filters.get("from_date"):
-
             query = query.filter(
-                Sale.sale_date >= filters["from_date"]
+                Sale.sale_date
+                >= filters["from_date"]
             )
-
 
         if filters.get("to_date"):
-
             query = query.filter(
-                Sale.sale_date <= filters["to_date"]
+                Sale.sale_date
+                <= filters["to_date"]
             )
-
 
     rows = (
         query
         .group_by(
+            Category.id,
             Category.name
         )
         .order_by(
@@ -2031,19 +2145,23 @@ def get_top_categories(
         .all()
     )
 
-
     return [
-
         {
-            "category": row.category,
-            "quantity": row.quantity,
-            "revenue": float(
-                row.revenue or 0
-            )
+            "category_id":
+                row.category_id,
+
+            "category_name":
+                row.category_name,
+
+            "quantity":
+                int(row.quantity or 0),
+
+            "revenue":
+                Decimal(
+                    str(row.revenue or 0)
+                ),
         }
-
         for row in rows
-
     ]
 
 
@@ -2059,7 +2177,9 @@ def get_sales_by_payment_method(
 
     query = (
         db.query(
-            Sale.payment_method.label("payment_method"),
+            Sale.payment_method.label(
+                "method"
+            ),
 
             func.count(
                 Sale.id
@@ -2067,37 +2187,32 @@ def get_sales_by_payment_method(
 
             func.sum(
                 Sale.total_amount
-            ).label("revenue")
+            ).label("amount"),
         )
         .filter(
             Sale.company_id == company_id
         )
     )
 
-
     if filters:
 
         if filters.get("from_date"):
-
             query = query.filter(
-                Sale.sale_date >= filters["from_date"]
+                Sale.sale_date
+                >= filters["from_date"]
             )
-
 
         if filters.get("to_date"):
-
             query = query.filter(
-                Sale.sale_date <= filters["to_date"]
+                Sale.sale_date
+                <= filters["to_date"]
             )
-
 
         if filters.get("payment_method"):
-
             query = query.filter(
-                Sale.payment_method ==
-                filters["payment_method"]
+                Sale.payment_method
+                == filters["payment_method"]
             )
-
 
     rows = (
         query
@@ -2107,21 +2222,20 @@ def get_sales_by_payment_method(
         .all()
     )
 
-
     return [
-
         {
-            "payment_method": row.payment_method,
+            "method":
+                row.method or "Unknown",
 
-            "orders": row.orders,
+            "orders":
+                int(row.orders or 0),
 
-            "revenue": float(
-                row.revenue or 0
-            )
+            "amount":
+                Decimal(
+                    str(row.amount or 0)
+                ),
         }
-
         for row in rows
-
     ]
 
 
@@ -2137,7 +2251,9 @@ def get_sales_by_channel(
 
     query = (
         db.query(
-            Sale.sales_channel.label("sales_channel"),
+            Sale.sales_channel.label(
+                "channel"
+            ),
 
             func.count(
                 Sale.id
@@ -2145,37 +2261,32 @@ def get_sales_by_channel(
 
             func.sum(
                 Sale.total_amount
-            ).label("revenue")
+            ).label("revenue"),
         )
         .filter(
             Sale.company_id == company_id
         )
     )
 
-
     if filters:
 
         if filters.get("from_date"):
-
             query = query.filter(
-                Sale.sale_date >= filters["from_date"]
+                Sale.sale_date
+                >= filters["from_date"]
             )
-
 
         if filters.get("to_date"):
-
             query = query.filter(
-                Sale.sale_date <= filters["to_date"]
+                Sale.sale_date
+                <= filters["to_date"]
             )
-
 
         if filters.get("sales_channel"):
-
             query = query.filter(
-                Sale.sales_channel ==
-                filters["sales_channel"]
+                Sale.sales_channel
+                == filters["sales_channel"]
             )
-
 
     rows = (
         query
@@ -2185,22 +2296,22 @@ def get_sales_by_channel(
         .all()
     )
 
-
     return [
-
         {
-            "sales_channel": row.sales_channel,
+            "channel":
+                row.channel or "Unknown",
 
-            "orders": row.orders,
+            "orders":
+                int(row.orders or 0),
 
-            "revenue": float(
-                row.revenue or 0
-            )
+            "revenue":
+                Decimal(
+                    str(row.revenue or 0)
+                ),
         }
-
         for row in rows
-
     ]
+
 
 # =====================================================
 # INVENTORY DISTRIBUTION
@@ -2214,32 +2325,43 @@ def get_inventory_distribution(
 
     rows = (
         db.query(
-            Inventory.stock_status.label("status"),
+            Category.name.label(
+                "category"
+            ),
 
-            func.count(
-                Inventory.id
-            ).label("products")
+            func.sum(
+                Inventory.available_stock
+            ).label("quantity"),
+        )
+        .join(
+            Product,
+            Product.id
+            == Inventory.product_id
+        )
+        .join(
+            Category,
+            Category.id
+            == Product.category_id
         )
         .filter(
-            Inventory.company_id == company_id
+            Inventory.company_id
+            == company_id
         )
         .group_by(
-            Inventory.stock_status
+            Category.name
         )
         .all()
     )
 
-
     return [
-
         {
-            "status": row.status,
+            "category":
+                row.category,
 
-            "products": row.products
+            "quantity":
+                int(row.quantity or 0),
         }
-
         for row in rows
-
     ]
 
 
@@ -2255,14 +2377,17 @@ def get_stock_status_summary(
 
     rows = (
         db.query(
-            Inventory.stock_status.label("status"),
+            Inventory.stock_status.label(
+                "status"
+            ),
 
             func.count(
                 Inventory.id
-            ).label("count")
+            ).label("count"),
         )
         .filter(
-            Inventory.company_id == company_id
+            Inventory.company_id
+            == company_id
         )
         .group_by(
             Inventory.stock_status
@@ -2270,18 +2395,16 @@ def get_stock_status_summary(
         .all()
     )
 
-
     return [
-
         {
-            "status": row.status,
-            "count": row.count
+            "status":
+                row.status or "Unknown",
+
+            "count":
+                int(row.count or 0),
         }
-
         for row in rows
-
     ]
-
 
 
 # =====================================================
@@ -2294,57 +2417,49 @@ def get_inventory_value_by_category(
     filters=None,
 ):
 
-
     rows = (
-
         db.query(
-
-            Category.name.label("category"),
+            Category.name.label(
+                "category_name"
+            ),
 
             func.sum(
-                Inventory.available_stock *
-                Product.unit_price
-            ).label("value")
-
+                Inventory.available_stock
+                * Product.unit_price
+            ).label("value"),
         )
-
         .join(
             Product,
-            Product.id == Inventory.product_id
+            Product.id
+            == Inventory.product_id
         )
-
         .join(
             Category,
-            Category.id == Product.category_id
+            Category.id
+            == Product.category_id
         )
-
         .filter(
-            Inventory.company_id == company_id
+            Inventory.company_id
+            == company_id
         )
-
         .group_by(
             Category.name
         )
-
         .all()
-
     )
 
-
     return [
-
         {
-            "category": row.category,
+            "category_name":
+                row.category_name,
 
-            "value": float(
-                row.value or 0
-            )
+            "value":
+                Decimal(
+                    str(row.value or 0)
+                ),
         }
-
         for row in rows
-
     ]
-
 
 
 # =====================================================
@@ -2357,12 +2472,23 @@ def get_low_stock_items(
     filters=None,
 ):
 
-
-    rows = (
-
+    query = (
         db.query(
+            Product.id.label(
+                "product_id"
+            ),
 
-            Product.name.label("product"),
+            Product.name.label(
+                "product_name"
+            ),
+
+            Product.sku.label(
+                "sku"
+            ),
+
+            Product.brand.label(
+                "brand"
+            ),
 
             Inventory.available_stock.label(
                 "available_stock"
@@ -2370,46 +2496,84 @@ def get_low_stock_items(
 
             Inventory.reorder_level.label(
                 "reorder_level"
-            )
-
+            ),
         )
-
         .join(
             Inventory,
-            Inventory.product_id == Product.id
+            Inventory.product_id
+            == Product.id
         )
-
         .filter(
-
-            Inventory.company_id == company_id,
-
-            Inventory.stock_status == "Low Stock"
-
+            Inventory.company_id
+            == company_id
         )
-
-        .all()
-
     )
 
+    # ---------------------------------------------
+    # LOW STOCK CONDITION
+    # ---------------------------------------------
+
+    query = query.filter(
+        or_(
+            Inventory.stock_status.in_(
+                [
+                    "Low Stock",
+                    "LOW_STOCK",
+                    "low_stock",
+                    "Low",
+                    "LOW",
+                ]
+            ),
+
+            Inventory.available_stock
+            <= Inventory.reorder_level
+        )
+    )
+
+    # ---------------------------------------------
+    # OPTIONAL PRODUCT FILTER
+    # ---------------------------------------------
+
+    if filters:
+
+        if filters.get("product"):
+            query = query.filter(
+                Product.name.ilike(
+                    f"%{filters['product']}%"
+                )
+            )
+
+        if filters.get("brand"):
+            query = query.filter(
+                Product.brand.ilike(
+                    f"%{filters['brand']}%"
+                )
+            )
+
+    rows = query.all()
 
     return [
-
         {
+            "product_id":
+                row.product_id,
 
-            "product": row.product,
+            "product_name":
+                row.product_name,
+
+            "sku":
+                row.sku or "",
+
+            "brand":
+                row.brand or "",
 
             "available_stock":
-                row.available_stock,
+                int(row.available_stock or 0),
 
             "reorder_level":
-                row.reorder_level
-
+                int(row.reorder_level or 0),
         }
-
         for row in rows
-
     ]
-
 
 
 # =====================================================
@@ -2422,51 +2586,82 @@ def get_out_of_stock_items(
     filters=None,
 ):
 
-
-    rows = (
-
+    query = (
         db.query(
+            Product.id.label(
+                "product_id"
+            ),
 
-            Product.name.label("product"),
+            Product.name.label(
+                "product_name"
+            ),
+
+            Product.brand.label(
+                "brand"
+            ),
 
             Inventory.available_stock.label(
                 "available_stock"
-            )
-
+            ),
         )
-
         .join(
             Inventory,
-            Inventory.product_id == Product.id
+            Inventory.product_id
+            == Product.id
         )
-
         .filter(
-
-            Inventory.company_id == company_id,
-
-            Inventory.stock_status == "Out of Stock"
-
+            Inventory.company_id
+            == company_id
         )
-
-        .all()
-
     )
 
+    query = query.filter(
+        or_(
+            Inventory.stock_status.in_(
+                [
+                    "Out of Stock",
+                    "OUT_OF_STOCK",
+                    "out_of_stock",
+                    "Out",
+                    "OUT",
+                ]
+            ),
+
+            Inventory.available_stock <= 0
+        )
+    )
+
+    if filters:
+
+        if filters.get("product"):
+            query = query.filter(
+                Product.name.ilike(
+                    f"%{filters['product']}%"
+                )
+            )
+
+        if filters.get("brand"):
+            query = query.filter(
+                Product.brand.ilike(
+                    f"%{filters['brand']}%"
+                )
+            )
+
+    rows = query.all()
 
     return [
-
         {
+            "product_id":
+                row.product_id,
 
-            "product": row.product,
+            "product_name":
+                row.product_name,
+
+            "brand":
+                row.brand,
 
             "available_stock":
-                row.available_stock
-
+                int(row.available_stock or 0),
         }
-
         for row in rows
-
     ]
-
-
-    

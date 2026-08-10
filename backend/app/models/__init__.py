@@ -20,8 +20,9 @@ from .sale_item import SaleItem
 # Customer Models
 from .customer import Customer
 from .customer_purchase_summary import CustomerPurchaseSummary
-
+from .customer import Customer
 
 # Forecast Models (Task 7)
 from .demand_forecast import DemandForecast
 from .forecast_history import ForecastHistory
+

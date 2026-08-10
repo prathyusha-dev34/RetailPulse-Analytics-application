@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   Box,
@@ -21,6 +21,9 @@ import {
   TableRow,
   TextField,
   Typography,
+  Alert,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 
 import {
@@ -29,6 +32,7 @@ import {
   Edit,
   Visibility,
   Search,
+  Refresh,
 } from "@mui/icons-material";
 
 import { useNavigate } from "react-router-dom";
@@ -47,6 +51,10 @@ export default function CustomerList() {
 
   const navigate = useNavigate();
 
+  // ====================================================
+  // STATE
+  // ====================================================
+
   const [customers, setCustomers] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -59,7 +67,8 @@ export default function CustomerList() {
 
   const [status, setStatus] = useState("");
 
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] =
+    useState<number | null>(null);
 
 
   // ====================================================
@@ -71,7 +80,6 @@ export default function CustomerList() {
     try {
 
       setLoading(true);
-
       setError("");
 
       const response = await getCustomers();
@@ -79,16 +87,22 @@ export default function CustomerList() {
       const data =
         Array.isArray(response)
           ? response
-          : response?.data ?? [];
+          : Array.isArray(response?.data)
+          ? response.data
+          : [];
 
       setCustomers(data);
 
     } catch (err: any) {
 
-      console.error(err);
+      console.error(
+        "Customer loading error:",
+        err
+      );
 
       setError(
         err?.response?.data?.detail ||
+        err?.response?.data?.message ||
         "Failed to load customers."
       );
 
@@ -99,6 +113,10 @@ export default function CustomerList() {
     }
   };
 
+
+  // ====================================================
+  // INITIAL LOAD
+  // ====================================================
 
   useEffect(() => {
 
@@ -111,7 +129,9 @@ export default function CustomerList() {
   // DELETE CUSTOMER
   // ====================================================
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (
+    customerId: number
+  ) => {
 
     const confirmed = window.confirm(
       "Are you sure you want to deactivate this customer?"
@@ -123,18 +143,24 @@ export default function CustomerList() {
 
     try {
 
-      setDeletingId(id);
+      setDeletingId(customerId);
 
-      await deleteCustomer(id);
+      setError("");
+
+      await deleteCustomer(customerId);
 
       await loadCustomers();
 
     } catch (err: any) {
 
-      console.error(err);
+      console.error(
+        "Delete customer error:",
+        err
+      );
 
       setError(
         err?.response?.data?.detail ||
+        err?.response?.data?.message ||
         "Failed to deactivate customer."
       );
 
@@ -150,54 +176,81 @@ export default function CustomerList() {
   // FILTER CUSTOMERS
   // ====================================================
 
-  const filteredCustomers = customers.filter(
-    (customer) => {
+  const filteredCustomers = useMemo(() => {
 
-      const searchValue =
-        search.trim().toLowerCase();
+    const searchText =
+      search.trim().toLowerCase();
 
-      const matchesSearch =
-        !searchValue ||
-        String(customer.full_name ?? "")
-          .toLowerCase()
-          .includes(searchValue) ||
-        String(customer.email ?? "")
-          .toLowerCase()
-          .includes(searchValue);
+    return customers.filter(
+      (customer) => {
 
-      const matchesSegment =
-        !segment ||
-        String(customer.customer_segment ?? "")
-          .toLowerCase() ===
-          segment.toLowerCase();
+        // ----------------------------------------------
+        // SEARCH BY NAME OR EMAIL
+        // ----------------------------------------------
 
-      const customerStatus =
-        String(customer.status ?? "")
-          .toUpperCase();
+        const matchesSearch =
+          !searchText ||
+          String(
+            customer.full_name ?? ""
+          )
+            .toLowerCase()
+            .includes(searchText) ||
+          String(
+            customer.email ?? ""
+          )
+            .toLowerCase()
+            .includes(searchText);
 
-      const matchesStatus =
-        !status ||
-        customerStatus === status;
+        // ----------------------------------------------
+        // SEGMENT
+        // ----------------------------------------------
 
-      return (
-        matchesSearch &&
-        matchesSegment &&
-        matchesStatus
-      );
-    }
-  );
+        const matchesSegment =
+          !segment ||
+          String(
+            customer.customer_segment ?? "New"
+          ).toLowerCase() ===
+            segment.toLowerCase();
+
+        // ----------------------------------------------
+        // STATUS
+        // ----------------------------------------------
+
+        const customerStatus =
+          String(
+            customer.status ?? ""
+          ).toUpperCase();
+
+        const matchesStatus =
+          !status ||
+          customerStatus === status;
+
+        return (
+          matchesSearch &&
+          matchesSegment &&
+          matchesStatus
+        );
+      }
+    );
+
+  }, [
+    customers,
+    search,
+    segment,
+    status,
+  ]);
 
 
   // ====================================================
-  // SEGMENT BADGE
+  // SEGMENT COLOR
   // ====================================================
 
   const getSegmentColor = (
-    value: string
+    value?: string
   ) => {
 
     switch (
-      String(value ?? "").toLowerCase()
+      String(value ?? "New").toLowerCase()
     ) {
 
       case "vip":
@@ -219,17 +272,30 @@ export default function CustomerList() {
 
 
   // ====================================================
-  // STATUS BADGE
+  // STATUS COLOR
   // ====================================================
 
   const getStatusColor = (
-    value: string
+    value?: string
   ) => {
 
     return String(value ?? "")
       .toUpperCase() === "ACTIVE"
       ? "success"
       : "default";
+  };
+
+
+  // ====================================================
+  // CLEAR FILTERS
+  // ====================================================
+
+  const clearFilters = () => {
+
+    setSearch("");
+    setSegment("");
+    setStatus("");
+
   };
 
 
@@ -244,16 +310,30 @@ export default function CustomerList() {
       <Box
         sx={{
           minHeight: "100vh",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
           background: "#0F172A",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
 
-        <CircularProgress />
+        <Box
+          textAlign="center"
+        >
+
+          <CircularProgress />
+
+          <Typography
+            color="white"
+            mt={2}
+          >
+            Loading customers...
+          </Typography>
+
+        </Box>
 
       </Box>
+
     );
   }
 
@@ -268,13 +348,16 @@ export default function CustomerList() {
       sx={{
         minHeight: "100vh",
         background: "#0F172A",
-        p: 3,
+        p: {
+          xs: 2,
+          md: 3,
+        },
       }}
     >
 
-      {/* ============================================= */}
+      {/* ================================================= */}
       {/* HEADER */}
-      {/* ============================================= */}
+      {/* ================================================= */}
 
       <Box
         display="flex"
@@ -299,55 +382,73 @@ export default function CustomerList() {
             color="#94A3B8"
             mt={0.5}
           >
-            Manage and monitor your customers
+            Manage your customer database
           </Typography>
 
         </Box>
 
 
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={() =>
-            navigate("/customers/add")
-          }
+        <Box
+          display="flex"
+          gap={1}
         >
-          Add Customer
-        </Button>
+
+          <Tooltip title="Refresh">
+
+            <IconButton
+              onClick={loadCustomers}
+              sx={{
+                color: "white",
+                border: "1px solid #475569",
+              }}
+            >
+
+              <Refresh />
+
+            </IconButton>
+
+          </Tooltip>
+
+
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={() =>
+              navigate("/customers/add")
+            }
+          >
+            Add Customer
+          </Button>
+
+        </Box>
 
       </Box>
 
 
-      {/* ============================================= */}
+      {/* ================================================= */}
       {/* ERROR */}
-      {/* ============================================= */}
+      {/* ================================================= */}
 
       {error && (
 
-        <Card
+        <Alert
+          severity="error"
           sx={{
             mb: 3,
-            background: "#450A0A",
-            color: "white",
           }}
+          onClose={() =>
+            setError("")
+          }
         >
-
-          <CardContent>
-
-            <Typography color="#FCA5A5">
-              {error}
-            </Typography>
-
-          </CardContent>
-
-        </Card>
+          {error}
+        </Alert>
 
       )}
 
 
-      {/* ============================================= */}
+      {/* ================================================= */}
       {/* FILTER CARD */}
-      {/* ============================================= */}
+      {/* ================================================= */}
 
       <Card
         sx={{
@@ -361,6 +462,7 @@ export default function CustomerList() {
           <Grid
             container
             spacing={2}
+            alignItems="center"
           >
 
             {/* SEARCH */}
@@ -373,7 +475,7 @@ export default function CustomerList() {
 
               <TextField
                 fullWidth
-                label="Search by name or email"
+                label="Search customer name or email"
                 value={search}
                 onChange={(e) =>
                   setSearch(e.target.value)
@@ -390,6 +492,7 @@ export default function CustomerList() {
                 }}
                 sx={{
                   background: "white",
+                  borderRadius: 1,
                 }}
               />
 
@@ -401,13 +504,15 @@ export default function CustomerList() {
             <Grid
               item
               xs={12}
-              md={3}
+              sm={6}
+              md={2.5}
             >
 
               <FormControl
                 fullWidth
                 sx={{
                   background: "white",
+                  borderRadius: 1,
                 }}
               >
 
@@ -419,7 +524,9 @@ export default function CustomerList() {
                   value={segment}
                   label="Segment"
                   onChange={(e) =>
-                    setSegment(e.target.value)
+                    setSegment(
+                      e.target.value
+                    )
                   }
                 >
 
@@ -455,13 +562,15 @@ export default function CustomerList() {
             <Grid
               item
               xs={12}
-              md={3}
+              sm={6}
+              md={2.5}
             >
 
               <FormControl
                 fullWidth
                 sx={{
                   background: "white",
+                  borderRadius: 1,
                 }}
               >
 
@@ -473,7 +582,9 @@ export default function CustomerList() {
                   value={status}
                   label="Status"
                   onChange={(e) =>
-                    setStatus(e.target.value)
+                    setStatus(
+                      e.target.value
+                    )
                   }
                 >
 
@@ -495,6 +606,28 @@ export default function CustomerList() {
 
             </Grid>
 
+
+            {/* CLEAR */}
+
+            <Grid
+              item
+              xs={12}
+              md={1}
+            >
+
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={clearFilters}
+                sx={{
+                  height: 56,
+                }}
+              >
+                Clear
+              </Button>
+
+            </Grid>
+
           </Grid>
 
         </CardContent>
@@ -502,49 +635,64 @@ export default function CustomerList() {
       </Card>
 
 
-      {/* ============================================= */}
-      {/* CUSTOMER TABLE */}
-      {/* ============================================= */}
+      {/* ================================================= */}
+      {/* SUMMARY */}
+      {/* ================================================= */}
+
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={2}
+      >
+
+        <Typography
+          color="#CBD5E1"
+        >
+          Showing{" "}
+          <strong>
+            {filteredCustomers.length}
+          </strong>{" "}
+          of{" "}
+          <strong>
+            {customers.length}
+          </strong>{" "}
+          customers
+        </Typography>
+
+      </Box>
+
+
+      {/* ================================================= */}
+      {/* TABLE CARD */}
+      {/* ================================================= */}
 
       <Card
         sx={{
           background: "#1E293B",
+          overflow: "hidden",
         }}
       >
 
-        <CardContent>
-
-          <Box
-            display="flex"
-            justifyContent="space-between"
-            mb={2}
-          >
-
-            <Typography
-              variant="h6"
-              color="white"
-            >
-              Customer List
-            </Typography>
-
-            <Typography
-              color="#94A3B8"
-            >
-              {filteredCustomers.length} customers
-            </Typography>
-
-          </Box>
-
+        <CardContent
+          sx={{
+            p: 0,
+            "&:last-child": {
+              pb: 0,
+            },
+          }}
+        >
 
           {filteredCustomers.length === 0 ? (
 
-            /* ======================================= */
+            /* =========================================== */
             /* EMPTY STATE */
-            /* ======================================= */
+            /* =========================================== */
 
             <Box
               sx={{
-                py: 8,
+                py: 10,
+                px: 3,
                 textAlign: "center",
               }}
             >
@@ -560,87 +708,132 @@ export default function CustomerList() {
                 color="#94A3B8"
                 mt={1}
               >
-                Try changing your search or filters.
+                {customers.length === 0
+                  ? "No customers have been added yet."
+                  : "Try changing your search or filters."}
               </Typography>
+
+              {customers.length === 0 && (
+
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  sx={{
+                    mt: 3,
+                  }}
+                  onClick={() =>
+                    navigate(
+                      "/customers/add"
+                    )
+                  }
+                >
+                  Add First Customer
+                </Button>
+
+              )}
 
             </Box>
 
           ) : (
 
-            <TableContainer>
+            <TableContainer
+              sx={{
+                overflowX: "auto",
+              }}
+            >
 
-              <Table>
+              <Table
+                sx={{
+                  minWidth: 1100,
+                }}
+              >
+
+                {/* ===================================== */}
+                {/* HEADER */}
+                {/* ===================================== */}
 
                 <TableHead>
 
-                  <TableRow>
+                  <TableRow
+                    sx={{
+                      background: "#0F172A",
+                    }}
+                  >
 
                     <TableCell
                       sx={{
-                        color: "#94A3B8",
+                        color: "#CBD5E1",
                         fontWeight: "bold",
                       }}
                     >
                       Customer Name
                     </TableCell>
 
+
                     <TableCell
                       sx={{
-                        color: "#94A3B8",
+                        color: "#CBD5E1",
                         fontWeight: "bold",
                       }}
                     >
                       Email
                     </TableCell>
 
+
                     <TableCell
                       sx={{
-                        color: "#94A3B8",
+                        color: "#CBD5E1",
                         fontWeight: "bold",
                       }}
                     >
                       Phone Number
                     </TableCell>
 
-                    <TableCell
-                      sx={{
-                        color: "#94A3B8",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      Segment
-                    </TableCell>
 
                     <TableCell
                       sx={{
-                        color: "#94A3B8",
+                        color: "#CBD5E1",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Customer Segment
+                    </TableCell>
+
+
+                    <TableCell
+                      sx={{
+                        color: "#CBD5E1",
                         fontWeight: "bold",
                       }}
                     >
                       Total Purchases
                     </TableCell>
 
+
                     <TableCell
                       sx={{
-                        color: "#94A3B8",
+                        color: "#CBD5E1",
                         fontWeight: "bold",
                       }}
                     >
                       Total Spend
                     </TableCell>
 
+
                     <TableCell
                       sx={{
-                        color: "#94A3B8",
+                        color: "#CBD5E1",
                         fontWeight: "bold",
                       }}
                     >
                       Status
                     </TableCell>
 
+
                     <TableCell
+                      align="center"
                       sx={{
-                        color: "#94A3B8",
+                        color: "#CBD5E1",
                         fontWeight: "bold",
                       }}
                     >
@@ -652,6 +845,10 @@ export default function CustomerList() {
                 </TableHead>
 
 
+                {/* ===================================== */}
+                {/* BODY */}
+                {/* ===================================== */}
+
                 <TableBody>
 
                   {filteredCustomers.map(
@@ -660,9 +857,15 @@ export default function CustomerList() {
                       <TableRow
                         key={customer.id}
                         hover
+                        sx={{
+                          "&:hover": {
+                            background:
+                              "#263449",
+                          },
+                        }}
                       >
 
-                        {/* NAME */}
+                        {/* CUSTOMER NAME */}
 
                         <TableCell
                           sx={{
@@ -679,7 +882,7 @@ export default function CustomerList() {
 
                           <Typography
                             variant="caption"
-                            color="#94A3B8"
+                            color="#64748B"
                           >
                             {customer.customer_id ||
                               ""}
@@ -737,9 +940,11 @@ export default function CustomerList() {
                         <TableCell
                           sx={{
                             color: "white",
+                            fontWeight: 500,
                           }}
                         >
-                          {customer.total_orders ?? 0}
+                          {customer.total_orders ??
+                            0}
                         </TableCell>
 
 
@@ -748,16 +953,24 @@ export default function CustomerList() {
                         <TableCell
                           sx={{
                             color: "white",
+                            fontWeight: 500,
                           }}
                         >
+
                           ₹{" "}
+
                           {Number(
                             customer.lifetime_revenue ??
                             customer.total_purchase_amount ??
                             0
                           ).toLocaleString(
-                            "en-IN"
+                            "en-IN",
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
                           )}
+
                         </TableCell>
 
 
@@ -792,66 +1005,117 @@ export default function CustomerList() {
 
                           <Box
                             display="flex"
+                            justifyContent="center"
                             gap={1}
                           >
 
-                            {/* DETAILS */}
+                            {/* VIEW */}
 
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() =>
-                                navigate(
-                                  `/customers/${customer.id}`
-                                )
-                              }
+                            <Tooltip
+                              title="View Customer"
                             >
-                              <Visibility />
-                            </Button>
+
+                              <IconButton
+                                size="small"
+                                sx={{
+                                  color:
+                                    "#60A5FA",
+                                  border:
+                                    "1px solid #60A5FA",
+                                }}
+                                onClick={() =>
+                                  navigate(
+                                    `/customers/${customer.id}`
+                                  )
+                                }
+                              >
+
+                                <Visibility
+                                  fontSize="small"
+                                />
+
+                              </IconButton>
+
+                            </Tooltip>
 
 
                             {/* EDIT */}
 
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() =>
-                                navigate(
-                                  `/customers/${customer.id}/edit`
-                                )
-                              }
+                            <Tooltip
+                              title="Edit Customer"
                             >
-                              <Edit />
-                            </Button>
+
+                              <IconButton
+                                size="small"
+                                sx={{
+                                  color:
+                                    "#FBBF24",
+                                  border:
+                                    "1px solid #FBBF24",
+                                }}
+                                onClick={() =>
+                                  navigate(
+                                    `/customers/${customer.id}/edit`
+                                  )
+                                }
+                              >
+
+                                <Edit
+                                  fontSize="small"
+                                />
+
+                              </IconButton>
+
+                            </Tooltip>
 
 
                             {/* DELETE */}
 
-                            <Button
-                              size="small"
-                              color="error"
-                              variant="outlined"
-                              disabled={
-                                deletingId ===
-                                customer.id
-                              }
-                              onClick={() =>
-                                handleDelete(
-                                  customer.id
-                                )
-                              }
+                            <Tooltip
+                              title="Deactivate Customer"
                             >
 
-                              {deletingId ===
-                              customer.id ? (
-                                <CircularProgress
-                                  size={20}
-                                />
-                              ) : (
-                                <Delete />
-                              )}
+                              <span>
 
-                            </Button>
+                                <IconButton
+                                  size="small"
+                                  disabled={
+                                    deletingId ===
+                                    customer.id
+                                  }
+                                  sx={{
+                                    color:
+                                      "#F87171",
+                                    border:
+                                      "1px solid #F87171",
+                                  }}
+                                  onClick={() =>
+                                    handleDelete(
+                                      customer.id
+                                    )
+                                  }
+                                >
+
+                                  {deletingId ===
+                                  customer.id ? (
+
+                                    <CircularProgress
+                                      size={18}
+                                    />
+
+                                  ) : (
+
+                                    <Delete
+                                      fontSize="small"
+                                    />
+
+                                  )}
+
+                                </IconButton>
+
+                              </span>
+
+                            </Tooltip>
 
                           </Box>
 
@@ -876,7 +1140,6 @@ export default function CustomerList() {
 
     </Box>
   );
-
-  
 }
+
 

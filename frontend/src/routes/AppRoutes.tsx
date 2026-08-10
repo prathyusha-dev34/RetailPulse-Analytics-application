@@ -1,5 +1,5 @@
-import { Routes, Route } from "react-router-dom";
 
+import { Routes, Route } from "react-router-dom";
 
 import Layout from "../layouts/Layout";
 
@@ -30,30 +30,32 @@ import EditCustomer from "../pages/customers/EditCustomer";
 import CustomerProfile from "../pages/customers/CustomerProfile";
 import CustomerAnalytics from "../pages/customers/CustomerAnalytics";
 import TopCustomers from "../pages/customers/TopCustomers";
+
 import Notifications from "../pages/Notifications";
 import AuditLogs from "../pages/AuditLogs";
 import Forecast from "../pages/Forecast";
+
 import ProtectedRoute from "../components/ProtectedRoute";
 
 
-
+// ==========================================================
+// APP ROUTES
+// ==========================================================
 
 export default function AppRoutes() {
-
 
   return (
 
     <Routes>
 
-
-      {/* PUBLIC ROUTES */}
-
+      {/* =====================================================
+          PUBLIC ROUTES
+      ===================================================== */}
 
       <Route
         path="/login"
         element={<Login />}
       />
-
 
       <Route
         path="/register"
@@ -61,11 +63,9 @@ export default function AppRoutes() {
       />
 
 
-
-
-
-      {/* DASHBOARD */}
-
+      {/* =====================================================
+          DASHBOARD
+      ===================================================== */}
 
       <Route
         path="/"
@@ -77,8 +77,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-
 
       <Route
         path="/dashboard"
@@ -92,11 +90,9 @@ export default function AppRoutes() {
       />
 
 
-
-
-
-      {/* PROFILE */}
-
+      {/* =====================================================
+          PROFILE
+      ===================================================== */}
 
       <Route
         path="/profile"
@@ -110,11 +106,9 @@ export default function AppRoutes() {
       />
 
 
-
-
-
-      {/* CATEGORIES */}
-
+      {/* =====================================================
+          CATEGORIES
+      ===================================================== */}
 
       <Route
         path="/categories"
@@ -128,11 +122,9 @@ export default function AppRoutes() {
       />
 
 
-
-
-
-      {/* PRODUCTS */}
-
+      {/* =====================================================
+          PRODUCTS
+      ===================================================== */}
 
       <Route
         path="/products"
@@ -144,8 +136,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-
 
       <Route
         path="/product-dashboard"
@@ -159,12 +149,9 @@ export default function AppRoutes() {
       />
 
 
-
-
-
-
-      {/* INVENTORY */}
-
+      {/* =====================================================
+          INVENTORY
+      ===================================================== */}
 
       <Route
         path="/inventory"
@@ -176,8 +163,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-
 
       <Route
         path="/inventory/movements"
@@ -191,13 +176,9 @@ export default function AppRoutes() {
       />
 
 
-
-
-
-
-
-      {/* SALES */}
-
+      {/* =====================================================
+          SALES
+      ===================================================== */}
 
       <Route
         path="/sales"
@@ -210,8 +191,6 @@ export default function AppRoutes() {
         }
       />
 
-
-
       <Route
         path="/sales/add"
         element={
@@ -223,8 +202,6 @@ export default function AppRoutes() {
         }
       />
 
-
-
       <Route
         path="/sales/edit/:id"
         element={
@@ -235,8 +212,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-
 
       <Route
         path="/sales/:id"
@@ -250,13 +225,11 @@ export default function AppRoutes() {
       />
 
 
+      {/* =====================================================
+          CUSTOMERS
+      ===================================================== */}
 
-
-
-
-
-      {/* CUSTOMERS */}
-
+      {/* Customer List */}
 
       <Route
         path="/customers"
@@ -270,6 +243,7 @@ export default function AppRoutes() {
       />
 
 
+      {/* Add Customer */}
 
       <Route
         path="/customers/add"
@@ -283,32 +257,7 @@ export default function AppRoutes() {
       />
 
 
-
-      <Route
-        path="/customers/:id/edit"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <EditCustomer />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-
-
-
-      <Route
-        path="/customers/:id/profile"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <CustomerProfile />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-
-
+      {/* Customer Analytics */}
 
       <Route
         path="/customers/analytics"
@@ -322,13 +271,51 @@ export default function AppRoutes() {
       />
 
 
+      {/* Top Customers */}
+
+      <Route
+        path="/customers/top-customers"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <TopCustomers />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
 
 
+      {/* Customer Profile */}
+
+      <Route
+        path="/customers/:id/profile"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <CustomerProfile />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
 
 
+      {/* Edit Customer */}
 
-      {/* REPORTS */}
+      <Route
+        path="/customers/:id/edit"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <EditCustomer />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
 
+
+      {/* =====================================================
+          REPORTS
+      ===================================================== */}
 
       <Route
         path="/reports"
@@ -342,13 +329,9 @@ export default function AppRoutes() {
       />
 
 
-
-
-
-
-
-      {/* ANALYTICS */}
-
+      {/* =====================================================
+          ANALYTICS
+      ===================================================== */}
 
       <Route
         path="/analytics"
@@ -360,25 +343,11 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      
-
-      <Route
-  path="/customers/top-customers"
-  element={
-    <ProtectedRoute>
-      <Layout>
-        <TopCustomers />
-      </Layout>
-    </ProtectedRoute>
-  }
-/>
 
 
-
-
-
-      {/* AUDIT LOGS */}
-
+      {/* =====================================================
+          AUDIT LOGS
+      ===================================================== */}
 
       <Route
         path="/audit-logs"
@@ -391,23 +360,26 @@ export default function AppRoutes() {
         }
       />
 
+
+      {/* =====================================================
+          FORECAST
+      ===================================================== */}
+
       <Route
-  path="/forecast"
-  element={
-    <ProtectedRoute>
-      <Layout>
-        <Forecast />
-      </Layout>
-    </ProtectedRoute>
-  }
-/>
+        path="/forecast"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Forecast />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
 
 
-
-
-
-      {/* NOTIFICATIONS */}
-
+      {/* =====================================================
+          NOTIFICATIONS
+      ===================================================== */}
 
       <Route
         path="/notifications"
@@ -420,9 +392,7 @@ export default function AppRoutes() {
         }
       />
 
-
     </Routes>
-
   );
-
 }
+

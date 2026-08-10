@@ -1,14 +1,16 @@
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Typography,
-  TextField,
-  Button,
   Grid,
+  TextField,
+  MenuItem,
   Table,
   TableBody,
   TableCell,
@@ -18,8 +20,9 @@ import {
   Paper,
   Chip,
   IconButton,
-  MenuItem,
   CircularProgress,
+  Alert,
+  InputAdornment,
 } from "@mui/material";
 
 import {
@@ -28,14 +31,15 @@ import {
   Delete,
   CheckCircle,
   Cancel,
+  Search,
   Download,
+  Clear,
 } from "@mui/icons-material";
 
 import {
   getCustomers,
   searchCustomers,
   filterCustomers,
-  sortCustomers,
   deleteCustomer,
   activateCustomer,
   deactivateCustomer,
@@ -46,6 +50,46 @@ import {
 } from "../../services/customerService";
 
 // =====================================================
+// TYPES
+// =====================================================
+
+interface Customer {
+  id?: number;
+  customer_id?: string;
+
+  full_name?: string;
+  email?: string;
+  phone_number?: string;
+
+  customer_type?: string;
+  customer_segment?: string;
+  status?: string;
+
+  total_orders?: number;
+  total_quantity_purchased?: number;
+
+  lifetime_revenue?: number;
+  total_revenue?: number;
+  total_purchase_amount?: number;
+
+  average_order_value?: number;
+  purchase_frequency?: number;
+
+  last_purchase_date?: string;
+  created_at?: string;
+
+  is_vip?: string | boolean;
+}
+
+interface Dashboard {
+  total_customers?: number;
+  active_customers?: number;
+  inactive_customers?: number;
+  vip_customers?: number;
+  total_revenue_generated?: number;
+}
+
+// =====================================================
 // COMPONENT
 // =====================================================
 
@@ -53,54 +97,86 @@ export default function Customers() {
   const navigate = useNavigate();
 
   // =====================================================
-  // STATES
+  // STATE
   // =====================================================
 
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [dashboard, setDashboard] = useState<any>({});
-  const [loading, setLoading] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
-  const [search, setSearch] = useState("");
-  const [customerType, setCustomerType] = useState("");
-  const [status, setStatus] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [country, setCountry] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [sortBy, setSortBy] = useState("");
+  const [dashboard, setDashboard] =
+    useState<Dashboard>({});
+
+  const [loading, setLoading] =
+    useState<boolean>(true);
+
+  const [error, setError] =
+    useState<string>("");
+
+  const [search, setSearch] =
+    useState<string>("");
+
+  const [segment, setSegment] =
+    useState<string>("");
+
+  const [status, setStatus] =
+    useState<string>("");
+
+  const [sortBy, setSortBy] =
+    useState<string>("");
+
+  const [actionLoading, setActionLoading] =
+    useState<number | string | null>(null);
 
   // =====================================================
   // NORMALIZE RESPONSE
   // =====================================================
 
-  const normalizeCustomers = (data: any[]) => {
-    return data.map((customer: any) => ({
-      ...customer,
+  const extractCustomerList = (
+    response: any
+  ): Customer[] => {
+    if (Array.isArray(response)) {
+      return response;
+    }
 
-      id: customer.id,
-      customer_id: customer.customer_id,
+    if (Array.isArray(response?.data)) {
+      return response.data;
+    }
+
+    if (Array.isArray(response?.customers)) {
+      return response.customers;
+    }
+
+    if (Array.isArray(response?.items)) {
+      return response.items;
+    }
+
+    if (Array.isArray(response?.results)) {
+      return response.results;
+    }
+
+    return [];
+  };
+
+  // =====================================================
+  // NORMALIZE CUSTOMER
+  // =====================================================
+
+  const normalizeCustomers = (
+    list: Customer[]
+  ): Customer[] => {
+    return list.map((customer) => ({
+      ...customer,
 
       full_name:
         customer.full_name ??
-        customer.customer_name ??
         "-",
 
-      email: customer.email ?? "",
+      email:
+        customer.email ??
+        "",
 
       phone_number:
-        customer.phone_number ?? "",
-
-      customer_type:
-        customer.customer_type ?? "-",
-
-      total_orders:
-        customer.total_orders ?? 0,
-
-      lifetime_revenue:
-        customer.lifetime_revenue ??
-        customer.total_revenue ??
-        0,
+        customer.phone_number ??
+        "",
 
       customer_segment:
         customer.customer_segment ??
@@ -109,6 +185,19 @@ export default function Customers() {
       status:
         customer.status ??
         "ACTIVE",
+
+      total_orders:
+        Number(
+          customer.total_orders ?? 0
+        ),
+
+      lifetime_revenue:
+        Number(
+          customer.lifetime_revenue ??
+          customer.total_revenue ??
+          customer.total_purchase_amount ??
+          0
+        ),
     }));
   };
 
@@ -121,11 +210,16 @@ export default function Customers() {
       const response =
         await getCustomerDashboard();
 
-      setDashboard(response || {});
-    } catch (error) {
-      console.log(
-        "Dashboard Error",
-        error
+      const data =
+        response?.data ??
+        response ??
+        {};
+
+      setDashboard(data);
+    } catch (err) {
+      console.error(
+        "Dashboard error:",
+        err
       );
 
       setDashboard({});
@@ -139,147 +233,87 @@ export default function Customers() {
   const loadCustomers = async () => {
     try {
       setLoading(true);
+      setError("");
 
-      let response;
+      let response: any;
+
+      // -----------------------------------------------
+      // SEARCH
+      // -----------------------------------------------
 
       if (search.trim()) {
         response =
           await searchCustomers(
             search.trim()
           );
-      } else if (
-        customerType ||
-        status ||
-        city ||
-        state ||
-        country ||
-        fromDate ||
-        toDate
+      }
+
+      // -----------------------------------------------
+      // FILTER
+      // -----------------------------------------------
+
+      else if (
+        segment ||
+        status
       ) {
         response =
           await filterCustomers({
-            customer_type:
-              customerType,
-            status,
-            city,
-            state,
-            country,
-            from_date:
-              fromDate,
-            to_date:
-              toDate,
+            customer_segment:
+              segment || undefined,
+
+            status:
+              status || undefined,
           });
-      } else if (sortBy) {
+      }
+
+      // -----------------------------------------------
+      // SORT
+      // -----------------------------------------------
+
+      else if (sortBy) {
         response =
-          await sortCustomers(
-            sortBy
-          );
-      } else {
+          await filterCustomers({
+            sort_by: sortBy,
+            order: "desc",
+          });
+      }
+
+      // -----------------------------------------------
+      // GET ALL
+      // -----------------------------------------------
+
+      else {
         response =
           await getCustomers();
       }
 
       console.log(
-        "CUSTOMERS RESPONSE",
+        "CUSTOMER RESPONSE:",
         response
       );
 
-      let list: any[] = [];
-
-      if (Array.isArray(response)) {
-        list = response;
-      } else if (
-        Array.isArray(response?.data)
-      ) {
-        list = response.data;
-      } else if (
-        Array.isArray(
-          response?.customers
-        )
-      ) {
-        list =
-          response.customers;
-      } else if (
-        Array.isArray(
-          response?.items
-        )
-      ) {
-        list = response.items;
-      } else if (
-        Array.isArray(
-          response?.results
-        )
-      ) {
-        list =
-          response.results;
-      }
-
-      console.log(
-        "FINAL CUSTOMER LIST",
-        list
-      );
+      const list =
+        extractCustomerList(response);
 
       setCustomers(
         normalizeCustomers(list)
       );
-    } catch (error) {
-      console.log(
-        "Customer Load Error",
-        error
+    } catch (err: any) {
+      console.error(
+        "Customer loading error:",
+        err
       );
 
       setCustomers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
+      const backendMessage =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message;
 
-    // =====================================================
-  // SEARCH
-  // =====================================================
-
-  const handleSearch = async () => {
-    try {
-      setLoading(true);
-
-      const response = await searchCustomers(
-        search.trim()
+      setError(
+        backendMessage ||
+        "Failed to load customers. Please try again."
       );
-
-      console.log(
-        "SEARCH RESPONSE",
-        response
-      );
-
-      let list: any[] = [];
-
-      if (Array.isArray(response)) {
-        list = response;
-      } else if (
-        Array.isArray(response?.customers)
-      ) {
-        list = response.customers;
-      } else if (
-        Array.isArray(response?.data)
-      ) {
-        list = response.data;
-      } else if (
-        Array.isArray(response?.items)
-      ) {
-        list = response.items;
-      }
-
-      setCustomers(
-        normalizeCustomers(list)
-      );
-    } catch (error) {
-      console.log(
-        "Search Error",
-        error
-      );
-
-      setCustomers([]);
     } finally {
       setLoading(false);
     }
@@ -295,28 +329,66 @@ export default function Customers() {
   }, []);
 
   // =====================================================
+  // APPLY FILTERS
+  // =====================================================
+
+  const handleApplyFilters = () => {
+    loadCustomers();
+  };
+
+  // =====================================================
+  // CLEAR FILTERS
+  // =====================================================
+
+  const handleClearFilters = () => {
+    setSearch("");
+    setSegment("");
+    setStatus("");
+    setSortBy("");
+
+    setTimeout(() => {
+      loadCustomers();
+    }, 0);
+  };
+
+  // =====================================================
   // DELETE CUSTOMER
   // =====================================================
 
   const handleDelete = async (
     id: number | string
   ) => {
-    try {
-      if (
-        window.confirm(
-          "Delete customer?"
-        )
-      ) {
-        await deleteCustomer(id);
-
-        await loadCustomers();
-        await loadDashboard();
-      }
-    } catch (error) {
-      console.log(
-        "Delete Error",
-        error
+    const confirmed =
+      window.confirm(
+        "Are you sure you want to delete this customer?"
       );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setActionLoading(id);
+      setError("");
+
+      await deleteCustomer(id);
+
+      await loadCustomers();
+      await loadDashboard();
+    } catch (err: any) {
+      console.error(
+        "Delete customer error:",
+        err
+      );
+
+      const message =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        "Failed to delete customer.";
+
+      setError(message);
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -324,12 +396,17 @@ export default function Customers() {
   // ACTIVATE / DEACTIVATE
   // =====================================================
 
-  const handleStatus = async (
+  const handleStatusChange = async (
     id: number | string,
-    current: string
+    currentStatus?: string
   ) => {
     try {
-      if (current === "ACTIVE") {
+      setActionLoading(id);
+      setError("");
+
+      if (
+        currentStatus === "ACTIVE"
+      ) {
         await deactivateCustomer(id);
       } else {
         await activateCustomer(id);
@@ -337,23 +414,35 @@ export default function Customers() {
 
       await loadCustomers();
       await loadDashboard();
-    } catch (error) {
-      console.log(
-        "Status Error",
-        error
+    } catch (err: any) {
+      console.error(
+        "Status change error:",
+        err
       );
+
+      const message =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        "Failed to update customer status.";
+
+      setError(message);
+    } finally {
+      setActionLoading(null);
     }
   };
 
   // =====================================================
-  // DOWNLOAD FILE
+  // DOWNLOAD HELPER
   // =====================================================
 
   const downloadFile = (
-    data: any,
+    data: Blob,
     filename: string
   ) => {
-    const blob = new Blob([data]);
+    const blob =
+      data instanceof Blob
+        ? data
+        : new Blob([data]);
 
     const url =
       window.URL.createObjectURL(blob);
@@ -365,18 +454,22 @@ export default function Customers() {
     link.download = filename;
 
     document.body.appendChild(link);
+
     link.click();
-    link.remove();
+
+    document.body.removeChild(link);
 
     window.URL.revokeObjectURL(url);
   };
 
   // =====================================================
-  // EXPORTS
+  // EXPORT CSV
   // =====================================================
 
   const handleExportCSV = async () => {
     try {
+      setError("");
+
       const data =
         await exportCustomersCSV();
 
@@ -384,16 +477,26 @@ export default function Customers() {
         data,
         "customers.csv"
       );
-    } catch (error) {
-      console.log(
-        "CSV Export Error",
-        error
+    } catch (err) {
+      console.error(
+        "CSV export error:",
+        err
+      );
+
+      setError(
+        "Failed to export customer CSV."
       );
     }
   };
 
+  // =====================================================
+  // EXPORT PDF
+  // =====================================================
+
   const handleExportPDF = async () => {
     try {
+      setError("");
+
       const data =
         await exportCustomersPDF();
 
@@ -401,17 +504,27 @@ export default function Customers() {
         data,
         "customers.pdf"
       );
-    } catch (error) {
-      console.log(
-        "PDF Export Error",
-        error
+    } catch (err) {
+      console.error(
+        "PDF export error:",
+        err
+      );
+
+      setError(
+        "Failed to export customer PDF."
       );
     }
   };
 
+  // =====================================================
+  // EXPORT ANALYTICS PDF
+  // =====================================================
+
   const handleAnalyticsPDF =
     async () => {
       try {
+        setError("");
+
         const data =
           await exportCustomerAnalyticsPDF();
 
@@ -419,59 +532,288 @@ export default function Customers() {
           data,
           "customer-analytics.pdf"
         );
-      } catch (error) {
-        console.log(
-          "Analytics PDF Error",
-          error
+      } catch (err) {
+        console.error(
+          "Analytics PDF error:",
+          err
+        );
+
+        setError(
+          "Failed to export analytics PDF."
         );
       }
     };
 
   // =====================================================
-  // RETURN
+  // SEGMENT COLOR
+  // =====================================================
+
+  const getSegmentColor = (
+    value?: string
+  ):
+    | "default"
+    | "primary"
+    | "secondary"
+    | "success"
+    | "warning"
+    | "error" => {
+    switch (
+      (value || "New").toLowerCase()
+    ) {
+      case "vip":
+        return "warning";
+
+      case "loyal":
+        return "success";
+
+      case "regular":
+        return "primary";
+
+      case "new":
+      default:
+        return "default";
+    }
+  };
+
+  // =====================================================
+  // SEGMENT STYLE
+  // =====================================================
+
+  const getSegmentStyle = (
+    value?: string
+  ) => {
+    switch (
+      (value || "New").toLowerCase()
+    ) {
+      case "vip":
+        return {
+          background: "#F59E0B",
+          color: "#111827",
+          fontWeight: "bold",
+        };
+
+      case "loyal":
+        return {
+          background: "#10B981",
+          color: "white",
+          fontWeight: "bold",
+        };
+
+      case "regular":
+        return {
+          background: "#3B82F6",
+          color: "white",
+          fontWeight: "bold",
+        };
+
+      case "new":
+      default:
+        return {
+          background: "#64748B",
+          color: "white",
+          fontWeight: "bold",
+        };
+    }
+  };
+
+  // =====================================================
+  // FORMAT MONEY
+  // =====================================================
+
+  const formatMoney = (
+    value?: number
+  ) => {
+    return Number(
+      value ?? 0
+    ).toLocaleString(
+      "en-IN",
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }
+    );
+  };
+
+  // =====================================================
+  // FORMAT DATE
+  // =====================================================
+
+  const formatDate = (
+    value?: string
+  ) => {
+    if (!value) {
+      return "-";
+    }
+
+    const date =
+      new Date(value);
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return value;
+    }
+
+    return date.toLocaleDateString(
+      "en-IN"
+    );
+  };
+
+  // =====================================================
+  // LOADING STATE
+  // =====================================================
+
+  if (
+    loading &&
+    customers.length === 0
+  ) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          background: "#0F172A",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <Box
+          sx={{
+            textAlign: "center",
+          }}
+        >
+          <CircularProgress />
+
+          <Typography
+            sx={{
+              mt: 2,
+              color: "white",
+            }}
+          >
+            Loading customers...
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
+  // =====================================================
+  // UI
   // =====================================================
 
   return (
     <Box
       sx={{
-        p: 3,
-        background: "#0F172A",
+        p: {
+          xs: 2,
+          md: 3,
+        },
         minHeight: "100vh",
+        background: "#0F172A",
         color: "white",
       }}
     >
+      {/* =================================================
+          HEADER
+      ================================================= */}
 
-
-        <Typography
-        variant="h4"
-        fontWeight="bold"
-        mb={3}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent:
+            "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 2,
+          mb: 3,
+        }}
       >
-        Customer Management
-      </Typography>
+        <Box>
+          <Typography
+            variant="h4"
+            fontWeight="bold"
+          >
+            Customer Management
+          </Typography>
 
-      {/* ===================================================== */}
-      {/* DASHBOARD CARDS                                       */}
-      {/* ===================================================== */}
+          <Typography
+            sx={{
+              color: "#94A3B8",
+              mt: 0.5,
+            }}
+          >
+            Manage customers, segments,
+            purchases and customer status.
+          </Typography>
+        </Box>
+
+        <Button
+          variant="contained"
+          onClick={() =>
+            navigate(
+              "/customers/add"
+            )
+          }
+        >
+          + Add Customer
+        </Button>
+      </Box>
+
+      {/* =================================================
+          ERROR
+      ================================================= */}
+
+      {error && (
+        <Alert
+          severity="error"
+          sx={{
+            mb: 3,
+          }}
+          onClose={() =>
+            setError("")
+          }
+        >
+          {error}
+        </Alert>
+      )}
+
+      {/* =================================================
+          DASHBOARD
+      ================================================= */}
 
       <Grid
         container
         spacing={3}
-        mb={4}
+        sx={{
+          mb: 4,
+        }}
       >
-        <Grid item xs={12} md={3}>
+        {/* TOTAL CUSTOMERS */}
+
+        <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
-              background: "#1E293B",
+              background:
+                "#1E293B",
               color: "white",
             }}
           >
             <CardContent>
-              <Typography>
+              <Typography
+                color="#94A3B8"
+              >
                 Total Customers
               </Typography>
 
-              <Typography variant="h4">
+              <Typography
+                variant="h4"
+                fontWeight="bold"
+                sx={{
+                  mt: 1,
+                }}
+              >
                 {dashboard.total_customers ??
                   customers.length}
               </Typography>
@@ -479,23 +821,34 @@ export default function Customers() {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
+        {/* ACTIVE */}
+
+        <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
-              background: "#1E293B",
+              background:
+                "#1E293B",
               color: "white",
             }}
           >
             <CardContent>
-              <Typography>
+              <Typography
+                color="#94A3B8"
+              >
                 Active Customers
               </Typography>
 
-              <Typography variant="h4">
+              <Typography
+                variant="h4"
+                fontWeight="bold"
+                sx={{
+                  mt: 1,
+                }}
+              >
                 {dashboard.active_customers ??
                   customers.filter(
-                    (c) =>
-                      c.status ===
+                    (customer) =>
+                      customer.status ===
                       "ACTIVE"
                   ).length}
               </Typography>
@@ -503,301 +856,307 @@ export default function Customers() {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
+        {/* VIP */}
+
+        <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
-              background: "#1E293B",
+              background:
+                "#1E293B",
               color: "white",
             }}
           >
             <CardContent>
-              <Typography>
+              <Typography
+                color="#94A3B8"
+              >
                 VIP Customers
               </Typography>
 
-              <Typography variant="h4">
+              <Typography
+                variant="h4"
+                fontWeight="bold"
+                sx={{
+                  mt: 1,
+                }}
+              >
                 {dashboard.vip_customers ??
                   customers.filter(
-                    (c) =>
-                      c.customer_segment ===
-                      "VIP"
+                    (customer) =>
+                      customer.customer_segment
+                        ?.toLowerCase() ===
+                      "vip"
                   ).length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
+        {/* TOTAL SPEND */}
+
+        <Grid item xs={12} sm={6} md={3}>
           <Card
             sx={{
-              background: "#1E293B",
+              background:
+                "#1E293B",
               color: "white",
             }}
           >
             <CardContent>
-              <Typography>
-                Total Revenue
+              <Typography
+                color="#94A3B8"
+              >
+                Total Spend
               </Typography>
 
-              <Typography variant="h4">
+              <Typography
+                variant="h4"
+                fontWeight="bold"
+                sx={{
+                  mt: 1,
+                }}
+              >
                 ₹
-                {dashboard.total_revenue_generated ??
-                  0}
+                {formatMoney(
+                  dashboard.total_revenue_generated
+                )}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* ===================================================== */}
-      {/* SEARCH + FILTERS                                      */}
-      {/* ===================================================== */}
+      {/* =================================================
+          SEARCH & FILTERS
+      ================================================= */}
 
-      <Box
+      <Card
         sx={{
-          display: "flex",
-          gap: 2,
-          flexWrap: "wrap",
+          background:
+            "#1E293B",
+          color: "white",
           mb: 3,
         }}
       >
-        <TextField
-          label="Search"
-          value={search}
-          onChange={(e) =>
-            setSearch(e.target.value)
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              handleSearch();
-            }
-          }}
-          sx={{
-            background: "white",
-            width: 260,
-          }}
-        />
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight="bold"
+            sx={{
+              mb: 2,
+            }}
+          >
+            Search & Filters
+          </Typography>
 
-        <TextField
-          select
-          label="Customer Type"
-          value={customerType}
-          onChange={(e) =>
-            setCustomerType(
-              e.target.value
-            )
-          }
-          sx={{
-            background: "white",
-            width: 180,
-          }}
-        >
-          <MenuItem value="">
-            All
-          </MenuItem>
+          <Grid
+            container
+            spacing={2}
+          >
+            {/* SEARCH */}
 
-          <MenuItem value="Retail">
-            Retail
-          </MenuItem>
+            <Grid item xs={12} md={5}>
+              <TextField
+                fullWidth
+                label="Search by name or email"
+                value={search}
+                onChange={(e) =>
+                  setSearch(
+                    e.target.value
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter"
+                  ) {
+                    handleApplyFilters();
+                  }
+                }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  background:
+                    "white",
+                }}
+              />
+            </Grid>
 
-          <MenuItem value="Wholesale">
-            Wholesale
-          </MenuItem>
+            {/* SEGMENT */}
 
-          <MenuItem value="Corporate">
-            Corporate
-          </MenuItem>
-        </TextField>
+            <Grid item xs={12} sm={6} md={2}>
+              <TextField
+                select
+                fullWidth
+                label="Segment"
+                value={segment}
+                onChange={(e) =>
+                  setSegment(
+                    e.target.value
+                  )
+                }
+                sx={{
+                  background:
+                    "white",
+                }}
+              >
+                <MenuItem value="">
+                  All Segments
+                </MenuItem>
 
-        <TextField
-          select
-          label="Status"
-          value={status}
-          onChange={(e) =>
-            setStatus(
-              e.target.value
-            )
-          }
-          sx={{
-            background: "white",
-            width: 170,
-          }}
-        >
-          <MenuItem value="">
-            All
-          </MenuItem>
+                <MenuItem value="New">
+                  New
+                </MenuItem>
 
-          <MenuItem value="ACTIVE">
-            ACTIVE
-          </MenuItem>
+                <MenuItem value="Regular">
+                  Regular
+                </MenuItem>
 
-          <MenuItem value="INACTIVE">
-            INACTIVE
-          </MenuItem>
-        </TextField>
+                <MenuItem value="Loyal">
+                  Loyal
+                </MenuItem>
 
-        <TextField
-          label="City"
-          value={city}
-          onChange={(e) =>
-            setCity(e.target.value)
-          }
-          sx={{
-            background: "white",
-            width: 170,
-          }}
-        />
+                <MenuItem value="VIP">
+                  VIP
+                </MenuItem>
+              </TextField>
+            </Grid>
 
-        <TextField
-          label="State"
-          value={state}
-          onChange={(e) =>
-            setState(e.target.value)
-          }
-          sx={{
-            background: "white",
-            width: 170,
-          }}
-        />
+            {/* STATUS */}
 
+            <Grid item xs={12} sm={6} md={2}>
+              <TextField
+                select
+                fullWidth
+                label="Status"
+                value={status}
+                onChange={(e) =>
+                  setStatus(
+                    e.target.value
+                  )
+                }
+                sx={{
+                  background:
+                    "white",
+                }}
+              >
+                <MenuItem value="">
+                  All Status
+                </MenuItem>
 
-                <TextField
-          label="Country"
-          value={country}
-          onChange={(e) =>
-            setCountry(e.target.value)
-          }
-          sx={{
-            background: "white",
-            width: 170,
-          }}
-        />
+                <MenuItem value="ACTIVE">
+                  Active
+                </MenuItem>
 
-        <TextField
-          type="date"
-          label="From Date"
-          InputLabelProps={{
-            shrink: true,
-          }}
-          value={fromDate}
-          onChange={(e) =>
-            setFromDate(e.target.value)
-          }
-          sx={{
-            background: "white",
-            width: 170,
-          }}
-        />
+                <MenuItem value="INACTIVE">
+                  Inactive
+                </MenuItem>
+              </TextField>
+            </Grid>
 
-        <TextField
-          type="date"
-          label="To Date"
-          InputLabelProps={{
-            shrink: true,
-          }}
-          value={toDate}
-          onChange={(e) =>
-            setToDate(e.target.value)
-          }
-          sx={{
-            background: "white",
-            width: 170,
-          }}
-        />
+            {/* SORT */}
 
-        <TextField
-          select
-          label="Sort By"
-          value={sortBy}
-          onChange={(e) =>
-            setSortBy(e.target.value)
-          }
-          sx={{
-            background: "white",
-            width: 190,
-          }}
-        >
-          <MenuItem value="">
-            None
-          </MenuItem>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                select
+                fullWidth
+                label="Sort By"
+                value={sortBy}
+                onChange={(e) =>
+                  setSortBy(
+                    e.target.value
+                  )
+                }
+                sx={{
+                  background:
+                    "white",
+                }}
+              >
+                <MenuItem value="">
+                  Default
+                </MenuItem>
 
-          <MenuItem value="name">
-            Name
-          </MenuItem>
+                <MenuItem value="name">
+                  Customer Name
+                </MenuItem>
 
-          <MenuItem value="total_spend">
-            Total Spend
-          </MenuItem>
+                <MenuItem value="total_orders">
+                  Total Orders
+                </MenuItem>
 
-          <MenuItem value="total_orders">
-            Total Orders
-          </MenuItem>
+                <MenuItem value="total_spend">
+                  Total Spend
+                </MenuItem>
 
-          <MenuItem value="last_purchase">
-            Last Purchase
-          </MenuItem>
+                <MenuItem value="last_purchase">
+                  Last Purchase
+                </MenuItem>
+              </TextField>
+            </Grid>
 
-          <MenuItem value="customer_since">
-            Customer Since
-          </MenuItem>
-        </TextField>
+            {/* BUTTONS */}
 
-        <Button
-          variant="contained"
-          onClick={loadCustomers}
-        >
-          Search
-        </Button>
+            <Grid
+              item
+              xs={12}
+              sx={{
+                display: "flex",
+                gap: 2,
+                flexWrap: "wrap",
+              }}
+            >
+              <Button
+                variant="contained"
+                startIcon={<Search />}
+                onClick={
+                  handleApplyFilters
+                }
+                disabled={loading}
+              >
+                Search
+              </Button>
 
-        <Button
-          variant="outlined"
-          sx={{
-            color: "white",
-            borderColor: "white",
-          }}
-          onClick={() => {
-            setSearch("");
-            setCustomerType("");
-            setStatus("");
-            setCity("");
-            setState("");
-            setCountry("");
-            setFromDate("");
-            setToDate("");
-            setSortBy("");
+              <Button
+                variant="outlined"
+                startIcon={<Clear />}
+                onClick={
+                  handleClearFilters
+                }
+                sx={{
+                  color: "white",
+                  borderColor:
+                    "#94A3B8",
+                }}
+              >
+                Clear
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
-            loadCustomers();
-          }}
-        >
-          Clear
-        </Button>
-
-        <Button
-          variant="contained"
-          onClick={() =>
-            navigate("/customers/add")
-          }
-        >
-          Add Customer
-        </Button>
-      </Box>
-
-      {/* ===================================================== */}
-      {/* EXPORT BUTTONS                                        */}
-      {/* ===================================================== */}
+      {/* =================================================
+          EXPORT
+      ================================================= */}
 
       <Box
         sx={{
           display: "flex",
           gap: 2,
-          mb: 3,
           flexWrap: "wrap",
+          mb: 3,
         }}
       >
         <Button
           variant="contained"
           startIcon={<Download />}
-          onClick={handleExportCSV}
+          onClick={
+            handleExportCSV
+          }
         >
           Export CSV
         </Button>
@@ -805,281 +1164,446 @@ export default function Customers() {
         <Button
           variant="contained"
           startIcon={<Download />}
-          onClick={handleExportPDF}
+          onClick={
+            handleExportPDF
+          }
         >
-          Customer PDF
+          Export PDF
         </Button>
 
         <Button
           variant="contained"
           startIcon={<Download />}
-          onClick={handleAnalyticsPDF}
+          onClick={
+            handleAnalyticsPDF
+          }
         >
           Analytics PDF
         </Button>
       </Box>
 
-      {/* ===================================================== */}
-      {/* TABLE START                                           */}
-      {/* ===================================================== */}
+      {/* =================================================
+          CUSTOMER TABLE
+      ================================================= */}
 
-      <TableContainer
-        component={Paper}
+      <Card
         sx={{
-          background: "#1E293B",
+          background:
+            "#1E293B",
+          color: "white",
         }}
       >
-        {loading ? (
-          <Box
+        <CardContent
+          sx={{
+            p: 0,
+            "&:last-child": {
+              pb: 0,
+            },
+          }}
+        >
+          <TableContainer
+            component={Paper}
             sx={{
-              display: "flex",
-              justifyContent: "center",
-              p: 5,
+              background:
+                "#1E293B",
+              overflowX:
+                "auto",
             }}
           >
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Table>
-
-          
-                      <TableHead>
-              <TableRow>
-                <TableCell sx={{ color: "white" }}>
-                  ID
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Name
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Email
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Phone
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Type
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Segment
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Orders
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Revenue
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Status
-                </TableCell>
-
-                <TableCell sx={{ color: "white" }}>
-                  Actions
-                </TableCell>
-              </TableRow>
-            </TableHead>
-
-            <TableBody>
-              {customers.map((customer) => (
-                <TableRow key={customer.id}>
-                  <TableCell sx={{ color: "white" }}>
-                    {customer.customer_id}
-                  </TableCell>
-
-                  <TableCell sx={{ color: "white" }}>
-                    {customer.full_name}
-                  </TableCell>
-
-                  <TableCell sx={{ color: "white" }}>
-                    {customer.email || "-"}
-                  </TableCell>
-
-                  <TableCell sx={{ color: "white" }}>
-                    {customer.phone_number || "-"}
-                  </TableCell>
-
-                  <TableCell sx={{ color: "white" }}>
-                    {customer.customer_type || "-"}
-                  </TableCell>
-
-                  <TableCell sx={{ color: "white" }}>
-                    <Chip
-                      label={
-                        customer.customer_segment ||
-                        "New"
-                      }
-                      color={
-                        customer.customer_segment ===
-                        "VIP"
-                          ? "warning"
-                          : customer.customer_segment ===
-                            "Loyal"
-                          ? "success"
-                          : "default"
-                      }
-                    />
-                  </TableCell>
-
-                  <TableCell sx={{ color: "white" }}>
-                    {customer.total_orders ?? 0}
-                  </TableCell>
-
-                  <TableCell sx={{ color: "white" }}>
-                    ₹
-                    {customer.lifetime_revenue ??
-                      customer.total_revenue ??
-                      0}
-                  </TableCell>
-
-                  <TableCell>
-                    <Chip
-                      label={
-                        customer.status ||
-                        "ACTIVE"
-                      }
-                      color={
-                        customer.status ===
-                        "ACTIVE"
-                          ? "success"
-                          : "error"
-                      }
-                    />
-                  </TableCell>
-
-                  <TableCell>
-
-                  
-                                    <IconButton
-                    color="info"
-                    onClick={() =>
-                      navigate(
-                        `/customers/${customer.id}/profile`
-                      )
-                    }
-                  >
-                    <Visibility />
-                  </IconButton>
-
-                  <IconButton
-                    color="warning"
-                    onClick={() =>
-                      navigate(
-                        `/customers/${customer.id}/edit`
-                      )
-                    }
-                  >
-                    <Edit />
-                  </IconButton>
-
-                  <IconButton
-                    color="error"
-                    onClick={() =>
-                      handleDelete(
-                        customer.id
-                      )
-                    }
-                  >
-                    <Delete />
-                  </IconButton>
-
-                  <IconButton
-                    color="success"
-                    onClick={() =>
-                      handleStatus(
-                        customer.id,
-                        customer.status
-                      )
-                    }
-                  >
-                    {customer.status ===
-                    "ACTIVE" ? (
-                      <Cancel />
-                    ) : (
-                      <CheckCircle />
-                    )}
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-            </TableBody>
-          </Table>
-        )}
-      </TableContainer>
-
-           {/* ================= EMPTY STATE ================= */}
-
-      {!loading &&
-        customers.length === 0 && (
-          <Box
-            sx={{
-              textAlign: "center",
-              p: 5,
-            }}
-          >
-            <Typography
-              variant="h6"
-              color="white"
+            <Table
+              stickyHeader
+              sx={{
+                minWidth: 1100,
+              }}
             >
-              No Customers Found
-            </Typography>
+              <TableHead>
+                <TableRow>
+                  <TableCell>
+                    Customer Name
+                  </TableCell>
 
-            <Typography color="white">
-              Try changing the search or filter values.
-            </Typography>
+                  <TableCell>
+                    Email
+                  </TableCell>
 
-          </Box>
-        )}
+                  <TableCell>
+                    Phone Number
+                  </TableCell>
 
+                  <TableCell>
+                    Customer Segment
+                  </TableCell>
 
-     {/* ================= QUICK LINKS ================= */}
+                  <TableCell>
+                    Total Purchases
+                  </TableCell>
 
-<Box
-  sx={{
-    mt:4,
-    display:"flex",
-    gap:2
-  }}
->
+                  <TableCell>
+                    Total Spend
+                  </TableCell>
 
-<Button
- variant="outlined"
- sx={{
-  color:"white",
-  borderColor:"white"
- }}
- onClick={() =>
-  navigate("/customers/analytics")
- }
->
- Customer Analytics
-</Button>
+                  <TableCell>
+                    Last Purchase
+                  </TableCell>
 
+                  <TableCell>
+                    Status
+                  </TableCell>
 
-<Button
- variant="outlined"
- sx={{
-  color:"white",
-  borderColor:"white"
- }}
- onClick={() =>
-  navigate("/customers/top-customers")
- }
->
- Top Customers
-</Button>
+                  <TableCell>
+                    Actions
+                  </TableCell>
+                </TableRow>
+              </TableHead>
 
-</Box>
+              <TableBody>
+                {customers.map(
+                  (customer) => {
+                    const customerKey =
+                      customer.id ??
+                      customer.customer_id ??
+                      Math.random();
 
+                    const isProcessing =
+                      actionLoading ===
+                      customer.id;
 
-</Box>
+                    return (
+                      <TableRow
+                        key={
+                          customerKey
+                        }
+                        hover
+                      >
+                        {/* NAME */}
 
-);
+                        <TableCell
+                          sx={{
+                            color:
+                              "white",
+                            fontWeight:
+                              "bold",
+                          }}
+                        >
+                          {customer.full_name ??
+                            "-"}
+
+                          {customer.customer_id && (
+                            <Typography
+                              variant="caption"
+                              display="block"
+                              sx={{
+                                color:
+                                  "#94A3B8",
+                              }}
+                            >
+                              {
+                                customer.customer_id
+                              }
+                            </Typography>
+                          )}
+                        </TableCell>
+
+                        {/* EMAIL */}
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "white",
+                          }}
+                        >
+                          {customer.email ||
+                            "-"}
+                        </TableCell>
+
+                        {/* PHONE */}
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "white",
+                          }}
+                        >
+                          {customer.phone_number ||
+                            "-"}
+                        </TableCell>
+
+                        {/* SEGMENT */}
+
+                        <TableCell>
+                          <Chip
+                            label={
+                              customer.customer_segment ??
+                              "New"
+                            }
+                            size="small"
+                            sx={getSegmentStyle(
+                              customer.customer_segment
+                            )}
+                          />
+                        </TableCell>
+
+                        {/* TOTAL PURCHASES */}
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "white",
+                          }}
+                        >
+                          {customer.total_orders ??
+                            0}
+                        </TableCell>
+
+                        {/* TOTAL SPEND */}
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "white",
+                            fontWeight:
+                              "bold",
+                          }}
+                        >
+                          ₹
+                          {formatMoney(
+                            customer.lifetime_revenue
+                          )}
+                        </TableCell>
+
+                        {/* LAST PURCHASE */}
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "white",
+                          }}
+                        >
+                          {formatDate(
+                            customer.last_purchase_date
+                          )}
+                        </TableCell>
+
+                        {/* STATUS */}
+
+                        <TableCell>
+                          <Chip
+                            label={
+                              customer.status ===
+                              "ACTIVE"
+                                ? "Active"
+                                : "Inactive"
+                            }
+                            color={
+                              customer.status ===
+                              "ACTIVE"
+                                ? "success"
+                                : "error"
+                            }
+                            size="small"
+                          />
+                        </TableCell>
+
+                        {/* ACTIONS */}
+
+                        <TableCell>
+                          <Box
+                            sx={{
+                              display:
+                                "flex",
+                              alignItems:
+                                "center",
+                            }}
+                          >
+                            {/* VIEW */}
+
+                            <IconButton
+                              color="info"
+                              title="View Customer"
+                              onClick={() =>
+                                navigate(
+                                  `/customers/${customer.id}/profile`
+                                )
+                              }
+                            >
+                              <Visibility />
+                            </IconButton>
+
+                            {/* EDIT */}
+
+                            <IconButton
+                              color="warning"
+                              title="Edit Customer"
+                              onClick={() =>
+                                navigate(
+                                  `/customers/${customer.id}/edit`
+                                )
+                              }
+                            >
+                              <Edit />
+                            </IconButton>
+
+                            {/* DELETE */}
+
+                            <IconButton
+                              color="error"
+                              title="Delete Customer"
+                              disabled={
+                                isProcessing
+                              }
+                              onClick={() =>
+                                handleDelete(
+                                  customer.id as number
+                                )
+                              }
+                            >
+                              {isProcessing ? (
+                                <CircularProgress
+                                  size={20}
+                                />
+                              ) : (
+                                <Delete />
+                              )}
+                            </IconButton>
+
+                            {/* ACTIVATE /
+                                DEACTIVATE */}
+
+                            <IconButton
+                              color="success"
+                              title={
+                                customer.status ===
+                                "ACTIVE"
+                                  ? "Deactivate Customer"
+                                  : "Activate Customer"
+                              }
+                              disabled={
+                                isProcessing
+                              }
+                              onClick={() =>
+                                handleStatusChange(
+                                  customer.id as number,
+                                  customer.status
+                                )
+                              }
+                            >
+                              {customer.status ===
+                              "ACTIVE" ? (
+                                <Cancel />
+                              ) : (
+                                <CheckCircle />
+                              )}
+                            </IconButton>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {/* =================================================
+              EMPTY STATE
+          ================================================= */}
+
+          {!loading &&
+            customers.length ===
+              0 && (
+              <Box
+                sx={{
+                  textAlign:
+                    "center",
+                  py: 8,
+                  px: 3,
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  fontWeight="bold"
+                  sx={{
+                    color:
+                      "white",
+                  }}
+                >
+                  No Customers Found
+                </Typography>
+
+                <Typography
+                  sx={{
+                    color:
+                      "#94A3B8",
+                    mt: 1,
+                  }}
+                >
+                  No customers match
+                  your current
+                  search or filters.
+                </Typography>
+
+                <Button
+                  variant="contained"
+                  sx={{
+                    mt: 3,
+                  }}
+                  onClick={() =>
+                    navigate(
+                      "/customers/add"
+                    )
+                  }
+                >
+                  Add Customer
+                </Button>
+              </Box>
+            )}
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          QUICK LINKS
+      ================================================= */}
+
+      <Box
+        sx={{
+          mt: 4,
+          display: "flex",
+          gap: 2,
+          flexWrap: "wrap",
+        }}
+      >
+        <Button
+          variant="outlined"
+          sx={{
+            color: "white",
+            borderColor:
+              "#94A3B8",
+          }}
+          onClick={() =>
+            navigate(
+              "/customers/analytics"
+            )
+          }
+        >
+          Customer Analytics
+        </Button>
+
+        <Button
+          variant="outlined"
+          sx={{
+            color: "white",
+            borderColor:
+              "#94A3B8",
+          }}
+          onClick={() =>
+            navigate(
+              "/customers/top-customers"
+            )
+          }
+        >
+          Top Customers
+        </Button>
+      </Box>
+    </Box>
+  );
 }

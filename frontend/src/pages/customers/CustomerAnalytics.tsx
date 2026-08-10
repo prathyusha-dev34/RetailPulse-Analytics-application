@@ -1,18 +1,15 @@
-import {
-  useEffect,
-  useState
-} from "react";
 
+import { useEffect, useState } from "react";
 
 import {
+  Alert,
   Box,
   Card,
   CardContent,
-  Typography,
+  CircularProgress,
   Grid,
-  CircularProgress
+  Typography,
 } from "@mui/material";
-
 
 import {
   ResponsiveContainer,
@@ -26,9 +23,8 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend
+  Legend,
 } from "recharts";
-
 
 import {
   getCustomerDashboard,
@@ -36,1268 +32,1106 @@ import {
   getCustomerRevenueContribution,
   getNewVsReturningCustomers,
   getCustomerGrowthTrend,
-  getCustomerSpendingDistribution
+  getCustomerSpendingDistribution,
 } from "../../services/customerService";
 
 
+// ==========================================================
+// COLORS
+// ==========================================================
 
 const COLORS = [
   "#3B82F6",
   "#10B981",
   "#F59E0B",
   "#EF4444",
-  "#8B5CF6"
+  "#8B5CF6",
+  "#EC4899",
+  "#06B6D4",
 ];
 
 
+// ==========================================================
+// TYPES
+// ==========================================================
+
+interface ChartItem {
+  name: string;
+  value: number;
+}
+
+interface GrowthItem {
+  month: string;
+  customers: number;
+}
+
+interface NewReturningItem {
+  name: string;
+  new_customers: number;
+  returning_customers: number;
+}
+
+interface TopCustomerItem {
+  name: string;
+  revenue: number;
+}
 
 
-export default function CustomerAnalytics(){
+// ==========================================================
+// HELPERS
+// ==========================================================
 
+const unwrapResponse = (response: any): any => {
+  if (response?.data?.data !== undefined) {
+    return response.data.data;
+  }
 
-const [loading,setLoading] = useState(true);
+  if (response?.data !== undefined) {
+    return response.data;
+  }
 
-
-const [dashboard,setDashboard] = useState<any>({});
-
-
-const [topCustomers,setTopCustomers] = useState<any[]>([]);
-
-
-const [revenueContribution,setRevenueContribution] = useState<any[]>([]);
-
-
-const [newReturning,setNewReturning] = useState<any[]>([]);
-
-
-const [growth,setGrowth] = useState<any[]>([]);
-
-
-const [spending,setSpending] = useState<any[]>([]);
-
-
-
-
-const normalizeArray=(data:any)=>{
-
-
-if(Array.isArray(data))
-return data;
-
-
-if(Array.isArray(data?.data))
-return data.data;
-
-
-return [];
-
+  return response;
 };
 
 
+const normalizeArray = (response: any): any[] => {
+  const data = unwrapResponse(response);
 
+  if (Array.isArray(data)) {
+    return data;
+  }
 
+  if (Array.isArray(data?.items)) {
+    return data.items;
+  }
 
-const loadAnalytics = async()=>{
+  if (Array.isArray(data?.results)) {
+    return data.results;
+  }
 
+  if (Array.isArray(data?.customers)) {
+    return data.customers;
+  }
 
-try{
+  if (Array.isArray(data?.data)) {
+    return data.data;
+  }
 
-
-setLoading(true);
-
-
-
-const [
-
-dashboardData,
-
-topData,
-
-revenueData,
-
-newData,
-
-growthData,
-
-spendingData
-
-] = await Promise.all([
-
-
-getCustomerDashboard(),
-
-getTopCustomers(),
-
-getCustomerRevenueContribution(),
-
-getNewVsReturningCustomers(),
-
-getCustomerGrowthTrend(),
-
-getCustomerSpendingDistribution()
-
-]);
-
-
-
-
-
-setDashboard(
-
-dashboardData?.data ??
-
-dashboardData ??
-
-{}
-
-);
-
-
-
-
-
-setTopCustomers(
-
-normalizeArray(topData).map((item:any)=>({
-
-name:
-
-item.customer_name ??
-
-item.name ??
-
-item.full_name ??
-
-"Customer",
-
-
-
-revenue:
-
-Number(
-
-item.lifetime_revenue ??
-
-item.total_revenue ??
-
-item.revenue ??
-
-0
-
-)
-
-}))
-
-);
-
-
-
-
-
-setRevenueContribution(
-
-normalizeArray(revenueData).map((item:any)=>({
-
-name:
-
-item.customer_name ??
-
-item.name ??
-
-"Customer",
-
-
-
-value:
-
-Number(
-
-item.revenue ??
-
-item.total_revenue ??
-
-item.amount ??
-
-0
-
-)
-
-}))
-
-);
-
-
-
-
-
-setGrowth(
-
-normalizeArray(growthData).map((item:any)=>({
-
-month:
-
-item.month ??
-
-item.date ??
-
-item.period ??
-
-"",
-
-
-
-customers:
-
-Number(
-
-item.total_customers ??
-
-item.customer_count ??
-
-item.customers ??
-
-0
-
-)
-
-}))
-
-);
-
-
-// New vs Returning
-
-if(Array.isArray(newData)){
-
-
-setNewReturning(
-
-newData.map((item:any)=>({
-
-name:
-
-item.name ??
-
-item.customer_type ??
-
-"Customers",
-
-
-new_customers:
-
-Number(
-
-item.new_customers ??
-
-item.new ??
-
-0
-
-),
-
-
-returning_customers:
-
-Number(
-
-item.returning_customers ??
-
-item.returning ??
-
-0
-
-)
-
-}))
-
-);
-
-
-}
-else{
-
-
-setNewReturning([
-
-{
-
-name:"Customers",
-
-
-new_customers:
-
-Number(
-
-newData?.new_customers ??
-
-newData?.new ??
-
-0
-
-),
-
-
-returning_customers:
-
-Number(
-
-newData?.returning_customers ??
-
-newData?.returning ??
-
-0
-
-)
-
-}
-
-]);
-
-
-}
-
-
-
-
-
-
-// Spending
-
-if(Array.isArray(spendingData)){
-
-
-setSpending(
-
-spendingData.map((item:any)=>({
-
-name:
-
-item.name ??
-
-item.customer_type ??
-
-"Unknown",
-
-
-value:
-
-Number(
-
-item.value ??
-
-item.amount ??
-
-item.revenue ??
-
-0
-
-)
-
-}))
-
-);
-
-
-}
-else{
-
-
-setSpending(
-
-Object.entries(spendingData ?? {})
-
-.map(([key,value])=>({
-
-name:key,
-
-value:Number(value)
-
-}))
-
-);
-
-
-}
-
-
-
-}
-catch(error){
-
-
-console.error(error);
-
-
-}
-finally{
-
-
-setLoading(false);
-
-
-}
-
-
+  return [];
 };
 
 
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0);
+};
 
 
+// ==========================================================
+// COMPONENT
+// ==========================================================
 
+export default function CustomerAnalytics() {
 
-useEffect(()=>{
+  const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState("");
 
-loadAnalytics();
+  const [dashboard, setDashboard] =
+    useState<any>({});
 
+  const [topCustomers, setTopCustomers] =
+    useState<TopCustomerItem[]>([]);
 
-},[]);
+  const [revenueContribution, setRevenueContribution] =
+    useState<ChartItem[]>([]);
 
+  const [newReturning, setNewReturning] =
+    useState<NewReturningItem[]>([]);
 
+  const [growth, setGrowth] =
+    useState<GrowthItem[]>([]);
 
+  const [spending, setSpending] =
+    useState<ChartItem[]>([]);
 
 
+  // ========================================================
+  // LOAD ANALYTICS
+  // ========================================================
 
-if(loading){
+  const loadAnalytics = async () => {
 
+    try {
 
-return(
+      setLoading(true);
+      setError("");
 
 
-<Box
+      const results = await Promise.allSettled([
 
-sx={{
+        getCustomerDashboard(),
 
-height:"100vh",
+        getTopCustomers(),
 
-display:"flex",
+        getCustomerRevenueContribution(),
 
-justifyContent:"center",
+        getNewVsReturningCustomers(),
 
-alignItems:"center",
+        getCustomerGrowthTrend(),
 
-background:"#0F172A"
+        getCustomerSpendingDistribution(),
 
-}}
+      ]);
 
->
 
+      // ====================================================
+      // DASHBOARD
+      // ====================================================
 
-<CircularProgress/>
+      if (results[0].status === "fulfilled") {
 
+        const data =
+          unwrapResponse(results[0].value);
 
-</Box>
+        setDashboard(data || {});
+      }
 
 
-);
+      // ====================================================
+      // TOP CUSTOMERS
+      // ====================================================
 
+      if (results[1].status === "fulfilled") {
 
-}
+        const data =
+          normalizeArray(results[1].value);
 
+        setTopCustomers(
 
+          data.map((item: any) => ({
 
+            name:
+              item.customer_name ??
+              item.name ??
+              item.full_name ??
+              item.customer_id ??
+              "Customer",
 
+            revenue:
+              Number(
+                item.lifetime_revenue ??
+                item.total_revenue ??
+                item.total_spend ??
+                item.revenue ??
+                item.amount ??
+                0
+              ),
+
+          }))
+          .filter(
+            (item) => item.revenue > 0
+          )
+        );
+      }
+
+
+      // ====================================================
+      // REVENUE CONTRIBUTION
+      // ====================================================
+
+      if (results[2].status === "fulfilled") {
+
+        const data =
+          normalizeArray(results[2].value);
+
+        setRevenueContribution(
+
+          data.map((item: any) => ({
+
+            name:
+              item.customer_name ??
+              item.name ??
+              item.full_name ??
+              item.customer_type ??
+              "Customer",
+
+            value:
+              Number(
+                item.revenue ??
+                item.total_revenue ??
+                item.lifetime_revenue ??
+                item.amount ??
+                item.value ??
+                0
+              ),
+
+          }))
+          .filter(
+            (item) => item.value > 0
+          )
+        );
+      }
+
+
+      // ====================================================
+      // NEW VS RETURNING
+      // ====================================================
+
+      if (results[3].status === "fulfilled") {
+
+        const raw =
+          unwrapResponse(results[3].value);
+
+
+        if (Array.isArray(raw)) {
+
+          setNewReturning(
+
+            raw.map((item: any) => ({
 
+              name:
+                item.name ??
+                item.month ??
+                item.period ??
+                item.customer_type ??
+                "Customers",
 
+              new_customers:
+                Number(
+                  item.new_customers ??
+                  item.new ??
+                  item.new_customer_count ??
+                  0
+                ),
 
-return(
+              returning_customers:
+                Number(
+                  item.returning_customers ??
+                  item.returning ??
+                  item.returning_customer_count ??
+                  0
+                ),
+
+            }))
+          );
+
+        } else {
+
+          setNewReturning([
+
+            {
+              name: "Customers",
 
+              new_customers:
+                Number(
+                  raw?.new_customers ??
+                  raw?.new ??
+                  raw?.new_customer_count ??
+                  0
+                ),
 
-<Box
+              returning_customers:
+                Number(
+                  raw?.returning_customers ??
+                  raw?.returning ??
+                  raw?.returning_customer_count ??
+                  0
+                ),
+            },
 
-sx={{
+          ]);
+        }
+      }
 
-p:3,
 
-minHeight:"100vh",
+      // ====================================================
+      // CUSTOMER GROWTH
+      // ====================================================
 
-background:"#0F172A",
+      if (results[4].status === "fulfilled") {
 
-color:"white"
+        const data =
+          normalizeArray(results[4].value);
 
-}}
+        setGrowth(
 
->
+          data.map((item: any) => ({
 
+            month:
+              item.month ??
+              item.date ??
+              item.period ??
+              item.label ??
+              "",
 
-<Typography
+            customers:
+              Number(
+                item.total_customers ??
+                item.customer_count ??
+                item.customers ??
+                item.count ??
+                0
+              ),
 
-variant="h4"
+          }))
+        );
+      }
 
-fontWeight="bold"
 
-mb={3}
+      // ====================================================
+      // SPENDING DISTRIBUTION
+      // ====================================================
 
->
+      if (results[5].status === "fulfilled") {
 
-Customer Analytics Dashboard
+        const raw =
+          unwrapResponse(results[5].value);
 
-</Typography>
 
+        if (Array.isArray(raw)) {
 
+          setSpending(
 
+            raw.map((item: any) => ({
 
+              name:
+                item.name ??
+                item.customer_type ??
+                item.segment ??
+                item.category ??
+                "Unknown",
 
-<Grid container spacing={3}>
+              value:
+                Number(
+                  item.value ??
+                  item.amount ??
+                  item.revenue ??
+                  item.total_spend ??
+                  0
+                ),
 
+            }))
+            .filter(
+              (item) => item.value > 0
+            )
+          );
 
+        } else {
 
-<Grid item xs={12} md={3}>
+          setSpending(
 
-<Card
+            Object.entries(raw || {})
 
-sx={{
+              .filter(
+                ([, value]) =>
+                  Number(value) > 0
+              )
 
-background:"#1E293B",
+              .map(([key, value]) => ({
 
-color:"white"
+                name: key,
 
-}}
+                value: Number(value),
 
->
+              }))
+          );
+        }
+      }
 
-<CardContent>
 
+      // ====================================================
+      // CHECK FAILURES
+      // ====================================================
 
-<Typography color="#94A3B8">
+      const failed =
+        results.filter(
+          (result) =>
+            result.status === "rejected"
+        );
 
-Total Customers
 
-</Typography>
+      if (failed.length === results.length) {
 
+        setError(
+          "Unable to load customer analytics. Please check the backend API."
+        );
+      }
 
-<Typography variant="h4">
+    } catch (err) {
 
-{dashboard.total_customers ?? 0}
+      console.error(
+        "Customer analytics error:",
+        err
+      );
 
-</Typography>
+      setError(
+        "Unable to load customer analytics."
+      );
 
+    } finally {
 
-</CardContent>
+      setLoading(false);
 
+    }
+  };
 
-</Card>
 
-</Grid>
+  // ========================================================
+  // LOAD PAGE
+  // ========================================================
 
+  useEffect(() => {
 
+    loadAnalytics();
 
+  }, []);
 
 
-<Grid item xs={12} md={3}>
+  // ========================================================
+  // LOADING
+  // ========================================================
 
-<Card
+  if (loading) {
 
-sx={{
+    return (
 
-background:"#1E293B",
+      <Box
+        sx={{
+          minHeight: "100vh",
+          background: "#0F172A",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
 
-color:"white"
+        <CircularProgress />
 
-}}
+        <Typography color="white">
+          Loading Customer Analytics...
+        </Typography>
 
->
+      </Box>
+    );
+  }
 
-<CardContent>
 
+  // ========================================================
+  // EMPTY MESSAGE
+  // ========================================================
 
-<Typography color="#94A3B8">
+  const EmptyChart = ({
+    message = "No data available",
+  }: {
+    message?: string;
+  }) => (
 
-Total Revenue
+    <Box
+      sx={{
+        height: 300,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
 
-</Typography>
+      <Typography color="#94A3B8">
+        {message}
+      </Typography>
 
+    </Box>
+  );
 
-<Typography variant="h4">
 
-₹ {dashboard.total_revenue_generated ?? 0}
+  // ========================================================
+  // PAGE
+  // ========================================================
 
-</Typography>
+  return (
 
+    <Box
+      sx={{
+        p: 3,
+        minHeight: "100vh",
+        background: "#0F172A",
+        color: "white",
+      }}
+    >
 
-</CardContent>
+      <Typography
+        variant="h4"
+        fontWeight="bold"
+        mb={3}
+      >
+        Customer Analytics Dashboard
+      </Typography>
 
 
-</Card>
+      {error && (
 
-</Grid>
+        <Alert
+          severity="warning"
+          sx={{ mb: 3 }}
+        >
+          {error}
+        </Alert>
 
+      )}
 
 
+      {/* ==================================================
+          KPI CARDS
+      ================================================== */}
 
+      <Grid
+        container
+        spacing={3}
+      >
 
-<Grid item xs={12} md={3}>
+        <Grid item xs={12} sm={6} md={3}>
 
-<Card
+          <Card
+            sx={{
+              background: "#1E293B",
+              color: "white",
+            }}
+          >
 
-sx={{
+            <CardContent>
 
-background:"#1E293B",
+              <Typography color="#94A3B8">
+                Total Customers
+              </Typography>
 
-color:"white"
+              <Typography variant="h4">
 
-}}
+                {dashboard.total_customers ??
+                  dashboard.customer_count ??
+                  dashboard.total_customer_count ??
+                  0}
 
->
+              </Typography>
 
-<CardContent>
+            </CardContent>
 
+          </Card>
 
-<Typography color="#94A3B8">
+        </Grid>
 
-Average Spend
 
-</Typography>
+        <Grid item xs={12} sm={6} md={3}>
 
+          <Card
+            sx={{
+              background: "#1E293B",
+              color: "white",
+            }}
+          >
 
-<Typography variant="h4">
+            <CardContent>
 
-₹ {dashboard.average_customer_spend ?? 0}
+              <Typography color="#94A3B8">
+                Total Revenue
+              </Typography>
 
-</Typography>
+              <Typography variant="h5">
 
+                {formatCurrency(
 
-</CardContent>
+                  Number(
+                    dashboard.total_revenue_generated ??
+                    dashboard.total_revenue ??
+                    dashboard.lifetime_revenue ??
+                    dashboard.revenue ??
+                    0
+                  )
 
+                )}
 
-</Card>
+              </Typography>
 
-</Grid>
+            </CardContent>
 
+          </Card>
 
+        </Grid>
 
 
+        <Grid item xs={12} sm={6} md={3}>
 
-<Grid item xs={12} md={3}>
+          <Card
+            sx={{
+              background: "#1E293B",
+              color: "white",
+            }}
+          >
 
-<Card
+            <CardContent>
 
-sx={{
+              <Typography color="#94A3B8">
+                Average Customer Spend
+              </Typography>
 
-background:"#1E293B",
+              <Typography variant="h5">
 
-color:"white"
+                {formatCurrency(
 
-}}
+                  Number(
+                    dashboard.average_customer_spend ??
+                    dashboard.average_spend ??
+                    dashboard.average_order_value ??
+                    0
+                  )
 
->
+                )}
 
-<CardContent>
+              </Typography>
 
+            </CardContent>
 
-<Typography color="#94A3B8">
+          </Card>
 
-VIP Customers
+        </Grid>
 
-</Typography>
 
+        <Grid item xs={12} sm={6} md={3}>
 
-<Typography variant="h4">
+          <Card
+            sx={{
+              background: "#1E293B",
+              color: "white",
+            }}
+          >
 
-{dashboard.vip_customers ?? 0}
+            <CardContent>
 
-</Typography>
+              <Typography color="#94A3B8">
+                VIP Customers
+              </Typography>
 
+              <Typography variant="h4">
 
-</CardContent>
+                {dashboard.vip_customers ??
+                  dashboard.vip_customer_count ??
+                  dashboard.total_vip_customers ??
+                  0}
 
+              </Typography>
 
-</Card>
+            </CardContent>
 
-</Grid>
+          </Card>
 
+        </Grid>
 
-</Grid>
+      </Grid>
 
 
+      {/* ==================================================
+          CUSTOMER GROWTH
+      ================================================== */}
 
+      <Card
+        sx={{
+          mt: 3,
+          background: "#1E293B",
+          color: "white",
+        }}
+      >
 
-<Card
+        <CardContent>
 
-sx={{
+          <Typography
+            variant="h6"
+            mb={2}
+          >
+            Customer Growth Trend
+          </Typography>
 
-mt:3,
 
-background:"#1E293B",
+          {growth.length === 0 ? (
 
-color:"white"
+            <EmptyChart />
 
-}}
+          ) : (
 
->
+            <Box sx={{ height: 350 }}>
 
-<CardContent>
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
 
+                <LineChart data={growth}>
 
-<Typography variant="h6">
+                  <XAxis
+                    dataKey="month"
+                    stroke="#CBD5E1"
+                  />
 
-Customer Growth Trend
+                  <YAxis
+                    stroke="#CBD5E1"
+                  />
 
-</Typography>
+                  <Tooltip />
 
+                  <Legend />
 
+                  <Line
+                    type="monotone"
+                    dataKey="customers"
+                    name="Customers"
+                    stroke="#3B82F6"
+                    strokeWidth={3}
+                  />
 
-<Box
+                </LineChart>
 
-sx={{
+              </ResponsiveContainer>
 
-height:350
+            </Box>
 
-}}
+          )}
 
->
+        </CardContent>
 
+      </Card>
 
-<ResponsiveContainer
 
-width="100%"
+      {/* ==================================================
+          TOP CUSTOMERS
+      ================================================== */}
 
-height="100%"
+      <Card
+        sx={{
+          mt: 3,
+          background: "#1E293B",
+          color: "white",
+        }}
+      >
 
->
+        <CardContent>
 
+          <Typography
+            variant="h6"
+            mb={2}
+          >
+            Top Customers by Revenue
+          </Typography>
 
-<LineChart
 
-data={growth}
+          {topCustomers.length === 0 ? (
 
->
+            <EmptyChart />
 
+          ) : (
 
-<XAxis
+            <Box sx={{ height: 350 }}>
 
-dataKey="month"
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
 
-/>
+                <BarChart
+                  data={topCustomers}
+                  margin={{
+                    top: 20,
+                    right: 20,
+                    left: 20,
+                    bottom: 70,
+                  }}
+                >
 
+                  <XAxis
+                    dataKey="name"
+                    interval={0}
+                    angle={-25}
+                    textAnchor="end"
+                    stroke="#CBD5E1"
+                  />
 
-<YAxis/>
+                  <YAxis
+                    stroke="#CBD5E1"
+                  />
 
+                  <Tooltip
+                    formatter={(value) =>
+                      formatCurrency(Number(value))
+                    }
+                  />
 
-<Tooltip/>
+                  <Legend />
 
+                  <Bar
+                    dataKey="revenue"
+                    name="Revenue"
+                    fill="#10B981"
+                  />
 
-<Line
+                </BarChart>
 
-type="monotone"
+              </ResponsiveContainer>
 
-dataKey="customers"
+            </Box>
 
-stroke="#3B82F6"
+          )}
 
-strokeWidth={3}
+        </CardContent>
 
-/>
+      </Card>
 
 
-</LineChart>
+      {/* ==================================================
+          REVENUE CONTRIBUTION
+      ================================================== */}
 
+      <Card
+        sx={{
+          mt: 3,
+          background: "#1E293B",
+          color: "white",
+        }}
+      >
 
-</ResponsiveContainer>
+        <CardContent>
 
+          <Typography
+            variant="h6"
+            mb={2}
+          >
+            Customer Revenue Contribution
+          </Typography>
 
-</Box>
 
+          {revenueContribution.length === 0 ? (
 
-</CardContent>
+            <EmptyChart />
 
+          ) : (
 
-</Card>
+            <Box sx={{ height: 350 }}>
 
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
 
+                <PieChart>
 
+                  <Pie
+                    data={revenueContribution}
+                    dataKey="value"
+                    nameKey="name"
+                    outerRadius={120}
+                    label
+                  >
 
+                    {revenueContribution.map(
+                      (_, index) => (
 
+                        <Cell
+                          key={index}
+                          fill={
+                            COLORS[
+                              index %
+                              COLORS.length
+                            ]
+                          }
+                        />
 
+                      )
+                    )}
 
+                  </Pie>
 
-<Card
+                  <Tooltip
+                    formatter={(value) =>
+                      formatCurrency(Number(value))
+                    }
+                  />
 
-sx={{
+                  <Legend />
 
-mt:3,
+                </PieChart>
 
-background:"#1E293B",
+              </ResponsiveContainer>
 
-color:"white"
+            </Box>
 
-}}
+          )}
 
->
+        </CardContent>
 
+      </Card>
 
-<CardContent>
 
+      {/* ==================================================
+          NEW VS RETURNING
+      ================================================== */}
 
-<Typography variant="h6">
+      <Card
+        sx={{
+          mt: 3,
+          background: "#1E293B",
+          color: "white",
+        }}
+      >
 
-Top Customers Revenue
+        <CardContent>
 
-</Typography>
+          <Typography
+            variant="h6"
+            mb={2}
+          >
+            New vs Returning Customers
+          </Typography>
 
 
+          {newReturning.length === 0 ? (
 
-<Box
+            <EmptyChart />
 
-sx={{
+          ) : (
 
-height:350
+            <Box sx={{ height: 350 }}>
 
-}}
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
 
->
+                <BarChart
+                  data={newReturning}
+                >
 
+                  <XAxis
+                    dataKey="name"
+                    stroke="#CBD5E1"
+                  />
 
-<ResponsiveContainer
+                  <YAxis
+                    stroke="#CBD5E1"
+                  />
 
-width="100%"
+                  <Tooltip />
 
-height="100%"
+                  <Legend />
 
->
+                  <Bar
+                    dataKey="new_customers"
+                    name="New Customers"
+                    fill="#3B82F6"
+                  />
 
+                  <Bar
+                    dataKey="returning_customers"
+                    name="Returning Customers"
+                    fill="#10B981"
+                  />
 
-<BarChart
+                </BarChart>
 
-data={topCustomers}
+              </ResponsiveContainer>
 
-margin={{
+            </Box>
 
-top:20,
+          )}
 
-right:20,
+        </CardContent>
 
-left:20,
+      </Card>
 
-bottom:50
 
-}}
+      {/* ==================================================
+          SPENDING DISTRIBUTION
+      ================================================== */}
 
->
+      <Card
+        sx={{
+          mt: 3,
+          background: "#1E293B",
+          color: "white",
+        }}
+      >
 
+        <CardContent>
 
-<XAxis
+          <Typography
+            variant="h6"
+            mb={2}
+          >
+            Customer Spending Distribution
+          </Typography>
 
-dataKey="name"
 
-interval={0}
+          {spending.length === 0 ? (
 
-angle={-25}
+            <EmptyChart />
 
-textAnchor="end"
+          ) : (
 
-/>
+            <Box sx={{ height: 350 }}>
 
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
 
-<YAxis/>
+                <PieChart>
 
+                  <Pie
+                    data={spending}
+                    dataKey="value"
+                    nameKey="name"
+                    outerRadius={120}
+                    label
+                  >
 
-<Tooltip/>
+                    {spending.map(
+                      (_, index) => (
 
+                        <Cell
+                          key={index}
+                          fill={
+                            COLORS[
+                              index %
+                              COLORS.length
+                            ]
+                          }
+                        />
 
-<Bar
+                      )
+                    )}
 
-dataKey="revenue"
+                  </Pie>
 
-fill="#10B981"
+                  <Tooltip
+                    formatter={(value) =>
+                      formatCurrency(Number(value))
+                    }
+                  />
 
-/>
+                  <Legend />
 
+                </PieChart>
 
-</BarChart>
+              </ResponsiveContainer>
 
+            </Box>
 
-</ResponsiveContainer>
+          )}
 
+        </CardContent>
 
-</Box>
+      </Card>
 
-
-
-</CardContent>
-
-
-</Card>
-
-
-
-
-
-
-
-
-<Card
-
-sx={{
-
-mt:3,
-
-background:"#1E293B",
-
-color:"white"
-
-}}
-
->
-
-
-<CardContent>
-
-
-<Typography variant="h6">
-
-Revenue Contribution
-
-</Typography>
-
-
-
-<Box
-
-sx={{
-
-height:350
-
-}}
-
->
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height="100%"
-
->
-
-
-<PieChart>
-
-
-
-<Pie
-
-data={revenueContribution}
-
-dataKey="value"
-
-nameKey="name"
-
-outerRadius={110}
-
-label
-
->
-
-
-{
-
-revenueContribution.map(
-
-(_,index)=>(
-
-
-<Cell
-
-key={index}
-
-fill={
-
-COLORS[index % COLORS.length]
-
-}
-
-/>
-
-
-)
-
-)
-
-}
-
-
-
-</Pie>
-
-
-
-<Tooltip/>
-
-
-<Legend/>
-
-
-</PieChart>
-
-
-</ResponsiveContainer>
-
-
-</Box>
-
-
-
-</CardContent>
-
-
-</Card>
-
-
-<Card
-
-sx={{
-
-mt:3,
-
-background:"#1E293B",
-
-color:"white"
-
-}}
-
->
-
-
-<CardContent>
-
-
-<Typography variant="h6">
-
-New vs Returning Customers
-
-</Typography>
-
-
-
-<Box
-
-sx={{
-
-height:350
-
-}}
-
->
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height="100%"
-
->
-
-
-<BarChart
-
-data={newReturning}
-
-margin={{
-
-top:20,
-
-right:20,
-
-left:20,
-
-bottom:20
-
-}}
-
->
-
-
-<XAxis
-
-dataKey="name"
-
-/>
-
-
-<YAxis/>
-
-
-<Tooltip/>
-
-
-<Legend/>
-
-
-
-<Bar
-
-dataKey="new_customers"
-
-fill="#3B82F6"
-
-name="New Customers"
-
-/>
-
-
-
-<Bar
-
-dataKey="returning_customers"
-
-fill="#10B981"
-
-name="Returning Customers"
-
-/>
-
-
-
-</BarChart>
-
-
-</ResponsiveContainer>
-
-
-</Box>
-
-
-</CardContent>
-
-
-</Card>
-
-
-
-
-
-
-
-
-<Card
-
-sx={{
-
-mt:3,
-
-background:"#1E293B",
-
-color:"white"
-
-}}
-
->
-
-
-<CardContent>
-
-
-<Typography variant="h6">
-
-Customer Spending Distribution
-
-</Typography>
-
-
-
-<Box
-
-sx={{
-
-height:350
-
-}}
-
->
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height="100%"
-
->
-
-
-<PieChart>
-
-
-
-<Pie
-
-data={spending}
-
-dataKey="value"
-
-nameKey="name"
-
-outerRadius={120}
-
-label
-
->
-
-
-{
-
-spending.map(
-
-(_,index)=>(
-
-
-<Cell
-
-key={index}
-
-fill={
-
-COLORS[index % COLORS.length]
-
-}
-
-/>
-
-
-)
-
-)
-
-}
-
-
-
-</Pie>
-
-
-<Tooltip/>
-
-
-<Legend/>
-
-
-</PieChart>
-
-
-</ResponsiveContainer>
-
-
-</Box>
-
-
-
-</CardContent>
-
-
-</Card>
-
-
-
-
-
-
-</Box>
-
-
-);
-
-
+    </Box>
+  );
 }
