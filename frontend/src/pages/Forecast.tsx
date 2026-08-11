@@ -1,8 +1,8 @@
+
 import {
   useEffect,
   useState,
 } from "react";
-
 
 import {
   Box,
@@ -26,7 +26,6 @@ import {
   TableRow,
 } from "@mui/material";
 
-
 import {
   Search,
   Refresh,
@@ -34,7 +33,6 @@ import {
   Notifications,
   Assessment,
 } from "@mui/icons-material";
-
 
 import {
   BarChart,
@@ -52,4626 +50,2511 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-
-// FIX: axios direct import removed
-// Use project axios instance with interceptor
 import api from "../api/axios";
 
+// =====================================================
+// TYPES
+// =====================================================
+
 interface ProductForecast {
+  id: number;
+  product_id: number;
+  category_id: number;
 
-  id:number;
+  product_name: string;
+  category_name: string;
+  brand: string;
 
-  product_id:number;
+  current_stock: number;
+  available_stock: number;
+  reorder_level: number;
 
-  category_id:number;
+  historical_sales: number;
+  predicted_demand: number;
 
-  product_name:string;
+  expected_growth_percentage: number;
+  confidence_score: number;
+  forecast_accuracy: number;
 
-  category_name:string;
+  forecast_period: string;
+  recommendation: string;
+  forecast_value: string;
 
-  brand:string;
-
-  current_stock:number;
-
-  available_stock:number;
-
-  reorder_level:number;
-
-  historical_sales:number;
-
-  predicted_demand:number;
-
-  expected_growth_percentage:number;
-
-  confidence_score:number;
-
-  forecast_accuracy:number;
-
-  forecast_period:string;
-
-  recommendation:string;
-
-  forecast_value:string;
-
+  generated_at?: string;
 }
-
-
 
 interface CategoryForecast {
+  category_id: number;
+  category_name: string;
 
-  id:number;
+  total_historical_sales: number;
 
-  category_name:string;
+  predicted_demand: number;
+  expected_growth_percentage: number;
 
-  historical_sales:number;
+  confidence_score: number;
+  forecast_accuracy: number;
 
-  predicted_demand:number;
-
-  expected_growth_percentage:number;
-
-  confidence_score:number;
-
-  recommendation:string;
-
+  forecast_value: string;
 }
-
-
 
 interface DashboardData {
-
-  total_predicted_demand:number;
-
-  products_expected_to_run_out:number;
-
-  high_growth_products:number;
-
-  slow_moving_products:number;
-
-  forecast_accuracy:number;
-
-  total_forecasts:number;
-
+  total_predicted_demand: number;
+  products_expected_to_run_out: number;
+  high_growth_products: number;
+  slow_moving_products: number;
+  forecast_accuracy: number;
+  total_forecasts: number;
 }
-
-
 
 interface ForecastNotification {
-
-  message:string;
-
-  type:string;
-
+  message: string;
+  type: string;
 }
 
-
-
-// REMOVED:
-// const API_URL = "http://127.0.0.1:8000";
-
-
+// =====================================================
+// CONSTANTS
+// =====================================================
 
 const FORECAST_PERIODS = [
-
   {
-    label:"Next 7 Days",
-    value:"7_days",
+    label: "Next 7 Days",
+    value: "7_days",
   },
-
   {
-    label:"Next 30 Days",
-    value:"30_days",
+    label: "Next 30 Days",
+    value: "30_days",
   },
-
   {
-    label:"Next 90 Days",
-    value:"90_days",
+    label: "Next 90 Days",
+    value: "90_days",
   },
-
 ];
 
-
-
 const COLORS = [
-
   "#38BDF8",
   "#22C55E",
   "#F59E0B",
   "#EF4444",
   "#A855F7",
-
 ];
 
-
-
 const darkFieldStyle = {
+  minWidth: 180,
 
-  minWidth:180,
-
-
-  "& .MuiInputLabel-root":{
-    color:"#CBD5E1",
+  "& .MuiInputLabel-root": {
+    color: "#CBD5E1",
   },
 
-
-  "& .MuiInputLabel-root.Mui-focused":{
-    color:"#38BDF8",
+  "& .MuiInputLabel-root.Mui-focused": {
+    color: "#38BDF8",
   },
 
+  "& .MuiOutlinedInput-root": {
+    color: "#E2E8F0",
 
-  "& .MuiOutlinedInput-root":{
-
-    color:"#E2E8F0",
-
-
-    "& fieldset":{
-      borderColor:"#475569",
+    "& fieldset": {
+      borderColor: "#475569",
     },
 
-
-    "&:hover fieldset":{
-      borderColor:"#38BDF8",
+    "&:hover fieldset": {
+      borderColor: "#38BDF8",
     },
 
-
-    "&.Mui-focused fieldset":{
-      borderColor:"#38BDF8",
+    "&.Mui-focused fieldset": {
+      borderColor: "#38BDF8",
     },
-
-
   },
 
-
-  "& .MuiSelect-select":{
-    color:"#E2E8F0",
+  "& .MuiSelect-select": {
+    color: "#E2E8F0",
   },
-
 };
 
-
-export default function Forecast(){
-
-
-const [loading,setLoading] =
-useState(false);
-
-
-
-const [generating,setGenerating] =
-useState(false);
-
-
-
-const [error,setError] =
-useState("");
-
-
-
-
-
-const [forecastPeriod,setForecastPeriod] =
-useState("30_days");
-
-
-
-const [startDate,setStartDate] =
-useState("");
-
-
-
-const [endDate,setEndDate] =
-useState("");
-
-
-
-
-
-const [searchText,setSearchText] =
-useState("");
-
-
-
-const [brand,setBrand] =
-useState("");
-
-
-
-const [category,setCategory] =
-useState("");
-
-
-
-const [sortBy,setSortBy] =
-useState("");
-
-
-
-
-
-const [dashboard,setDashboard] =
-useState<DashboardData|null>(null);
-
-
-
-
-
-const [products,setProducts] =
-useState<ProductForecast[]>([]);
-
-
-
-const [allProducts,setAllProducts] =
-useState<ProductForecast[]>([]);
-
-
-
-
-
-const [categories,setCategories] =
-useState<CategoryForecast[]>([]);
-
-
-
-
-
-const [productChartData,setProductChartData] =
-useState<any[]>([]);
-
-
-
-const [growthChartData,setGrowthChartData] =
-useState<any[]>([]);
-
-
-
-const [productTrendData,setProductTrendData] =
-useState<any[]>([]);
-
-
-
-const [topProductsData,setTopProductsData] =
-useState<any[]>([]);
-
-
-
-const [seasonalData,setSeasonalData] =
-useState<any[]>([]);
-
-
-
-const [categoryChartData,setCategoryChartData] =
-useState<any[]>([]);
-
-
-
-
-
-const [showNotifications,setShowNotifications] =
-useState(false);
-
-
-
-const [notifications,setNotifications] =
-useState<ForecastNotification[]>([]);
-
-
-
-
-
 // =====================================================
-// LOAD FORECAST DATA
+// COMPONENT
 // =====================================================
 
+export default function Forecast() {
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
-const fetchForecastData = async()=>{
+  const [error, setError] = useState("");
 
+  const [forecastPeriod, setForecastPeriod] =
+    useState("30_days");
 
-  try{
+  const [startDate, setStartDate] =
+    useState("");
 
+  const [endDate, setEndDate] =
+    useState("");
 
-    setLoading(true);
+  const [searchText, setSearchText] =
+    useState("");
 
-    setError("");
+  const [brand, setBrand] =
+    useState("");
 
+  const [category, setCategory] =
+    useState("");
 
+  const [sortBy, setSortBy] =
+    useState("");
 
-    // FIX:
-    // axios direct call removed
-    // api interceptor automatically adds token
+  const [dashboard, setDashboard] =
+    useState<DashboardData | null>(null);
 
+  const [products, setProducts] =
+    useState<ProductForecast[]>([]);
 
-    const response = await api.get(
-      "/forecast/analytics"
-    );
+  const [allProducts, setAllProducts] =
+    useState<ProductForecast[]>([]);
 
+  const [categories, setCategories] =
+    useState<CategoryForecast[]>([]);
 
+  const [productChartData, setProductChartData] =
+    useState<any[]>([]);
 
-    const data = response.data;
+  const [growthChartData, setGrowthChartData] =
+    useState<any[]>([]);
 
+  const [productTrendData, setProductTrendData] =
+    useState<any[]>([]);
 
+  const [topProductsData, setTopProductsData] =
+    useState<any[]>([]);
 
-    setDashboard(
-      data.dashboard ?? null
-    );
+  const [seasonalData, setSeasonalData] =
+    useState<any[]>([]);
 
+  const [categoryChartData, setCategoryChartData] =
+    useState<any[]>([]);
 
+  const [showNotifications, setShowNotifications] =
+    useState(false);
 
+  const [notifications, setNotifications] =
+    useState<ForecastNotification[]>([]);
 
-    const productData:ProductForecast[] =
-      data.product_forecasts ?? [];
+  // =====================================================
+  // LOAD FORECAST DATA
+  // =====================================================
 
-
-
-
-    const categoryData:CategoryForecast[] =
-      data.category_forecasts ?? [];
-
-
-
-
-
-    setAllProducts(productData);
-
-    setProducts(productData);
-
-    setCategories(categoryData);
-
-
-
-
-
-    setProductChartData(
-
-      productData.map(
-
-        (item)=>(
-
-          {
-
-            name:item.product_name,
-
-            historical:
-              Number(item.historical_sales) || 0,
-
-
-            predicted:
-              Number(item.predicted_demand) || 0,
-
-
-          }
-
-        )
-
-      )
-
-    );
-
-
-
-    setGrowthChartData(
-
-      productData.map(
-
-        (item)=>(
-
-          {
-
-            name:item.product_name,
-
-
-            growth:
-              Number(
-                item.expected_growth_percentage
-              ) || 0,
-
-
-          }
-
-        )
-
-      )
-
-    );
-
-
-
-
-        setProductTrendData(
-
-      productData.map(
-
-        (item)=>(
-
-          {
-
-            name:item.product_name,
-
-
-            historical:
-              Number(
-                item.historical_sales
-              ) || 0,
-
-
-
-            forecast:
-              Number(
-                item.predicted_demand
-              ) || 0,
-
-
-          }
-
-        )
-
-      )
-
-    );
-
-
-
-
-
-
-
-    setTopProductsData(
-
-      [...productData]
-
-      .sort(
-
-        (a,b)=>
-
-        b.predicted_demand -
-
-        a.predicted_demand
-
-      )
-
-
-      .slice(0,5)
-
-
-      .map(
-
-        (item)=>(
-
-          {
-
-            name:item.product_name,
-
-            demand:
-              item.predicted_demand,
-
-
-          }
-
-        )
-
-      )
-
-    );
-
-
-
-
-
-
-
-    setSeasonalData(
-
-      productData.map(
-
-        (item)=>(
-
-          {
-
-            month:
-              item.forecast_period,
-
-
-            sales:
-              item.historical_sales,
-
-
-            forecast:
-              item.predicted_demand,
-
-
-          }
-
-        )
-
-      )
-
-    );
-
-
-
-
-
-
-
-    setCategoryChartData(
-
-      categoryData.map(
-
-        (item)=>(
-
-          {
-
-            name:
-              item.category_name,
-
-
-            demand:
-              Number(
-                item.predicted_demand
-              ) || 0,
-
-
-          }
-
-        )
-
-      )
-
-    );
-
-
-
-  }
-
-
-
-  catch(error:any){
-
-
-    console.error(
-
-      "Forecast Load Error",
-
-      error
-
-    );
-
-
-
-    if(error.response?.status===401){
-
-
-      setError(
-
-        "Session expired. Login again"
-
-      );
-
-
-    }
-
-    else{
-
-
-      setError(
-
-        "Failed to load forecast data"
-
-      );
-
-
-    }
-
-
-
-    setDashboard(null);
-
-    setProducts([]);
-
-    setAllProducts([]);
-
-    setCategories([]);
-
-
-  }
-
-
-
-
-
-  finally{
-
-
-    setLoading(false);
-
-
-  }
-
-
-};
-
-
-
-
-
-
-
-useEffect(()=>{
-
-
-  fetchForecastData();
-
-
-},[]);
-
-
-
-
-
-
-
-// =====================================================
-// GENERATE FORECAST
-// =====================================================
-
-
-const generateForecast = async()=>{
-
-
-  try{
-
-
-    setGenerating(true);
-
-    setError("");
-
-
-
-
-
-    if(
-
-      forecastPeriod==="custom"
-
-      &&
-
-      (!startDate || !endDate)
-
-    ){
-
-
-      setError(
-
-        "Start Date and End Date are required"
-
-      );
-
-
-      return;
-
-
-    }
-
-
-
-
-
-
-    await api.post(
-
-      "/forecast/generate",
-
-      {
-
-        forecast_period:
-          forecastPeriod,
-
-
-        start_date:
-          startDate || null,
-
-
-        end_date:
-          endDate || null,
-
-
-      }
-
-    );
-
-
-
-
-
-    await fetchForecastData();
-
-
-
-
-  }
-
-
-  catch(error:any){
-
-
-    console.error(
-
-      "Forecast Generate Error",
-
-      error
-
-    );
-
-
-
-    setError(
-
-      "Forecast generation failed"
-
-    );
-
-
-  }
-
-
-
-  finally{
-
-
-    setGenerating(false);
-
-
-  }
-
-
-};
-
-const handleSearch = ()=>{
-
-
-  let filtered = [
-
-    ...allProducts
-
-  ];
-
-
-
-
-
-  if(searchText.trim()){
-
-
-
-    filtered = filtered.filter(
-
-
-      (item)=>
-
-      item.product_name
-
-      .toLowerCase()
-
-      .includes(
-
-        searchText
-
-        .toLowerCase()
-
-      )
-
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-
-
-  if(brand.trim()){
-
-
-
-    filtered = filtered.filter(
-
-
-      (item)=>
-
-      item.brand
-
-      ?.toLowerCase()
-
-      .includes(
-
-        brand
-
-        .toLowerCase()
-
-      )
-
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-
-
-  if(category){
-
-
-
-    filtered = filtered.filter(
-
-
-      (item)=>
-
-      item.category_name===category
-
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-
-
-  if(sortBy==="demand"){
-
-
-
-    filtered.sort(
-
-      (a,b)=>
-
-      b.predicted_demand -
-
-      a.predicted_demand
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-  else if(sortBy==="stock"){
-
-
-
-    filtered.sort(
-
-      (a,b)=>
-
-      a.current_stock -
-
-      b.current_stock
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-  else if(sortBy==="growth"){
-
-
-
-    filtered.sort(
-
-      (a,b)=>
-
-      b.expected_growth_percentage -
-
-      a.expected_growth_percentage
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-  else if(sortBy==="accuracy"){
-
-
-
-    filtered.sort(
-
-      (a,b)=>
-
-      b.forecast_accuracy -
-
-      a.forecast_accuracy
-
-    );
-
-
-  }
-
-
-
-
-
-
-
-  setProducts(filtered);
-
-
-
-};
-
-
-
-
-
-
-
-
-const handleRefresh = ()=>{
-
-
-  setSearchText("");
-
-  setBrand("");
-
-  setCategory("");
-
-  setSortBy("");
-
-  setForecastPeriod("30_days");
-
-  setStartDate("");
-
-  setEndDate("");
-
-
-
-  fetchForecastData();
-
-
-
-};
-
-
-
-
-
-
-
-
-
-
-
-
-// =====================================================
-// NOTIFICATIONS
-// =====================================================
-
-
-const toggleNotifications = async()=>{
-
-
-
-  const value =
-
-  !showNotifications;
-
-
-
-  setShowNotifications(value);
-
-
-
-
-
-
-
-  if(value){
-
-
-
-    try{
-
-
+  const fetchForecastData = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
       const response = await api.get(
-
-        "/notifications/forecast"
-
+        "/forecast/analytics"
       );
 
+      const data = response.data;
 
-
-
-
-
-      setNotifications(
-
-        response.data ?? []
-
+      console.log(
+        "FORECAST ANALYTICS RESPONSE:",
+        data
       );
 
+      // =================================================
+      // DASHBOARD
+      // =================================================
 
+      setDashboard(
+        data.dashboard ?? null
+      );
 
+      // =================================================
+      // PRODUCT DATA
+      // =================================================
 
-    }
+      const productData: ProductForecast[] =
+        Array.isArray(
+          data.product_forecasts
+        )
+          ? data.product_forecasts
+          : [];
 
+      // =================================================
+      // CATEGORY DATA
+      // =================================================
 
+      const categoryData: CategoryForecast[] =
+        Array.isArray(
+          data.category_forecasts
+        )
+          ? data.category_forecasts
+          : [];
 
-    catch(error){
+      setAllProducts(productData);
+      setProducts(productData);
+      setCategories(categoryData);
 
+      // =================================================
+      // HISTORICAL VS PREDICTED
+      // =================================================
 
+      const historicalForecastData =
+        productData.map((item) => ({
+          name:
+            item.product_name ||
+            "Unknown Product",
 
+          historical:
+            Number(
+              item.historical_sales
+            ) || 0,
+
+          predicted:
+            Number(
+              item.predicted_demand
+            ) || 0,
+        }));
+
+      setProductChartData(
+        historicalForecastData
+      );
+
+      // =================================================
+      // PRODUCT GROWTH
+      // =================================================
+
+      const growthData =
+        productData.map((item) => ({
+          name:
+            item.product_name ||
+            "Unknown Product",
+
+          growth:
+            Number(
+              item.expected_growth_percentage
+            ) || 0,
+        }));
+
+      console.log(
+        "Growth Chart Data:",
+        growthData
+      );
+
+      setGrowthChartData(
+        growthData
+      );
+
+      // =================================================
+      // PRODUCT DEMAND TREND
+      // =================================================
+
+      const trendData =
+        productData.map((item) => ({
+          name:
+            item.product_name ||
+            "Unknown Product",
+
+          historical:
+            Number(
+              item.historical_sales
+            ) || 0,
+
+          forecast:
+            Number(
+              item.predicted_demand
+            ) || 0,
+        }));
+
+      console.log(
+        "Product Trend Data:",
+        trendData
+      );
+
+      setProductTrendData(
+        trendData
+      );
+
+      // =================================================
+      // TOP PREDICTED PRODUCTS
+      // =================================================
+
+      const topData =
+        [...productData]
+          .sort(
+            (a, b) =>
+              Number(
+                b.predicted_demand
+              ) -
+              Number(
+                a.predicted_demand
+              )
+          )
+          .slice(0, 5)
+          .map((item) => ({
+            name:
+              item.product_name ||
+              "Unknown Product",
+
+            demand:
+              Number(
+                item.predicted_demand
+              ) || 0,
+          }));
+
+      setTopProductsData(
+        topData
+      );
+
+      // =================================================
+      // SEASONAL DATA
+      // =================================================
+
+      const seasonal =
+        productData.map((item) => ({
+          month:
+            item.forecast_period ||
+            "Forecast",
+
+          sales:
+            Number(
+              item.historical_sales
+            ) || 0,
+
+          forecast:
+            Number(
+              item.predicted_demand
+            ) || 0,
+        }));
+
+      setSeasonalData(
+        seasonal
+      );
+
+      // =================================================
+      // CATEGORY CHART
+      // =================================================
+
+      const categoryDataForChart =
+        categoryData.map((item) => ({
+          name:
+            item.category_name ||
+            "Unknown Category",
+
+          demand:
+            Number(
+              item.predicted_demand
+            ) || 0,
+        }));
+
+      setCategoryChartData(
+        categoryDataForChart
+      );
+    } catch (error: any) {
       console.error(
-
-        "Notification Error",
-
+        "Forecast Load Error:",
         error
-
       );
 
+      if (
+        error.response?.status === 401
+      ) {
+        setError(
+          "Session expired. Please login again."
+        );
+      } else {
+        setError(
+          error.response?.data?.detail ||
+            "Failed to load forecast data."
+        );
+      }
 
+      setDashboard(null);
 
-      setNotifications([]);
+      setProducts([]);
+      setAllProducts([]);
 
+      setCategories([]);
 
+      setProductChartData([]);
+      setGrowthChartData([]);
+      setProductTrendData([]);
+      setTopProductsData([]);
+      setSeasonalData([]);
+      setCategoryChartData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // =====================================================
+  // INITIAL LOAD
+  // =====================================================
+
+  useEffect(() => {
+    fetchForecastData();
+  }, []);
+
+  // =====================================================
+  // GENERATE FORECAST
+  // =====================================================
+
+  const generateForecast = async () => {
+    try {
+      setGenerating(true);
+      setError("");
+
+      if (
+        forecastPeriod === "custom" &&
+        (!startDate || !endDate)
+      ) {
+        setError(
+          "Start Date and End Date are required."
+        );
+
+        return;
+      }
+
+      await api.post(
+        "/forecast/generate",
+        {
+          forecast_period:
+            forecastPeriod,
+
+          start_date:
+            startDate || null,
+
+          end_date:
+            endDate || null,
+        }
+      );
+
+      await fetchForecastData();
+    } catch (error: any) {
+      console.error(
+        "Forecast Generate Error:",
+        error
+      );
+
+      setError(
+        error.response?.data?.detail ||
+          "Forecast generation failed."
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // =====================================================
+  // SEARCH / FILTER / SORT
+  // =====================================================
+
+  const handleSearch = () => {
+    let filtered = [
+      ...allProducts,
+    ];
+
+    // PRODUCT SEARCH
+    if (
+      searchText.trim()
+    ) {
+      filtered =
+        filtered.filter(
+          (item) =>
+            item.product_name
+              ?.toLowerCase()
+              .includes(
+                searchText
+                  .toLowerCase()
+              )
+        );
     }
 
-
-
-  }
-
-
-
-};
-
-
-
-
-
-
-
-
-
-
-
-
-// =====================================================
-// DOWNLOAD FILE
-// =====================================================
-
-
-const downloadFile = (
-
-  data:any,
-
-  fileName:string
-
-)=>{
-
-
-
-  const url =
-
-  window.URL.createObjectURL(data);
-
-
-
-
-
-  const link =
-
-  document.createElement("a");
-
-
-
-
-
-  link.href=url;
-
-
-
-  link.download=fileName;
-
-
-
-
-  document.body.appendChild(link);
-
-
-
-  link.click();
-
-
-
-  link.remove();
-
-
-
-  window.URL.revokeObjectURL(url);
-
-
-
-};
-
-
-const exportProductsCSV = async()=>{
-
-
-  try{
-
-
-    const response = await api.get(
-
-      "/forecast/export/products/csv",
-
-      {
-
-        responseType:"blob",
-
+    // BRAND
+    if (
+      brand.trim()
+    ) {
+      filtered =
+        filtered.filter(
+          (item) =>
+            item.brand
+              ?.toLowerCase()
+              .includes(
+                brand.toLowerCase()
+              )
+        );
+    }
+
+    // CATEGORY
+    if (category) {
+      filtered =
+        filtered.filter(
+          (item) =>
+            item.category_name ===
+            category
+        );
+    }
+
+    // SORT
+    if (
+      sortBy === "demand"
+    ) {
+      filtered.sort(
+        (a, b) =>
+          Number(
+            b.predicted_demand
+          ) -
+          Number(
+            a.predicted_demand
+          )
+      );
+    } else if (
+      sortBy === "stock"
+    ) {
+      filtered.sort(
+        (a, b) =>
+          Number(
+            a.current_stock
+          ) -
+          Number(
+            b.current_stock
+          )
+      );
+    } else if (
+      sortBy === "growth"
+    ) {
+      filtered.sort(
+        (a, b) =>
+          Number(
+            b.expected_growth_percentage
+          ) -
+          Number(
+            a.expected_growth_percentage
+          )
+      );
+    } else if (
+      sortBy === "accuracy"
+    ) {
+      filtered.sort(
+        (a, b) =>
+          Number(
+            b.forecast_accuracy
+          ) -
+          Number(
+            a.forecast_accuracy
+          )
+      );
+    }
+
+    setProducts(
+      filtered
+    );
+  };
+
+  // =====================================================
+  // REFRESH
+  // =====================================================
+
+  const handleRefresh = () => {
+    setSearchText("");
+    setBrand("");
+    setCategory("");
+    setSortBy("");
+
+    setForecastPeriod(
+      "30_days"
+    );
+
+    setStartDate("");
+    setEndDate("");
+
+    fetchForecastData();
+  };
+
+  // =====================================================
+  // NOTIFICATIONS
+  // =====================================================
+
+  const toggleNotifications =
+    async () => {
+      const value =
+        !showNotifications;
+
+      setShowNotifications(
+        value
+      );
+
+      if (value) {
+        try {
+          const response =
+            await api.get(
+              "/notifications/forecast"
+            );
+
+          setNotifications(
+            Array.isArray(
+              response.data
+            )
+              ? response.data
+              : []
+          );
+        } catch (error) {
+          console.error(
+            "Notification Error:",
+            error
+          );
+
+          setNotifications([]);
+        }
+      }
+    };
+
+  // =====================================================
+  // DOWNLOAD FILE
+  // =====================================================
+
+  const downloadFile = (
+    data: Blob,
+    fileName: string
+  ) => {
+    const url =
+      window.URL.createObjectURL(
+        data
+      );
+
+    const link =
+      document.createElement(
+        "a"
+      );
+
+    link.href = url;
+    link.download =
+      fileName;
+
+    document.body.appendChild(
+      link
+    );
+
+    link.click();
+
+    link.remove();
+
+    window.URL.revokeObjectURL(
+      url
+    );
+  };
+
+  // =====================================================
+  // EXPORT PRODUCT CSV
+  // =====================================================
+
+  const exportProductsCSV =
+    async () => {
+      try {
+        const response =
+          await api.get(
+            "/forecast/export/products/csv",
+            {
+              responseType:
+                "blob",
+            }
+          );
+
+        downloadFile(
+          response.data,
+          "product_forecast.csv"
+        );
+      } catch (error) {
+        console.error(
+          "CSV Export Error:",
+          error
+        );
+
+        setError(
+          "Product CSV export failed."
+        );
+      }
+    };
+
+  // =====================================================
+  // EXPORT CATEGORY CSV
+  // =====================================================
+
+  const exportCategoriesCSV =
+    async () => {
+      try {
+        const response =
+          await api.get(
+            "/forecast/export/categories/csv",
+            {
+              responseType:
+                "blob",
+            }
+          );
+
+        downloadFile(
+          response.data,
+          "category_forecast.csv"
+        );
+      } catch (error) {
+        console.error(
+          "Category Export Error:",
+          error
+        );
+
+        setError(
+          "Category CSV export failed."
+        );
+      }
+    };
+
+  // =====================================================
+  // EXPORT PRODUCT PDF
+  // =====================================================
+
+  const exportProductsPDF =
+    async () => {
+      try {
+        const response =
+          await api.get(
+            "/forecast/export/products/pdf",
+            {
+              responseType:
+                "blob",
+            }
+          );
+
+        downloadFile(
+          response.data,
+          "product_forecast.pdf"
+        );
+      } catch (error) {
+        console.error(
+          "PDF Export Error:",
+          error
+        );
+
+        setError(
+          "Product PDF export failed."
+        );
+      }
+    };
+
+  // =====================================================
+  // CATEGORY RECOMMENDATION
+  // =====================================================
+
+  const getCategoryRecommendation =
+    (
+      growth: number
+    ) => {
+      if (growth > 20) {
+        return "Increase Stock";
       }
 
-    );
-
-
-
-
-
-    downloadFile(
-
-      response.data,
-
-      "product_forecast.csv"
-
-    );
-
-
-
-  }
-
-
-
-  catch(error){
-
-
-
-    console.error(
-
-      "CSV Export Error",
-
-      error
-
-    );
-
-
-
-  }
-
-
-};
-
-
-
-
-
-
-
-
-
-const exportCategoriesCSV = async()=>{
-
-
-  try{
-
-
-    const response = await api.get(
-
-      "/forecast/export/categories/csv",
-
-      {
-
-        responseType:"blob",
-
+      if (growth > 0) {
+        return "Monitor Growth";
       }
 
-    );
-
-
-
-
-
-
-
-    downloadFile(
-
-
-      response.data,
-
-
-      "category_forecast.csv"
-
-
-    );
-
-
-
-  }
-
-
-
-  catch(error){
-
-
-
-    console.error(
-
-      "Category Export Error",
-
-      error
-
-    );
-
-
-
-  }
-
-
-};
-
-
-
-
-
-
-
-
-
-const exportProductsPDF = async()=>{
-
-
-  try{
-
-
-    const response = await api.get(
-
-      "/forecast/export/products/pdf",
-
-      {
-
-        responseType:"blob",
-
+      if (growth < -20) {
+        return "Reduce Stock";
       }
 
-    );
-
-
-
-
-
-
-
-    downloadFile(
-
-
-      response.data,
-
-
-      "product_forecast.pdf"
-
-
-    );
-
-
-
-  }
-
-
-
-  catch(error){
-
-
-
-    console.error(
-
-      "PDF Export Error",
-
-      error
-
-    );
-
-
-
-  }
-
-
-};
-
-
-
-
-
-
-
-
-return (
-
-<Box
-
-sx={{
-
-p:3,
-
-width:"100%",
-
-minHeight:"100vh",
-
-overflowX:"hidden",
-
-background:"#0F172A",
-
-boxSizing:"border-box",
-
-}}
-
->
-
-
-
-
-
-
-
-<Typography
-
-variant="h4"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:3,
-
-}}
-
->
-
-Demand Forecasting & Predictive Analytics
-
-</Typography>
-
-
-
-
-
-
-
-
-{
-
-error &&
-
-
-<Alert
-
-severity="error"
-
-sx={{mb:3}}
-
->
-
-{error}
-
-</Alert>
-
-
+      if (growth < 0) {
+        return "Decrease Demand";
+      }
+
+      return "Stable Demand";
+    };
+
+  // =====================================================
+  // CATEGORY CHIP COLOR
+  // =====================================================
+
+  const getCategoryRecommendationColor =
+    (
+      growth: number
+    ) => {
+      if (growth > 20) {
+        return "#166534";
+      }
+
+      if (growth > 0) {
+        return "#14532D";
+      }
+
+      if (growth < -20) {
+        return "#991B1B";
+      }
+
+      if (growth < 0) {
+        return "#92400E";
+      }
+
+      return "#334155";
+    };
+
+  // =====================================================
+  // EMPTY CHART MESSAGE
+  // =====================================================
+
+  const EmptyChart = ({
+    message,
+  }: {
+    message: string;
+  }) => (
+    <Box
+      sx={{
+        height: 350,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Typography
+        sx={{
+          color: "#94A3B8",
+        }}
+      >
+        {message}
+      </Typography>
+    </Box>
+  );
+
+  // =====================================================
+  // RETURN
+  // =====================================================
+
+  return (
+    <Box
+      sx={{
+        p: 3,
+        width: "100%",
+        minHeight: "100vh",
+        overflowX: "hidden",
+        background: "#0F172A",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* =================================================
+          TITLE
+      ================================================= */}
+
+      <Typography
+        variant="h4"
+        fontWeight={700}
+        sx={{
+          color: "#FFFFFF",
+          mb: 3,
+        }}
+      >
+        Demand Forecasting & Predictive Analytics
+      </Typography>
+
+      {/* =================================================
+          ERROR
+      ================================================= */}
+
+      {error && (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+        >
+          {error}
+        </Alert>
+      )}
+
+      {/* =================================================
+          LOADING
+      ================================================= */}
+
+      {loading && (
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent:
+              "center",
+            mb: 3,
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      )}
+
+      {/* =================================================
+          DASHBOARD CARDS
+      ================================================= */}
+
+      <Grid
+        container
+        spacing={2}
+        sx={{ mb: 3 }}
+      >
+        {[
+          [
+            "Total Forecasts",
+            dashboard?.total_forecasts ??
+              0,
+          ],
+
+          [
+            "Predicted Demand",
+            dashboard?.total_predicted_demand ??
+              0,
+          ],
+
+          [
+            "Run Out Risk",
+            dashboard?.products_expected_to_run_out ??
+              0,
+          ],
+
+          [
+            "High Growth",
+            dashboard?.high_growth_products ??
+              0,
+          ],
+
+          [
+            "Slow Moving",
+            dashboard?.slow_moving_products ??
+              0,
+          ],
+
+          [
+            "Accuracy",
+            `${dashboard?.forecast_accuracy ?? 0}%`,
+          ],
+        ].map(
+          (
+            item,
+            index
+          ) => (
+            <Grid
+              key={index}
+              size={{
+                xs: 12,
+                sm: 6,
+                md: 4,
+                lg: 2,
+              }}
+            >
+              <Card
+                sx={{
+                  height:
+                    "100%",
+                  background:
+                    "#1E293B",
+                }}
+              >
+                <CardContent>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{
+                      color:
+                        "#94A3B8",
+                    }}
+                  >
+                    {item[0]}
+                  </Typography>
+
+                  <Typography
+                    variant="h4"
+                    fontWeight={700}
+                    sx={{
+                      color:
+                        "#FFFFFF",
+                      mt: 1,
+                    }}
+                  >
+                    {item[1]}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          )
+        )}
+      </Grid>
+
+      {/* =================================================
+          FILTER SECTION
+      ================================================= */}
+
+      <Stack
+        spacing={2}
+        sx={{ mb: 3 }}
+      >
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            flexWrap:
+              "wrap",
+            gap: 2,
+          }}
+        >
+          <TextField
+            select
+            label="Forecast Period"
+            value={
+              forecastPeriod
+            }
+            onChange={(e) =>
+              setForecastPeriod(
+                e.target.value
+              )
+            }
+            sx={
+              darkFieldStyle
+            }
+          >
+            {FORECAST_PERIODS.map(
+              (item) => (
+                <MenuItem
+                  key={
+                    item.value
+                  }
+                  value={
+                    item.value
+                  }
+                >
+                  {item.label}
+                </MenuItem>
+              )
+            )}
+          </TextField>
+
+          <TextField
+            type="date"
+            label="Start Date"
+            value={
+              startDate
+            }
+            onChange={(e) =>
+              setStartDate(
+                e.target.value
+              )
+            }
+            slotProps={{
+              inputLabel: {
+                shrink: true,
+              },
+            }}
+            sx={
+              darkFieldStyle
+            }
+          />
+
+          <TextField
+            type="date"
+            label="End Date"
+            value={
+              endDate
+            }
+            onChange={(e) =>
+              setEndDate(
+                e.target.value
+              )
+            }
+            slotProps={{
+              inputLabel: {
+                shrink: true,
+              },
+            }}
+            sx={
+              darkFieldStyle
+            }
+          />
+
+          <TextField
+            label="Search Product"
+            value={
+              searchText
+            }
+            onChange={(e) =>
+              setSearchText(
+                e.target.value
+              )
+            }
+            sx={
+              darkFieldStyle
+            }
+          />
+
+          <TextField
+            label="Brand"
+            value={brand}
+            onChange={(e) =>
+              setBrand(
+                e.target.value
+              )
+            }
+            sx={
+              darkFieldStyle
+            }
+          />
+
+          <TextField
+            select
+            label="Category"
+            value={
+              category
+            }
+            onChange={(e) =>
+              setCategory(
+                e.target.value
+              )
+            }
+            sx={
+              darkFieldStyle
+            }
+          >
+            <MenuItem value="">
+              All Categories
+            </MenuItem>
+
+            {[
+              ...new Set(
+                allProducts.map(
+                  (item) =>
+                    item.category_name
+                )
+              ),
+            ].map(
+              (cat) => (
+                <MenuItem
+                  key={cat}
+                  value={cat}
+                >
+                  {cat}
+                </MenuItem>
+              )
+            )}
+          </TextField>
+
+          <TextField
+            select
+            label="Sort By"
+            value={
+              sortBy
+            }
+            onChange={(e) =>
+              setSortBy(
+                e.target.value
+              )
+            }
+            sx={
+              darkFieldStyle
+            }
+          >
+            <MenuItem value="">
+              Default
+            </MenuItem>
+
+            <MenuItem value="demand">
+              Highest Predicted Demand
+            </MenuItem>
+
+            <MenuItem value="stock">
+              Lowest Stock
+            </MenuItem>
+
+            <MenuItem value="growth">
+              Highest Growth
+            </MenuItem>
+
+            <MenuItem value="accuracy">
+              Forecast Accuracy
+            </MenuItem>
+          </TextField>
+        </Stack>
+
+        {/* BUTTONS */}
+
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            flexWrap:
+              "wrap",
+            gap: 2,
+          }}
+        >
+          <Button
+            variant="contained"
+            startIcon={
+              <Search />
+            }
+            onClick={
+              handleSearch
+            }
+          >
+            Search
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={
+              <Refresh />
+            }
+            onClick={
+              handleRefresh
+            }
+            sx={{
+              color:
+                "#FFFFFF",
+              borderColor:
+                "#64748B",
+            }}
+          >
+            Refresh
+          </Button>
+
+          <Button
+            variant="contained"
+            startIcon={
+              <Assessment />
+            }
+            onClick={
+              generateForecast
+            }
+            disabled={
+              generating
+            }
+          >
+            {generating
+              ? "Generating..."
+              : "Generate Forecast"}
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={
+              <Notifications />
+            }
+            onClick={
+              toggleNotifications
+            }
+            sx={{
+              color:
+                "#FFFFFF",
+              borderColor:
+                "#64748B",
+            }}
+          >
+            Notifications
+          </Button>
+        </Stack>
+      </Stack>
+
+      {/* =================================================
+          HISTORICAL VS FORECAST
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Historical Sales vs Forecast
+          </Typography>
+
+          {productChartData.length ===
+          0 ? (
+            <EmptyChart
+              message="No historical or forecast data available"
+            />
+          ) : (
+            <Box
+              sx={{
+                height: 350,
+                width:
+                  "100%",
+              }}
+            >
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
+                <BarChart
+                  data={
+                    productChartData
+                  }
+                  margin={{
+                    top: 20,
+                    right: 30,
+                    left: 20,
+                    bottom: 20,
+                  }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#334155"
+                  />
+
+                  <XAxis
+                    dataKey="name"
+                    tick={{
+                      fill:
+                        "#E2E8F0",
+                    }}
+                  />
+
+                  <YAxis
+                    tick={{
+                      fill:
+                        "#E2E8F0",
+                    }}
+                  />
+
+                  <Tooltip
+                    contentStyle={{
+                      background:
+                        "#111827",
+                      border:
+                        "1px solid #334155",
+                    }}
+                    labelStyle={{
+                      color:
+                        "#FFFFFF",
+                    }}
+                    itemStyle={{
+                      color:
+                        "#FFFFFF",
+                    }}
+                  />
+
+                  <Legend />
+
+                  <Bar
+                    dataKey="historical"
+                    name="Historical Sales"
+                    fill="#38BDF8"
+                    radius={[
+                      5,
+                      5,
+                      0,
+                      0,
+                    ]}
+                  />
+
+                  <Bar
+                    dataKey="predicted"
+                    name="Predicted Demand"
+                    fill="#22C55E"
+                    radius={[
+                      5,
+                      5,
+                      0,
+                      0,
+                    ]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          PRODUCT GROWTH FORECAST
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Product Growth Forecast
+          </Typography>
+
+          {growthChartData.length ===
+          0 ? (
+            <EmptyChart
+              message="No growth forecast data available"
+            />
+          ) : (
+            <ResponsiveContainer
+              width="100%"
+              height={350}
+            >
+              <BarChart
+                data={
+                  growthChartData
+                }
+                margin={{
+                  top: 30,
+                  right: 30,
+                  left: 20,
+                  bottom: 20,
+                }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#334155"
+                />
+
+                <XAxis
+                  dataKey="name"
+                  tick={{
+                    fill:
+                      "#E2E8F0",
+                  }}
+                />
+
+                <YAxis
+                  tick={{
+                    fill:
+                      "#E2E8F0",
+                  }}
+                  tickFormatter={(
+                    value
+                  ) =>
+                    `${value}%`
+                  }
+                />
+
+                <Tooltip
+                  formatter={(
+                    value: number
+                  ) => [
+                    `${Number(
+                      value
+                    ).toFixed(
+                      2
+                    )}%`,
+                    "Growth",
+                  ]}
+                  contentStyle={{
+                    background:
+                      "#111827",
+                    border:
+                      "1px solid #334155",
+                  }}
+                  labelStyle={{
+                    color:
+                      "#FFFFFF",
+                  }}
+                  itemStyle={{
+                    color:
+                      "#FFFFFF",
+                  }}
+                />
+
+                <Bar
+                  dataKey="growth"
+                  name="Growth %"
+                  fill="#F59E0B"
+                  minPointSize={10}
+                  radius={[
+                    6,
+                    6,
+                    0,
+                    0,
+                  ]}
+                  label={{
+                    position:
+                      "top",
+                    fill:
+                      "#FFFFFF",
+                    formatter: (
+                      value: number
+                    ) =>
+                      `${Number(
+                        value
+                      ).toFixed(
+                        2
+                      )}%`,
+                  }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          PRODUCT DEMAND TREND
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Product Demand Trend
+          </Typography>
+
+          {productTrendData.length ===
+          0 ? (
+            <EmptyChart
+              message="No demand trend data available"
+            />
+          ) : (
+            <ResponsiveContainer
+              width="100%"
+              height={350}
+            >
+              <LineChart
+                data={
+                  productTrendData
+                }
+                margin={{
+                  top: 30,
+                  right: 30,
+                  left: 20,
+                  bottom: 20,
+                }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#334155"
+                />
+
+                <XAxis
+                  dataKey="name"
+                  tick={{
+                    fill:
+                      "#E2E8F0",
+                  }}
+                />
+
+                <YAxis
+                  tick={{
+                    fill:
+                      "#E2E8F0",
+                  }}
+                />
+
+                <Tooltip
+                  contentStyle={{
+                    background:
+                      "#111827",
+                    border:
+                      "1px solid #334155",
+                  }}
+                  labelStyle={{
+                    color:
+                      "#FFFFFF",
+                  }}
+                  itemStyle={{
+                    color:
+                      "#FFFFFF",
+                  }}
+                />
+
+                <Legend />
+
+                <Line
+                  type="monotone"
+                  dataKey="historical"
+                  name="Historical"
+                  stroke="#38BDF8"
+                  strokeWidth={3}
+                  dot={{
+                    r: 8,
+                    fill:
+                      "#38BDF8",
+                  }}
+                  activeDot={{
+                    r: 10,
+                  }}
+                />
+
+                <Line
+                  type="monotone"
+                  dataKey="forecast"
+                  name="Forecast"
+                  stroke="#22C55E"
+                  strokeWidth={3}
+                  dot={{
+                    r: 8,
+                    fill:
+                      "#22C55E",
+                  }}
+                  activeDot={{
+                    r: 10,
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          TOP PREDICTED PRODUCTS
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Top Predicted Products
+          </Typography>
+
+          {topProductsData.length ===
+          0 ? (
+            <EmptyChart
+              message="No predicted product data available"
+            />
+          ) : (
+            <ResponsiveContainer
+              width="100%"
+              height={350}
+            >
+              <BarChart
+                data={
+                  topProductsData
+                }
+                margin={{
+                  top: 30,
+                  right: 30,
+                  left: 20,
+                  bottom: 20,
+                }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#334155"
+                />
+
+                <XAxis
+                  dataKey="name"
+                  tick={{
+                    fill:
+                      "#E2E8F0",
+                  }}
+                />
+
+                <YAxis
+                  tick={{
+                    fill:
+                      "#E2E8F0",
+                  }}
+                />
+
+                <Tooltip
+                  contentStyle={{
+                    background:
+                      "#111827",
+                    border:
+                      "1px solid #334155",
+                  }}
+                  labelStyle={{
+                    color:
+                      "#FFFFFF",
+                  }}
+                  itemStyle={{
+                    color:
+                      "#FFFFFF",
+                  }}
+                />
+
+                <Bar
+                  dataKey="demand"
+                  name="Predicted Demand"
+                  fill="#A855F7"
+                  radius={[
+                    6,
+                    6,
+                    0,
+                    0,
+                  ]}
+                  minPointSize={8}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          SEASONAL SALES PATTERN
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Seasonal Sales Pattern
+          </Typography>
+
+          {seasonalData.length ===
+          0 ? (
+            <EmptyChart
+              message="No seasonal sales data available"
+            />
+          ) : (
+            <ResponsiveContainer
+              width="100%"
+              height={350}
+            >
+              <LineChart
+                data={
+                  seasonalData
+                }
+                margin={{
+                  top: 30,
+                  right: 30,
+                  left: 20,
+                  bottom: 20,
+                }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#334155"
+                />
+
+                <XAxis
+                  dataKey="month"
+                  tick={{
+                    fill:
+                      "#E2E8F0",
+                  }}
+                />
+
+                <YAxis
+                  tick={{
+                    fill:
+                      "#E2E8F0",
+                  }}
+                />
+
+                <Tooltip
+                  contentStyle={{
+                    background:
+                      "#111827",
+                    border:
+                      "1px solid #334155",
+                  }}
+                  labelStyle={{
+                    color:
+                      "#FFFFFF",
+                  }}
+                  itemStyle={{
+                    color:
+                      "#FFFFFF",
+                  }}
+                />
+
+                <Legend />
+
+                <Line
+                  type="monotone"
+                  dataKey="sales"
+                  name="Historical Sales"
+                  stroke="#38BDF8"
+                  strokeWidth={3}
+                  dot={{
+                    r: 8,
+                    fill:
+                      "#38BDF8",
+                  }}
+                />
+
+                <Line
+                  type="monotone"
+                  dataKey="forecast"
+                  name="Forecast"
+                  stroke="#22C55E"
+                  strokeWidth={3}
+                  dot={{
+                    r: 8,
+                    fill:
+                      "#22C55E",
+                  }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          CATEGORY DEMAND DISTRIBUTION
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Category Demand Distribution
+          </Typography>
+
+          {categoryChartData.length ===
+          0 ? (
+            <EmptyChart
+              message="No category demand data available"
+            />
+          ) : (
+            <Box
+              sx={{
+                height: 350,
+                width:
+                  "100%",
+              }}
+            >
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
+                <PieChart>
+                  <Pie
+                    data={
+                      categoryChartData
+                    }
+                    dataKey="demand"
+                    nameKey="name"
+                    outerRadius={120}
+                    label
+                  >
+                    {categoryChartData.map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <Cell
+                          key={`${item.name}-${index}`}
+                          fill={
+                            COLORS[
+                              index %
+                                COLORS.length
+                            ]
+                          }
+                        />
+                      )
+                    )}
+                  </Pie>
+
+                  <Tooltip
+                    contentStyle={{
+                      background:
+                        "#111827",
+                      border:
+                        "1px solid #334155",
+                    }}
+                    labelStyle={{
+                      color:
+                        "#FFFFFF",
+                    }}
+                    itemStyle={{
+                      color:
+                        "#FFFFFF",
+                    }}
+                  />
+
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          PRODUCT FORECAST DETAILS
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Product Forecast Details
+          </Typography>
+
+          <TableContainer
+            component={Paper}
+            sx={{
+              background:
+                "#111827",
+            }}
+          >
+            <Table>
+              <TableHead>
+                <TableRow>
+                  {[
+                    "Product",
+                    "Stock",
+                    "Historical",
+                    "Predicted",
+                    "Confidence",
+                    "Recommendation",
+                  ].map(
+                    (heading) => (
+                      <TableCell
+                        key={
+                          heading
+                        }
+                        sx={{
+                          color:
+                            "#FFFFFF",
+                          fontWeight:
+                            700,
+                        }}
+                      >
+                        {
+                          heading
+                        }
+                      </TableCell>
+                    )
+                  )}
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {products.length ===
+                0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      align="center"
+                      sx={{
+                        color:
+                          "#CBD5E1",
+                      }}
+                    >
+                      No Product Forecast Data Available
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  products.map(
+                    (row) => (
+                      <TableRow
+                        key={
+                          row.id
+                        }
+                      >
+                        <TableCell
+                          sx={{
+                            color:
+                              "#E2E8F0",
+                          }}
+                        >
+                          {
+                            row.product_name
+                          }
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "#E2E8F0",
+                          }}
+                        >
+                          {
+                            row.current_stock
+                          }
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "#E2E8F0",
+                          }}
+                        >
+                          {
+                            row.historical_sales
+                          }
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "#E2E8F0",
+                          }}
+                        >
+                          {
+                            row.predicted_demand
+                          }
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color:
+                              "#E2E8F0",
+                          }}
+                        >
+                          {Number(
+                            row.confidence_score ??
+                              0
+                          ).toFixed(
+                            2
+                          )}
+                          %
+                        </TableCell>
+
+                        <TableCell>
+                          <Chip
+                            label={
+                              row.recommendation ||
+                              "No Recommendation"
+                            }
+                            size="small"
+                            sx={{
+                              background:
+                                "#334155",
+                              color:
+                                "#FFFFFF",
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )
+                  )
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          CATEGORY FORECAST DETAILS
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Category Forecast Details
+          </Typography>
+
+          <TableContainer
+            component={Paper}
+            sx={{
+              background:
+                "#111827",
+            }}
+          >
+            <Table>
+              <TableHead>
+                <TableRow>
+                  {[
+                    "Category",
+                    "Historical",
+                    "Predicted",
+                    "Growth %",
+                    "Recommendation",
+                  ].map(
+                    (heading) => (
+                      <TableCell
+                        key={
+                          heading
+                        }
+                        sx={{
+                          color:
+                            "#FFFFFF",
+                          fontWeight:
+                            700,
+                        }}
+                      >
+                        {
+                          heading
+                        }
+                      </TableCell>
+                    )
+                  )}
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {categories.length ===
+                0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      align="center"
+                      sx={{
+                        color:
+                          "#CBD5E1",
+                      }}
+                    >
+                      No Category Forecast Data Available
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  categories.map(
+                    (row) => {
+                      const growth =
+                        Number(
+                          row.expected_growth_percentage
+                        ) || 0;
+
+                      const recommendation =
+                        getCategoryRecommendation(
+                          growth
+                        );
+
+                      return (
+                        <TableRow
+                          key={
+                            row.category_id
+                          }
+                        >
+                          <TableCell
+                            sx={{
+                              color:
+                                "#E2E8F0",
+                              fontWeight:
+                                600,
+                            }}
+                          >
+                            {
+                              row.category_name
+                            }
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#E2E8F0",
+                            }}
+                          >
+                            {Number(
+                              row.total_historical_sales ??
+                                0
+                            ).toFixed(
+                              0
+                            )}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#E2E8F0",
+                            }}
+                          >
+                            {Number(
+                              row.predicted_demand ??
+                                0
+                            ).toFixed(
+                              0
+                            )}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                growth <
+                                0
+                                  ? "#F87171"
+                                  : growth >
+                                    0
+                                  ? "#4ADE80"
+                                  : "#E2E8F0",
+
+                              fontWeight:
+                                600,
+                            }}
+                          >
+                            {growth.toFixed(
+                              2
+                            )}
+                            %
+                          </TableCell>
+
+                          <TableCell>
+                            <Chip
+                              label={
+                                recommendation
+                              }
+                              size="small"
+                              sx={{
+                                background:
+                                  getCategoryRecommendationColor(
+                                    growth
+                                  ),
+                                color:
+                                  "#FFFFFF",
+                                fontWeight:
+                                  600,
+                              }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                  )
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          EXPORT FORECAST REPORTS
+      ================================================= */}
+
+      <Card
+        sx={{
+          mb: 3,
+          background:
+            "#1E293B",
+        }}
+      >
+        <CardContent>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              color:
+                "#FFFFFF",
+              mb: 2,
+            }}
+          >
+            Export Forecast Reports
+          </Typography>
+
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{
+              flexWrap:
+                "wrap",
+              gap: 2,
+            }}
+          >
+            <Button
+              variant="outlined"
+              startIcon={
+                <Download />
+              }
+              onClick={
+                exportProductsCSV
+              }
+              sx={{
+                color:
+                  "#FFFFFF",
+                borderColor:
+                  "#64748B",
+              }}
+            >
+              Product CSV
+            </Button>
+
+            <Button
+              variant="outlined"
+              startIcon={
+                <Download />
+              }
+              onClick={
+                exportProductsPDF
+              }
+              sx={{
+                color:
+                  "#FFFFFF",
+                borderColor:
+                  "#64748B",
+              }}
+            >
+              Product PDF
+            </Button>
+
+            <Button
+              variant="outlined"
+              startIcon={
+                <Download />
+              }
+              onClick={
+                exportCategoriesCSV
+              }
+              sx={{
+                color:
+                  "#FFFFFF",
+                borderColor:
+                  "#64748B",
+              }}
+            >
+              Category CSV
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* =================================================
+          NOTIFICATIONS
+      ================================================= */}
+
+      {showNotifications && (
+        <Card
+          sx={{
+            mb: 3,
+            background:
+              "#1E293B",
+          }}
+        >
+          <CardContent>
+            <Typography
+              variant="h6"
+              fontWeight={700}
+              sx={{
+                color:
+                  "#FFFFFF",
+                mb: 2,
+              }}
+            >
+              Forecast Notifications
+            </Typography>
+
+            {notifications.length ===
+            0 ? (
+              <Typography
+                sx={{
+                  color:
+                    "#CBD5E1",
+                }}
+              >
+                No new forecast notifications
+              </Typography>
+            ) : (
+              notifications.map(
+                (
+                  item,
+                  index
+                ) => (
+                  <Card
+                    key={
+                      index
+                    }
+                    sx={{
+                      mb: 1,
+                      background:
+                        "#334155",
+                    }}
+                  >
+                    <CardContent>
+                      <Typography
+                        sx={{
+                          color:
+                            "#FFFFFF",
+                          fontWeight:
+                            600,
+                        }}
+                      >
+                        {
+                          item.message
+                        }
+                      </Typography>
+
+                      <Typography
+                        sx={{
+                          color:
+                            "#CBD5E1",
+                        }}
+                      >
+                        {
+                          item.type
+                        }
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                )
+              )
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </Box>
+  );
 }
-
-
-
-
-
-
-
-
-{
-
-loading &&
-
-
-<Box
-
-sx={{
-
-display:"flex",
-
-justifyContent:"center",
-
-mb:3,
-
-}}
-
->
-
-<CircularProgress />
-
-</Box>
-
-
-}
-
-
-
-
-
-
-
-<Grid
-
-container
-
-spacing={2}
-
-sx={{mb:3}}
-
->
-
-
-{
-
-[
-
-[
-
-"Total Forecasts",
-
-dashboard?.total_forecasts ?? 0
-
-],
-
-
-
-[
-
-"Predicted Demand",
-
-dashboard?.total_predicted_demand ?? 0
-
-],
-
-
-
-[
-
-"Run Out Risk",
-
-dashboard?.products_expected_to_run_out ?? 0
-
-],
-
-
-
-[
-
-"High Growth",
-
-dashboard?.high_growth_products ?? 0
-
-],
-
-
-
-[
-
-"Slow Moving",
-
-dashboard?.slow_moving_products ?? 0
-
-],
-
-
-
-[
-
-"Accuracy",
-
-`${dashboard?.forecast_accuracy ?? 0}%`
-
-]
-
-
-
-].map(
-
-
-(item,index)=>(
-
-<Grid
-
-key={index}
-
-size={{
-
-xs:12,
-
-sm:6,
-
-md:4,
-
-lg:2,
-
-}}
-
->
-
-
-<Card
-
-sx={{
-
-height:"100%",
-
-background:"#1E293B",
-
-}}
-
-
->
-
-
-<CardContent>
-
-
-<Typography
-
-variant="subtitle2"
-
-sx={{
-
-color:"#94A3B8",
-
-}}
-
->
-
-{item[0]}
-
-</Typography>
-
-
-
-
-
-
-<Typography
-
-variant="h4"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mt:1,
-
-}}
-
->
-
-{item[1]}
-
-</Typography>
-
-
-
-
-
-</CardContent>
-
-
-</Card>
-
-
-</Grid>
-
-
-)
-
-
-)
-
-
-}
-
-
-</Grid>
-
-
-{/* FILTER SECTION */}
-
-
-<Stack
-
-spacing={2}
-
-sx={{mb:3}}
-
->
-
-
-
-
-
-
-<Stack
-
-direction="row"
-
-spacing={2}
-
-sx={{
-
-flexWrap:"wrap",
-
-gap:2,
-
-}}
-
->
-
-
-
-
-
-
-
-
-
-<TextField
-
-select
-
-label="Forecast Period"
-
-value={forecastPeriod}
-
-onChange={(e)=>
-
-setForecastPeriod(
-
-e.target.value
-
-)
-
-}
-
-sx={darkFieldStyle}
-
->
-
-
-{
-
-FORECAST_PERIODS.map(
-
-(item)=>(
-
-
-<MenuItem
-
-key={item.value}
-
-value={item.value}
-
->
-
-{item.label}
-
-</MenuItem>
-
-
-)
-
-
-)
-
-}
-
-
-
-</TextField>
-
-
-
-
-
-
-
-
-
-<TextField
-
-type="date"
-
-label="Start Date"
-
-value={startDate}
-
-onChange={(e)=>
-
-setStartDate(e.target.value)
-
-}
-
-slotProps={{
-
-inputLabel:{
-
-shrink:true
-
-}
-
-}}
-
-sx={darkFieldStyle}
-
-/>
-
-
-
-
-
-
-
-
-
-<TextField
-
-type="date"
-
-label="End Date"
-
-value={endDate}
-
-onChange={(e)=>
-
-setEndDate(e.target.value)
-
-}
-
-slotProps={{
-
-inputLabel:{
-
-shrink:true
-
-}
-
-}}
-
-sx={darkFieldStyle}
-
-/>
-
-
-
-
-
-
-
-
-
-<TextField
-
-label="Search Product"
-
-value={searchText}
-
-onChange={(e)=>
-
-setSearchText(e.target.value)
-
-}
-
-sx={darkFieldStyle}
-
-/>
-
-
-
-
-
-
-
-
-
-<TextField
-
-label="Brand"
-
-value={brand}
-
-onChange={(e)=>
-
-setBrand(e.target.value)
-
-}
-
-sx={darkFieldStyle}
-
-/>
-
-
-
-
-
-
-
-
-
-<TextField
-
-select
-
-label="Category"
-
-value={category}
-
-onChange={(e)=>
-
-setCategory(e.target.value)
-
-}
-
-sx={darkFieldStyle}
-
->
-
-
-
-<MenuItem value="">
-
-All Categories
-
-</MenuItem>
-
-
-
-
-
-{
-
-[...new Set(
-
-allProducts.map(
-
-(item)=>
-
-item.category_name
-
-)
-
-)]
-
-.map(
-
-(cat)=>(
-
-
-<MenuItem
-
-key={cat}
-
-value={cat}
-
->
-
-{cat}
-
-</MenuItem>
-
-
-)
-
-)
-
-}
-
-
-</TextField>
-
-
-
-
-
-
-
-
-
-<TextField
-
-select
-
-label="Sort By"
-
-value={sortBy}
-
-onChange={(e)=>
-
-setSortBy(e.target.value)
-
-}
-
-sx={darkFieldStyle}
-
->
-
-
-<MenuItem value="">
-
-Default
-
-</MenuItem>
-
-
-
-<MenuItem value="demand">
-
-Highest Predicted Demand
-
-</MenuItem>
-
-
-
-<MenuItem value="stock">
-
-Lowest Stock
-
-</MenuItem>
-
-
-
-<MenuItem value="growth">
-
-Highest Growth
-
-</MenuItem>
-
-
-
-<MenuItem value="accuracy">
-
-Forecast Accuracy
-
-</MenuItem>
-
-
-</TextField>
-
-
-
-</Stack>
-
-
-<Stack
-
-direction="row"
-
-spacing={2}
-
-sx={{
-
-flexWrap:"wrap",
-
-gap:2,
-
-}}
-
->
-
-
-
-
-
-<Button
-
-variant="contained"
-
-startIcon={<Search />}
-
-onClick={handleSearch}
-
->
-
-Search
-
-</Button>
-
-
-
-
-
-
-
-<Button
-
-variant="outlined"
-
-startIcon={<Refresh />}
-
-onClick={handleRefresh}
-
-sx={{
-
-color:"#FFFFFF",
-
-borderColor:"#64748B",
-
-}}
-
->
-
-Refresh
-
-</Button>
-
-
-
-
-
-
-
-<Button
-
-variant="contained"
-
-startIcon={<Assessment />}
-
-onClick={generateForecast}
-
-disabled={generating}
-
->
-
-
-
-{
-
-generating
-
-?
-
-"Generating..."
-
-:
-
-"Generate Forecast"
-
-}
-
-
-
-</Button>
-
-
-
-
-
-
-
-<Button
-
-variant="outlined"
-
-startIcon={<Notifications />}
-
-onClick={toggleNotifications}
-
-sx={{
-
-color:"#FFFFFF",
-
-borderColor:"#64748B",
-
-}}
-
->
-
-Notifications
-
-</Button>
-
-
-
-
-
-</Stack>
-
-
-
-
-
-</Stack>
-
-
-
-
-
-
-
-
-
-{/* HISTORICAL VS PREDICTED */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Historical Sales vs Forecast
-
-</Typography>
-
-
-
-
-
-
-
-
-<Box
-
-sx={{
-
-height:350,
-
-width:"100%",
-
-}}
-
->
-
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height="100%"
-
->
-
-
-
-<BarChart
-
-data={productChartData}
-
->
-
-
-
-<CartesianGrid
-
-strokeDasharray="3 3"
-
-/>
-
-
-
-
-
-
-
-<XAxis
-
-dataKey="name"
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<YAxis
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Tooltip
-
-contentStyle={{
-
-background:"#111827",
-
-border:"1px solid #334155",
-
-}}
-
-labelStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-itemStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Legend />
-
-
-
-
-
-
-
-
-<Bar
-
-dataKey="historical"
-
-name="Historical Sales"
-
-fill="#38BDF8"
-
-/>
-
-
-
-
-
-
-
-
-<Bar
-
-dataKey="predicted"
-
-name="Predicted Demand"
-
-fill="#22C55E"
-
-/>
-
-
-
-
-
-
-
-</BarChart>
-
-
-
-</ResponsiveContainer>
-
-
-
-</Box>
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-{/* GROWTH FORECAST */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Product Growth Forecast
-
-</Typography>
-
-
-
-
-
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height={350}
-
->
-
-
-
-<BarChart
-
-data={growthChartData}
-
->
-
-
-
-<CartesianGrid
-
-strokeDasharray="3 3"
-
-/>
-
-
-
-
-
-
-
-<XAxis
-
-dataKey="name"
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<YAxis
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Tooltip
-
-contentStyle={{
-
-background:"#111827",
-
-border:"1px solid #334155",
-
-}}
-
-labelStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-itemStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-/>
-
-
-
-
-
-
-
-
-
-<Bar
-
-dataKey="growth"
-
-name="Growth %"
-
-fill="#F59E0B"
-
-/>
-
-
-
-
-
-
-
-</BarChart>
-
-
-
-</ResponsiveContainer>
-
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-
-
-
-
-
-
-
-{/* PRODUCT DEMAND TREND */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Product Demand Trend
-
-</Typography>
-
-
-
-
-
-
-
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height={350}
-
->
-
-
-
-<LineChart
-
-data={productTrendData}
-
->
-
-
-
-<CartesianGrid
-
-strokeDasharray="3 3"
-
-/>
-
-
-
-
-
-
-
-<XAxis
-
-dataKey="name"
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<YAxis
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Tooltip
-
-contentStyle={{
-
-background:"#111827",
-
-border:"1px solid #334155",
-
-}}
-
-labelStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-itemStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Legend />
-
-
-
-
-
-
-
-
-<Line
-
-dataKey="historical"
-
-name="Historical"
-
-stroke="#38BDF8"
-
-/>
-
-
-
-
-
-
-
-
-<Line
-
-dataKey="forecast"
-
-name="Forecast"
-
-stroke="#22C55E"
-
-/>
-
-
-
-
-
-
-
-</LineChart>
-
-
-
-</ResponsiveContainer>
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-{/* TOP PREDICTED PRODUCTS */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Top Predicted Products
-
-</Typography>
-
-
-
-
-
-
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height={350}
-
->
-
-
-
-<BarChart
-
-data={topProductsData}
-
->
-
-
-
-<CartesianGrid
-
-strokeDasharray="3 3"
-
-/>
-
-
-
-
-
-
-
-<XAxis
-
-dataKey="name"
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<YAxis
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Tooltip
-
-contentStyle={{
-
-background:"#111827",
-
-border:"1px solid #334155",
-
-}}
-
-labelStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-itemStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Bar
-
-dataKey="demand"
-
-name="Predicted Demand"
-
-fill="#A855F7"
-
-/>
-
-
-
-
-
-
-
-</BarChart>
-
-
-
-</ResponsiveContainer>
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-
-
-
-
-
-
-
-{/* SEASONAL SALES PATTERN */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Seasonal Sales Pattern
-
-</Typography>
-
-
-
-
-
-
-
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height={350}
-
->
-
-
-
-<LineChart
-
-data={seasonalData}
-
->
-
-
-
-<CartesianGrid
-
-strokeDasharray="3 3"
-
-/>
-
-
-
-
-
-
-
-<XAxis
-
-dataKey="month"
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<YAxis
-
-tick={{
-
-fill:"#E2E8F0"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Tooltip
-
-contentStyle={{
-
-background:"#111827",
-
-border:"1px solid #334155",
-
-}}
-
-labelStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-itemStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Legend />
-
-
-
-
-
-
-
-
-<Line
-
-dataKey="sales"
-
-name="Historical Sales"
-
-stroke="#38BDF8"
-
-/>
-
-
-
-
-
-
-
-
-<Line
-
-dataKey="forecast"
-
-name="Forecast"
-
-stroke="#22C55E"
-
-/>
-
-
-
-
-
-
-
-</LineChart>
-
-
-
-</ResponsiveContainer>
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-{/* CATEGORY DEMAND DISTRIBUTION */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Category Demand Distribution
-
-</Typography>
-
-
-
-
-
-
-
-
-<Box
-
-sx={{
-
-height:350,
-
-width:"100%",
-
-}}
-
->
-
-
-
-<ResponsiveContainer
-
-width="100%"
-
-height="100%"
-
->
-
-
-
-<PieChart>
-
-
-
-
-
-
-
-<Pie
-
-data={categoryChartData}
-
-dataKey="demand"
-
-nameKey="name"
-
-outerRadius={120}
-
-label
-
->
-
-
-
-
-
-
-
-
-{
-
-categoryChartData.map(
-
-(item,index)=>(
-
-
-<Cell
-
-key={
-
-`${item.name}-${index}`
-
-}
-
-fill={
-
-COLORS[
-
-index %
-
-COLORS.length
-
-]
-
-}
-
-/>
-
-
-)
-
-
-)
-
-}
-
-
-
-
-
-
-
-
-</Pie>
-
-
-
-
-
-
-
-
-
-<Tooltip
-
-contentStyle={{
-
-background:"#111827",
-
-border:"1px solid #334155",
-
-}}
-
-labelStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-itemStyle={{
-
-color:"#FFFFFF"
-
-}}
-
-/>
-
-
-
-
-
-
-
-<Legend />
-
-
-
-
-
-</PieChart>
-
-
-
-</ResponsiveContainer>
-
-
-
-
-</Box>
-
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-
-
-
-
-
-
-
-{/* PRODUCT FORECAST DETAILS TABLE */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Product Forecast Details
-
-</Typography>
-
-
-
-
-
-
-
-
-<TableContainer
-
-component={Paper}
-
-sx={{
-
-background:"#111827",
-
-}}
-
->
-
-
-
-<Table>
-
-
-
-
-
-<TableHead>
-
-
-
-<TableRow>
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Product
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Stock
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Historical
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Predicted
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Confidence
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Recommendation
-
-</TableCell>
-
-
-
-
-
-
-
-</TableRow>
-
-
-
-</TableHead>
-
-
-<TableBody>
-
-
-
-{
-
-
-products.length === 0
-
-?
-
-<TableRow>
-
-
-<TableCell
-
-colSpan={6}
-
-align="center"
-
-sx={{
-
-color:"#CBD5E1",
-
-}}
-
->
-
-No Product Forecast Data Available
-
-</TableCell>
-
-
-
-</TableRow>
-
-
-
-:
-
-
-
-products.map(
-
-(row)=>(
-
-
-<TableRow
-
-key={row.id}
-
->
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.product_name}
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.current_stock}
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.historical_sales}
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.predicted_demand}
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.confidence_score}%
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell>
-
-
-
-<Chip
-
-label={row.recommendation}
-
-size="small"
-
-sx={{
-
-background:"#334155",
-
-color:"#FFFFFF",
-
-}}
-
-/>
-
-
-
-</TableCell>
-
-
-
-
-
-
-
-</TableRow>
-
-
-
-)
-
-
-)
-
-
-
-}
-
-
-
-
-
-</TableBody>
-
-
-
-
-
-</Table>
-
-
-
-</TableContainer>
-
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-
-
-
-
-
-
-
-{/* CATEGORY FORECAST DETAILS TABLE */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Category Forecast Details
-
-</Typography>
-
-
-
-
-
-
-
-
-<TableContainer
-
-component={Paper}
-
-sx={{
-
-background:"#111827",
-
-}}
-
->
-
-
-
-<Table>
-
-
-
-
-
-<TableHead>
-
-
-
-<TableRow>
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Category
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Historical
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Predicted
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Growth %
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:700,
-
-}}
-
->
-
-Recommendation
-
-</TableCell>
-
-
-
-
-
-
-
-</TableRow>
-
-
-
-</TableHead>
-
-
-<TableBody>
-
-
-
-{
-
-
-categories.length === 0
-
-?
-
-<TableRow>
-
-
-<TableCell
-
-colSpan={5}
-
-align="center"
-
-sx={{
-
-color:"#CBD5E1",
-
-}}
-
->
-
-No Category Forecast Data Available
-
-</TableCell>
-
-
-
-</TableRow>
-
-
-
-:
-
-
-
-categories.map(
-
-(row)=>(
-
-
-<TableRow
-
-key={row.id}
-
->
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.category_name}
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.historical_sales}
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.predicted_demand}
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell
-
-sx={{
-
-color:"#E2E8F0",
-
-}}
-
->
-
-{row.expected_growth_percentage}%
-
-</TableCell>
-
-
-
-
-
-
-
-<TableCell>
-
-
-
-<Chip
-
-label={row.recommendation}
-
-size="small"
-
-sx={{
-
-background:"#334155",
-
-color:"#FFFFFF",
-
-}}
-
-/>
-
-
-
-</TableCell>
-
-
-
-
-
-
-
-</TableRow>
-
-
-
-)
-
-
-)
-
-
-
-}
-
-
-
-
-
-</TableBody>
-
-
-
-
-
-</Table>
-
-
-
-</TableContainer>
-
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-
-
-
-
-
-
-
-{/* EXPORT REPORTS */}
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Export Forecast Reports
-
-</Typography>
-
-
-
-
-
-
-
-
-<Stack
-
-direction="row"
-
-spacing={2}
-
-sx={{
-
-flexWrap:"wrap",
-
-gap:2,
-
-}}
-
->
-
-
-
-
-
-<Button
-
-variant="outlined"
-
-startIcon={<Download />}
-
-onClick={exportProductsCSV}
-
-sx={{
-
-color:"#FFFFFF",
-
-borderColor:"#64748B",
-
-}}
-
->
-
-Product CSV
-
-</Button>
-
-
-
-
-
-<Button
-
-variant="outlined"
-
-startIcon={<Download />}
-
-onClick={exportProductsPDF}
-
-sx={{
-
-color:"#FFFFFF",
-
-borderColor:"#64748B",
-
-}}
-
->
-
-Product PDF
-
-</Button>
-
-
-
-
-
-<Button
-
-variant="outlined"
-
-startIcon={<Download />}
-
-onClick={exportCategoriesCSV}
-
-sx={{
-
-color:"#FFFFFF",
-
-borderColor:"#64748B",
-
-}}
-
->
-
-Category CSV
-
-</Button>
-
-
-</Stack>
-
-
-</CardContent>
-
-
-</Card>
-
-
-
-
-
-
-
-
-
-{/* FORECAST NOTIFICATIONS */}
-
-
-
-{
-
-
-showNotifications &&
-
-
-
-<Card
-
-sx={{
-
-mb:3,
-
-background:"#1E293B",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-variant="h6"
-
-fontWeight={700}
-
-sx={{
-
-color:"#FFFFFF",
-
-mb:2,
-
-}}
-
->
-
-Forecast Notifications
-
-</Typography>
-
-
-
-
-
-
-
-
-
-{
-
-
-notifications.length === 0
-
-?
-
-<Typography
-
-sx={{
-
-color:"#CBD5E1",
-
-}}
-
->
-
-No new forecast notifications
-
-</Typography>
-
-
-
-
-
-:
-
-
-
-notifications.map(
-
-(item,index)=>(
-
-
-<Card
-
-key={index}
-
-sx={{
-
-mb:1,
-
-background:"#334155",
-
-}}
-
->
-
-
-
-<CardContent>
-
-
-
-<Typography
-
-sx={{
-
-color:"#FFFFFF",
-
-fontWeight:600,
-
-}}
-
->
-
-{item.message}
-
-</Typography>
-
-
-
-
-
-
-
-<Typography
-
-sx={{
-
-color:"#CBD5E1",
-
-}}
-
->
-
-{item.type}
-
-</Typography>
-
-
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-
-)
-
-
-)
-
-
-
-}
-
-
-
-
-
-
-</CardContent>
-
-
-
-
-</Card>
-
-
-
-}
-
-
-
-
-
-
-
-</Box>
-
-
-);
-
-
-}
-
 
