@@ -1,891 +1,538 @@
 from datetime import date
 from typing import Optional
 
-
 from fastapi import (
     APIRouter,
     Depends,
+    HTTPException,
     Query,
 )
-
+from fastapi.responses import (
+    StreamingResponse,
+)
 
 from sqlalchemy.orm import Session
 
-
 from app.core.database import get_db
+from app.dependencies.auth import get_current_user
 
-
-from app.dependencies.roles import require_roles
-
-
-
-from app.schemas.analytics import (
-
-    AnalyticsFilter,
-
-    DashboardSummary,
-
-    RevenueTrend,
-
-    SalesTrend,
-
-    ProductAnalytics,
-
-    CategoryAnalytics,
-
-    PaymentAnalytics,
-
-    SalesChannelAnalytics,
-
-    InventoryDistribution,
-
-    InventoryValue,
-
-    StockStatus,
-
-    LowStockProduct,
-
-    OutOfStockProduct,
-
-)
-
-
+from app.models.user import User
 
 from app.services.analytics_service import (
-
-    get_dashboard_summary,
-
-    get_revenue_trend,
-
-    get_sales_trend,
-
+    get_sales_analytics_summary,
+    get_sales_revenue_trend,
+    get_sales_vs_orders,
     get_top_products,
-
-    get_top_categories,
-
-    get_sales_by_payment_method,
-
-    get_sales_by_channel,
-
-    get_inventory_distribution,
-
-    get_stock_status_summary,
-
-    get_inventory_value_by_category,
-
-    get_low_stock_items,
-
-    get_out_of_stock_items,
-
+    get_top_customers,
+    get_payment_method_analytics,
+    export_analytics_csv,
+    export_analytics_pdf,
 )
-
-
-
-
 
 
 router = APIRouter(
-
-    prefix="/analytics",
-
-    tags=["Analytics"]
-
+    prefix="/analytics/sales",
+    tags=["Sales Analytics"],
 )
 
 
+# ============================================================
+# COMMON PARAMETERS
+# ============================================================
 
-
-
-
-
-# =====================================================
-# FILTER DEPENDENCY
-# =====================================================
-
-
-def analytics_filters(
-
-    from_date: Optional[date] = Query(None),
-
-    to_date: Optional[date] = Query(None),
-
-    product: Optional[str] = Query(None),
-
-    category: Optional[str] = Query(None),
-
-    brand: Optional[str] = Query(None),
-
-    sales_channel: Optional[str] = Query(None),
-
-    payment_method: Optional[str] = Query(None),
-
+def _get_company_id(
+    current_user: User,
 ):
+    company_id = getattr(
+        current_user,
+        "company_id",
+        None,
+    )
+
+    if company_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="User is not associated with a company.",
+        )
+
+    return company_id
 
 
-    return {
+def _handle_service_error(error):
+    if isinstance(error, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
 
-
-        "from_date":
-
-            from_date,
-
-
-        "to_date":
-
-            to_date,
-
-
-        "product":
-
-            product,
-
-
-        "category":
-
-            category,
-
-
-        "brand":
-
-            brand,
-
-
-        "sales_channel":
-
-            sales_channel,
-
-
-        "payment_method":
-
-            payment_method,
-
-    }
-
-
-
-
-
-
-
-
-
-# =====================================================
-# ROLE ACCESS
-# =====================================================
-
-
-def analytics_access():
-
-    return require_roles(
-
-        "COMPANY_ADMIN",
-
-        "ANALYST"
-
+    raise HTTPException(
+        status_code=500,
+        detail="Failed to process sales analytics.",
     )
 
 
-
-
-
-
-
-
-
-# =====================================================
-# DASHBOARD
-# =====================================================
-
+# ============================================================
+# SUMMARY
+# ============================================================
 
 @router.get(
-
-    "/dashboard",
-
-    response_model=DashboardSummary
-
+    "/summary",
 )
-
-def dashboard(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
+def sales_analytics_summary(
+    from_date: Optional[date] = Query(
+        None,
+        description="Start date in YYYY-MM-DD format",
     ),
-
-
-    db: Session = Depends(
-
-        get_db
-
+    to_date: Optional[date] = Query(
+        None,
+        description="End date in YYYY-MM-DD format",
     ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
+    product_id: Optional[int] = Query(
+        None,
+    ),
+    category_id: Optional[int] = Query(
+        None,
+    ),
+    customer_id: Optional[int] = Query(
+        None,
+    ),
+    payment_method: Optional[str] = Query(
+        None,
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
-
-
-    return get_dashboard_summary(
-
-        db,
-
-        current_user.company_id,
-
-        filters
-
+    company_id = _get_company_id(
+        current_user
     )
 
+    try:
+        return get_sales_analytics_summary(
+            db=db,
+            company_id=company_id,
+            from_date=from_date,
+            to_date=to_date,
+            product_id=product_id,
+            category_id=category_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+        )
+
+    except Exception as error:
+        _handle_service_error(error)
 
 
-
-
-
-
-
-
-# =====================================================
+# ============================================================
 # REVENUE TREND
-# =====================================================
-
-
-@router.get(
-
-    "/revenue-trend",
-
-    response_model=list[RevenueTrend]
-
-)
-
-def revenue_trend(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
-    ),
-
-
-    period: str = Query(
-
-        "daily"
-
-    ),
-
-
-    db: Session = Depends(
-
-        get_db
-
-    ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
-):
-
-
-    return get_revenue_trend(
-
-        db,
-
-        current_user.company_id,
-
-        filters,
-
-        period
-
-    )
-
-
-# =====================================================
-# SALES TREND
-# =====================================================
-
+# ============================================================
 
 @router.get(
-
-    "/sales-trend",
-
-    response_model=list[SalesTrend]
-
+    "/trend",
 )
-
-def sales_trend(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
-    ),
-
-
+def sales_revenue_trend(
     period: str = Query(
-
-        "daily"
-
+        "daily",
+        pattern="^(daily|weekly|monthly)$",
     ),
-
-
-    db: Session = Depends(
-
-        get_db
-
+    from_date: Optional[date] = Query(
+        None,
     ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
+    to_date: Optional[date] = Query(
+        None,
+    ),
+    product_id: Optional[int] = Query(
+        None,
+    ),
+    category_id: Optional[int] = Query(
+        None,
+    ),
+    customer_id: Optional[int] = Query(
+        None,
+    ),
+    payment_method: Optional[str] = Query(
+        None,
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
-
-
-    return get_sales_trend(
-
-        db,
-
-        current_user.company_id,
-
-        filters,
-
-        period
-
+    company_id = _get_company_id(
+        current_user
     )
 
+    try:
+        return get_sales_revenue_trend(
+            db=db,
+            company_id=company_id,
+            period=period,
+            from_date=from_date,
+            to_date=to_date,
+            product_id=product_id,
+            category_id=category_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+        )
+
+    except Exception as error:
+        _handle_service_error(error)
 
 
+# ============================================================
+# SALES VS ORDERS
+# ============================================================
+
+@router.get(
+    "/sales-vs-orders",
+)
+def sales_vs_orders(
+    period: str = Query(
+        "daily",
+        pattern="^(daily|weekly|monthly)$",
+    ),
+    from_date: Optional[date] = Query(
+        None,
+    ),
+    to_date: Optional[date] = Query(
+        None,
+    ),
+    product_id: Optional[int] = Query(
+        None,
+    ),
+    category_id: Optional[int] = Query(
+        None,
+    ),
+    customer_id: Optional[int] = Query(
+        None,
+    ),
+    payment_method: Optional[str] = Query(
+        None,
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    company_id = _get_company_id(
+        current_user
+    )
+
+    try:
+        return get_sales_vs_orders(
+            db=db,
+            company_id=company_id,
+            period=period,
+            from_date=from_date,
+            to_date=to_date,
+            product_id=product_id,
+            category_id=category_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+        )
+
+    except Exception as error:
+        _handle_service_error(error)
 
 
-
-
-
-# =====================================================
+# ============================================================
 # TOP PRODUCTS
-# =====================================================
-
-
-@router.get(
-
-    "/top-products",
-
-    response_model=list[ProductAnalytics]
-
-)
-
-def top_products(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
-    ),
-
-
-    limit: int = Query(
-
-        10,
-
-        ge=1,
-
-        le=100
-
-    ),
-
-
-    db: Session = Depends(
-
-        get_db
-
-    ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
-):
-
-
-    return get_top_products(
-
-        db,
-
-        current_user.company_id,
-
-        filters,
-
-        limit
-
-    )
-
-
-
-
-
-
-
-
-# =====================================================
-# TOP CATEGORIES
-# =====================================================
-
+# ============================================================
 
 @router.get(
-
-    "/top-categories",
-
-    response_model=list[CategoryAnalytics]
-
+    "/products",
 )
-
-def top_categories(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
+def sales_products(
+    from_date: Optional[date] = Query(
+        None,
     ),
-
-
+    to_date: Optional[date] = Query(
+        None,
+    ),
+    product_id: Optional[int] = Query(
+        None,
+    ),
+    category_id: Optional[int] = Query(
+        None,
+    ),
+    customer_id: Optional[int] = Query(
+        None,
+    ),
+    payment_method: Optional[str] = Query(
+        None,
+    ),
+    sort_by: str = Query(
+        "revenue",
+        pattern="^(revenue|quantity)$",
+    ),
     limit: int = Query(
-
         10,
-
         ge=1,
-
-        le=100
-
+        le=100,
     ),
-
-
-    db: Session = Depends(
-
-        get_db
-
+    offset: int = Query(
+        0,
+        ge=0,
     ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
-
-
-    return get_top_categories(
-
-        db,
-
-        current_user.company_id,
-
-        filters,
-
-        limit
-
+    company_id = _get_company_id(
+        current_user
     )
 
+    try:
+        return get_top_products(
+            db=db,
+            company_id=company_id,
+            from_date=from_date,
+            to_date=to_date,
+            product_id=product_id,
+            category_id=category_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+            sort_by=sort_by,
+            limit=limit,
+            offset=offset,
+        )
+
+    except Exception as error:
+        _handle_service_error(error)
 
 
+# ============================================================
+# TOP CUSTOMERS
+# ============================================================
+
+@router.get(
+    "/customers",
+)
+def sales_customers(
+    from_date: Optional[date] = Query(
+        None,
+    ),
+    to_date: Optional[date] = Query(
+        None,
+    ),
+    product_id: Optional[int] = Query(
+        None,
+    ),
+    category_id: Optional[int] = Query(
+        None,
+    ),
+    customer_id: Optional[int] = Query(
+        None,
+    ),
+    payment_method: Optional[str] = Query(
+        None,
+    ),
+    limit: int = Query(
+        10,
+        ge=1,
+        le=100,
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    company_id = _get_company_id(
+        current_user
+    )
+
+    try:
+        return get_top_customers(
+            db=db,
+            company_id=company_id,
+            from_date=from_date,
+            to_date=to_date,
+            product_id=product_id,
+            category_id=category_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+            limit=limit,
+            offset=offset,
+        )
+
+    except Exception as error:
+        _handle_service_error(error)
 
 
-
-
-
-# =====================================================
+# ============================================================
 # PAYMENT METHODS
-# =====================================================
-
+# ============================================================
 
 @router.get(
-
     "/payment-methods",
-
-    response_model=list[PaymentAnalytics]
-
 )
-
 def payment_methods(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
+    from_date: Optional[date] = Query(
+        None,
     ),
-
-
-    db: Session = Depends(
-
-        get_db
-
+    to_date: Optional[date] = Query(
+        None,
     ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
+    product_id: Optional[int] = Query(
+        None,
+    ),
+    category_id: Optional[int] = Query(
+        None,
+    ),
+    customer_id: Optional[int] = Query(
+        None,
+    ),
+    payment_method: Optional[str] = Query(
+        None,
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
-
-
-    return get_sales_by_payment_method(
-
-        db,
-
-        current_user.company_id,
-
-        filters
-
+    company_id = _get_company_id(
+        current_user
     )
 
+    try:
+        return get_payment_method_analytics(
+            db=db,
+            company_id=company_id,
+            from_date=from_date,
+            to_date=to_date,
+            product_id=product_id,
+            category_id=category_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+        )
+
+    except Exception as error:
+        _handle_service_error(error)
 
 
-
-
-
-
-
-# =====================================================
-# SALES CHANNELS
-# =====================================================
-
+# ============================================================
+# CSV EXPORT
+# ============================================================
 
 @router.get(
-
-    "/sales-channels",
-
-    response_model=list[SalesChannelAnalytics]
-
+    "/export/csv",
 )
-
-def sales_channels(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
+def export_sales_csv(
+    from_date: Optional[date] = Query(
+        None,
     ),
-
-
-    db: Session = Depends(
-
-        get_db
-
+    to_date: Optional[date] = Query(
+        None,
     ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
+    product_id: Optional[int] = Query(
+        None,
+    ),
+    category_id: Optional[int] = Query(
+        None,
+    ),
+    customer_id: Optional[int] = Query(
+        None,
+    ),
+    payment_method: Optional[str] = Query(
+        None,
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
-
-
-    return get_sales_by_channel(
-
-        db,
-
-        current_user.company_id,
-
-        filters
-
+    company_id = _get_company_id(
+        current_user
     )
 
+    try:
+        csv_content = export_analytics_csv(
+            db=db,
+            company_id=company_id,
+            from_date=from_date,
+            to_date=to_date,
+            product_id=product_id,
+            category_id=category_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+        )
 
-# =====================================================
-# INVENTORY DISTRIBUTION
-# =====================================================
+        return StreamingResponse(
+            iter([csv_content]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition":
+                    "attachment; "
+                    "filename=RetailPulse_Sales_Analytics.csv"
+            },
+        )
 
+    except Exception as error:
+        _handle_service_error(error)
+
+
+# ============================================================
+# PDF EXPORT
+# ============================================================
 
 @router.get(
-
-    "/inventory-distribution",
-
-    response_model=list[InventoryDistribution]
-
+    "/export/pdf",
 )
-
-def inventory_distribution(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
+def export_sales_pdf(
+    from_date: Optional[date] = Query(
+        None,
     ),
-
-
-    db: Session = Depends(
-
-        get_db
-
+    to_date: Optional[date] = Query(
+        None,
     ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
+    product_id: Optional[int] = Query(
+        None,
+    ),
+    category_id: Optional[int] = Query(
+        None,
+    ),
+    customer_id: Optional[int] = Query(
+        None,
+    ),
+    payment_method: Optional[str] = Query(
+        None,
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
-
-
-    return get_inventory_distribution(
-
-        db,
-
-        current_user.company_id,
-
-        filters
-
+    company_id = _get_company_id(
+        current_user
     )
 
-
-
-
-
-
-
-
-# =====================================================
-# STOCK STATUS SUMMARY
-# =====================================================
-
-
-@router.get(
-
-    "/stock-status",
-
-    response_model=list[StockStatus]
-
-)
-
-def stock_status(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
-    ),
-
-
-    db: Session = Depends(
-
-        get_db
-
-    ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
-):
-
-
-    return get_stock_status_summary(
-
-        db,
-
-        current_user.company_id,
-
-        filters
-
-    )
-
-
-
-
-
-
-
-
-# =====================================================
-# INVENTORY VALUE BY CATEGORY
-# =====================================================
-
-
-@router.get(
-
-    "/inventory-value",
-
-    response_model=list[InventoryValue]
-
-)
-
-def inventory_value(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
-    ),
-
-
-    db: Session = Depends(
-
-        get_db
-
-    ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
-):
-
-
-    return get_inventory_value_by_category(
-
-        db,
-
-        current_user.company_id,
-
-        filters
-
-    )
-
-
-
-
-
-
-
-
-# =====================================================
-# LOW STOCK PRODUCTS
-# =====================================================
-
-
-@router.get(
-
-    "/low-stock",
-
-    response_model=list[LowStockProduct]
-
-)
-
-def low_stock(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
-    ),
-
-
-    db: Session = Depends(
-
-        get_db
-
-    ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
-):
-
-
-    return get_low_stock_items(
-
-        db,
-
-        current_user.company_id,
-
-        filters
-
-    )
-
-
-
-
-
-
-
-
-# =====================================================
-# OUT OF STOCK PRODUCTS
-# =====================================================
-
-
-@router.get(
-
-    "/out-of-stock",
-
-    response_model=list[OutOfStockProduct]
-
-)
-
-def out_of_stock(
-
-
-    filters: dict = Depends(
-
-        analytics_filters
-
-    ),
-
-
-    db: Session = Depends(
-
-        get_db
-
-    ),
-
-
-    current_user=Depends(
-
-        analytics_access()
-
-    )
-
-):
-
-
-    return get_out_of_stock_items(
-
-        db,
-
-        current_user.company_id,
-
-        filters
-
-    )
+    try:
+        pdf_buffer = export_analytics_pdf(
+            db=db,
+            company_id=company_id,
+            from_date=from_date,
+            to_date=to_date,
+            product_id=product_id,
+            category_id=category_id,
+            customer_id=customer_id,
+            payment_method=payment_method,
+        )
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition":
+                    "attachment; "
+                    "filename=RetailPulse_Sales_Analytics.pdf"
+            },
+        )
+
+    except Exception as error:
+        _handle_service_error(error)

@@ -1,230 +1,250 @@
 import api from "./axios";
 
+export type AnalyticsPeriod =
+  | "daily"
+  | "weekly"
+  | "monthly";
 
-// =====================================================
-// CLEAN EMPTY FILTER PARAMS
-// =====================================================
+export type ProductSort =
+  | "revenue"
+  | "quantity";
+
+export interface AnalyticsFilters {
+  from_date?: string;
+  to_date?: string;
+  period?: AnalyticsPeriod;
+
+  product_id?: number | string;
+  category_id?: number | string;
+  customer_id?: number | string;
+  payment_method?: string;
+}
+
+export interface ProductAnalyticsParams
+  extends AnalyticsFilters {
+  sort_by?: ProductSort;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CustomerAnalyticsParams
+  extends AnalyticsFilters {
+  limit?: number;
+  offset?: number;
+}
+
+const CACHE_TTL = 30 * 1000;
+
+interface CacheEntry {
+  expiresAt: number;
+  data: any;
+}
+
+const cache = new Map<string, CacheEntry>();
 
 const cleanParams = (
-    params?: any
+  params?: Record<string, any>
 ) => {
+  if (!params) {
+    return {};
+  }
 
-    if (!params) {
-        return {};
-    }
-
-
-    const cleaned:any = {};
-
-
-    Object.keys(params).forEach((key)=>{
-
-
-        if(
-            params[key] !== "" &&
-            params[key] !== null &&
-            params[key] !== undefined
-        ){
-
-            cleaned[key] = params[key];
-
-        }
-
-
-    });
-
-
-    return cleaned;
-
+  return Object.fromEntries(
+    Object.entries(params).filter(
+      ([, value]) =>
+        value !== "" &&
+        value !== null &&
+        value !== undefined
+    )
+  );
 };
 
+const createCacheKey = (
+  endpoint: string,
+  params?: Record<string, any>
+) => {
+  const cleaned =
+    cleanParams(params);
 
+  const sorted =
+    Object.keys(cleaned)
+      .sort()
+      .reduce<Record<string, any>>(
+        (result, key) => {
+          result[key] =
+            cleaned[key];
 
-// =====================================================
-// DASHBOARD
-// =====================================================
+          return result;
+        },
+        {}
+      );
 
+  return `${endpoint}?${JSON.stringify(
+    sorted
+  )}`;
+};
+
+const getCached = async (
+  endpoint: string,
+  params?: Record<string, any>
+) => {
+  const key =
+    createCacheKey(
+      endpoint,
+      params
+    );
+
+  const existing =
+    cache.get(key);
+
+  if (
+    existing &&
+    existing.expiresAt >
+      Date.now()
+  ) {
+    return existing.data;
+  }
+
+  if (existing) {
+    cache.delete(key);
+  }
+
+  const response =
+    await api.get(
+      endpoint,
+      {
+        params:
+          cleanParams(
+            params
+          ),
+      }
+    );
+
+  cache.set(key, {
+    data: response,
+    expiresAt:
+      Date.now() +
+      CACHE_TTL,
+  });
+
+  return response;
+};
+
+export const clearAnalyticsCache =
+  () => {
+    cache.clear();
+  };
+
+export const getSalesSummary = (
+  params?: AnalyticsFilters
+) =>
+  getCached(
+    "/analytics/sales/summary",
+    params
+  );
+
+export const getSalesTrend = (
+  params?: AnalyticsFilters
+) =>
+  getCached(
+    "/analytics/sales/trend",
+    params
+  );
+
+export const getSalesVsOrders = (
+  params?: AnalyticsFilters
+) =>
+  getCached(
+    "/analytics/sales/sales-vs-orders",
+    params
+  );
+
+export const getSalesProducts = (
+  params?: ProductAnalyticsParams
+) =>
+  getCached(
+    "/analytics/sales/products",
+    params
+  );
+
+export const getSalesCustomers = (
+  params?: CustomerAnalyticsParams
+) =>
+  getCached(
+    "/analytics/sales/customers",
+    params
+  );
+
+export const getPaymentMethods = (
+  params?: AnalyticsFilters
+) =>
+  getCached(
+    "/analytics/sales/payment-methods",
+    params
+  );
+
+export const exportSalesCsv = (
+  params?: AnalyticsFilters
+) =>
+  api.get(
+    "/analytics/sales/export/csv",
+    {
+      params:
+        cleanParams(params),
+      responseType:
+        "blob",
+    }
+  );
+
+export const exportSalesPdf = (
+  params?: AnalyticsFilters
+) =>
+  api.get(
+    "/analytics/sales/export/pdf",
+    {
+      params:
+        cleanParams(params),
+      responseType:
+        "blob",
+    }
+  );
 
 export const getDashboard =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/dashboard",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
-
-
-// =====================================================
-// SALES TRENDS
-// =====================================================
-
+  getSalesSummary;
 
 export const getRevenueTrend =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/revenue-trend",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
-
-export const getSalesTrend =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/sales-trend",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
-
-
-// =====================================================
-// PRODUCT ANALYTICS
-// =====================================================
-
+  getSalesTrend;
 
 export const getTopProducts =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/top-products",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
+  getSalesProducts;
 
 export const getTopCategories =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/top-categories",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
-
-
-// =====================================================
-// SALES BREAKDOWN
-// =====================================================
-
-
-export const getPaymentMethods =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/payment-methods",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
+  getSalesProducts;
 
 export const getSalesChannels =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/sales-channels",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
-
-
-// =====================================================
-// INVENTORY ANALYTICS
-// =====================================================
-
+  getSalesVsOrders;
 
 export const getInventoryDistribution =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/inventory-distribution",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
+  async () => ({
+    data: [],
+  });
 
 export const getStockStatus =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/stock-status",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
+  async () => ({
+    data: [],
+  });
 
 export const getInventoryValue =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/inventory-value",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
-
-
-// =====================================================
-// STOCK ALERTS
-// =====================================================
-
+  async () => ({
+    data: [],
+  });
 
 export const getLowStock =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/low-stock",
-        {
-            params: cleanParams(params)
-        }
-    );
-
-
+  async () => ({
+    data: [],
+  });
 
 export const getOutOfStock =
-(
-    params?: any
-) =>
-    api.get(
-        "/analytics/out-of-stock",
-        {
-            params: cleanParams(params)
-        }
-    );
+  async () => ({
+    data: [],
+  });

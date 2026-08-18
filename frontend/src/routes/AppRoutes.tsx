@@ -1,4 +1,3 @@
-
 import { Routes, Route } from "react-router-dom";
 
 import Layout from "../layouts/Layout";
@@ -43,9 +42,7 @@ import ProtectedRoute from "../components/ProtectedRoute";
 // ==========================================================
 
 export default function AppRoutes() {
-
   return (
-
     <Routes>
 
       {/* =====================================================
@@ -202,8 +199,18 @@ export default function AppRoutes() {
         }
       />
 
+      {/* =====================================================
+          EDIT SALE
+
+          Correct URL:
+          /sales/:id/edit
+
+          Example:
+          /sales/8/edit
+      ===================================================== */}
+
       <Route
-        path="/sales/edit/:id"
+        path="/sales/:id/edit"
         element={
           <ProtectedRoute>
             <Layout>
@@ -212,6 +219,13 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      {/* =====================================================
+          SALE DETAILS
+
+          Example:
+          /sales/8
+      ===================================================== */}
 
       <Route
         path="/sales/:id"
@@ -229,8 +243,6 @@ export default function AppRoutes() {
           CUSTOMERS
       ===================================================== */}
 
-      {/* Customer List */}
-
       <Route
         path="/customers"
         element={
@@ -241,9 +253,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-
-      {/* Add Customer */}
 
       <Route
         path="/customers/add"
@@ -256,9 +265,6 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* Customer Analytics */}
-
       <Route
         path="/customers/analytics"
         element={
@@ -269,9 +275,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-
-      {/* Top Customers */}
 
       <Route
         path="/customers/top-customers"
@@ -284,9 +287,6 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* Customer Profile */}
-
       <Route
         path="/customers/:id/profile"
         element={
@@ -297,9 +297,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-
-      {/* Edit Customer */}
 
       <Route
         path="/customers/:id/edit"
@@ -330,19 +327,30 @@ export default function AppRoutes() {
 
 
       {/* =====================================================
-          ANALYTICS
-      ===================================================== */}
+    ANALYTICS
+===================================================== */}
 
-      <Route
-        path="/analytics"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <Analytics />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
+<Route
+  path="/analytics/sales"
+  element={
+    <ProtectedRoute>
+      <Layout>
+        <Analytics />
+      </Layout>
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/analytics"
+  element={
+    <ProtectedRoute>
+      <Layout>
+        <Analytics />
+      </Layout>
+    </ProtectedRoute>
+  }
+/>
 
 
       {/* =====================================================
@@ -395,4 +403,3 @@ export default function AppRoutes() {
     </Routes>
   );
 }
-

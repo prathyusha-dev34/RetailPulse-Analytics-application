@@ -1,2667 +1,1332 @@
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
 import csv
-import io
 
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import (
-    Paragraph,
     SimpleDocTemplate,
+    Paragraph,
     Spacer,
     Table,
     TableStyle,
 )
 from reportlab.lib.styles import getSampleStyleSheet
 
-
-from app.schemas.customer import (
-    CustomerCreate,
-    CustomerUpdate,
-)
-
-from app.services.audit_service import (
-    create_audit_log,
-)
-
-from app.models.customer import Customer
-from app.models.customer_purchase_summary import (
-    CustomerPurchaseSummary,
-)
-
-from app.models.notification import Notification
-from app.models.product import Product
-from app.models.category import Category
-from app.models.inventory import Inventory
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
-
-# =====================================================
-# CONSTANTS
-# =====================================================
-
-VIP_REVENUE = Decimal("100000")
-LOYAL_REVENUE = Decimal("50000")
-REGULAR_REVENUE = Decimal("10000")
+from app.models.product import Product
+from app.models.customer import Customer
 
 
-VIP_ORDERS = 100
-LOYAL_ORDERS = 50
-REGULAR_ORDERS = 10
+# ============================================================
+# HELPERS
+# ============================================================
+
+def _safe_decimal(value):
+    if value is None:
+        return Decimal("0.00")
+
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal("0.00")
 
 
+def _normalize_date(value):
+    if value is None:
+        return None
 
-# =====================================================
-# CUSTOMER ID GENERATOR
-# =====================================================
+    if isinstance(value, datetime):
+        return value.date()
 
-def generate_customer_id(
-    db: Session,
-    company_id: int,
-) -> str:
+    if isinstance(value, date):
+        return value
 
-    """
-    Generate unique customer code.
-
-    Format:
-    CUS-YYYY-000001
-    """
-
-    year = datetime.now().year
-
-
-    last_customer = (
-        db.query(Customer.customer_id)
-        .filter(
-            Customer.company_id == company_id,
-            Customer.customer_id.like(
-                f"CUS-{year}-%"
-            ),
-        )
-        .order_by(
-            Customer.customer_id.desc()
-        )
-        .first()
-    )
-
-
-    if last_customer:
-
-        last_number = int(
-            last_customer[0]
-            .split("-")[-1]
-        )
-
-        next_number = last_number + 1
-
-    else:
-
-        next_number = 1
-
-
-
-    return (
-        f"CUS-{year}-{next_number:06d}"
-    )
-
-
-
-
-# =====================================================
-# DUPLICATE CUSTOMER VALIDATION
-# =====================================================
-
-def validate_duplicate_customer(
-    db: Session,
-    company_id: int,
-    email: str | None,
-    phone: str | None,
-    customer_id: int | None = None,
-):
-
-
-    if email:
-
-        email_query = (
-            db.query(Customer)
-            .filter(
-                Customer.company_id == company_id,
-                Customer.email == email,
-            )
-        )
-
-
-        if customer_id:
-
-            email_query = (
-                email_query.filter(
-                    Customer.id != customer_id
-                )
-            )
-
-
-        if email_query.first():
-
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(
+                value,
+                "%Y-%m-%d",
+            ).date()
+        except ValueError:
             raise ValueError(
-                "Email already exists."
+                f"Invalid date format: {value}. "
+                "Expected YYYY-MM-DD."
             )
 
+    raise ValueError("Invalid date value.")
 
 
-    if phone:
+def _start_datetime(value):
+    normalized = _normalize_date(value)
 
-        phone_query = (
-            db.query(Customer)
-            .filter(
-                Customer.company_id == company_id,
-                Customer.phone_number == phone,
-            )
-        )
-
-
-        if customer_id:
-
-            phone_query = (
-                phone_query.filter(
-                    Customer.id != customer_id
-                )
-            )
-
-
-        if phone_query.first():
-
-            raise ValueError(
-                "Phone number already exists."
-            )
-
-
-
-
-
-# =====================================================
-# CREATE PURCHASE SUMMARY
-# =====================================================
-
-def create_purchase_summary(
-    db: Session,
-    customer_id: int,
-):
-
-
-    summary = CustomerPurchaseSummary(
-
-        customer_id=customer_id,
-
-        total_orders=0,
-
-        total_quantity_purchased=0,
-
-        total_revenue=Decimal("0.00"),
-
-        average_order_value=Decimal("0.00"),
-
-        purchase_frequency=Decimal("0.00"),
-
-        customer_segment="New",
-
-        is_vip="No",
+    return datetime.combine(
+        normalized,
+        datetime.min.time(),
     )
 
 
-    db.add(summary)
+def _next_day_datetime(value):
+    normalized = _normalize_date(value)
 
-    return summary
+    return datetime.combine(
+        normalized + timedelta(days=1),
+        datetime.min.time(),
+    )
 
 
-
-
-# =====================================================
-# FILTER CUSTOMERS
-# =====================================================
-
-def filter_customers(
-    db: Session,
-    company_id: int,
-    customer_type=None,
-    status=None,
-    city=None,
-    state=None,
-    country=None,
+def validate_date_range(
     from_date=None,
     to_date=None,
 ):
+    if not from_date or not to_date:
+        return
 
+    start = _normalize_date(from_date)
+    end = _normalize_date(to_date)
 
-    query = (
-
-        db.query(Customer)
-
-        .options(
-            joinedload(
-                Customer.purchase_summary
-            )
+    if start > end:
+        raise ValueError(
+            "from_date cannot be greater than to_date."
         )
 
-        .filter(
-            Customer.company_id == company_id
-        )
 
-    )
-
-
-
-    if customer_type:
-
+def _apply_sale_validity(query):
+    if hasattr(Sale, "is_deleted"):
         query = query.filter(
-            Customer.customer_type
-            ==
-            customer_type
+            Sale.is_deleted == False
         )
 
+    return query
 
 
-    if status:
-
-        query = query.filter(
-            Customer.status
-            ==
-            status
-        )
-
-
-
-    if city:
-
-        query = query.filter(
-            Customer.city
-            ==
-            city
-        )
-
-
-
-    if state:
-
-        query = query.filter(
-            Customer.state
-            ==
-            state
-        )
-
-
-
-    if country:
-
-        query = query.filter(
-            Customer.country
-            ==
-            country
-        )
-
-
-
+def _apply_date_filter(
+    query,
+    from_date=None,
+    to_date=None,
+):
     if from_date:
-
         query = query.filter(
-            Customer.created_at >= from_date
+            Sale.sale_date >= _start_datetime(from_date)
         )
-
-
 
     if to_date:
-
         query = query.filter(
-            Customer.created_at <= to_date
+            Sale.sale_date < _next_day_datetime(to_date)
         )
 
+    return query
 
 
-    return (
+# ============================================================
+# COMMON FILTERS
+# ============================================================
 
-        query
-
-        .order_by(
-            Customer.created_at.desc()
-        )
-
-        .all()
-
-    )
-
-
-
-
-
-# =====================================================
-# SORT CUSTOMERS
-# =====================================================
-
-def sort_customers(
+def _apply_common_filters(
     query,
-    sort_by: str,
-    order="desc",
+    company_id,
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
 ):
-
-
-    sort_columns = {
-
-        "name":
-            Customer.full_name,
-
-        "total_spend":
-            Customer.lifetime_revenue,
-
-        "total_orders":
-            Customer.total_orders,
-
-        "last_purchase":
-            Customer.last_purchase_date,
-
-        "customer_since":
-            Customer.created_at,
-
-    }
-
-
-
-    column = sort_columns.get(
-        sort_by,
-        Customer.created_at,
+    query = query.filter(
+        Sale.company_id == company_id
     )
 
+    query = _apply_sale_validity(query)
 
+    query = _apply_date_filter(
+        query,
+        from_date,
+        to_date,
+    )
 
-    if order.lower() == "asc":
-
-        return query.order_by(
-            column.asc()
+    if payment_method:
+        query = query.filter(
+            Sale.payment_method == payment_method
         )
 
+    if customer_id:
+        query = query.filter(
+            Sale.customer_id == customer_id
+        )
 
-    return query.order_by(
-        column.desc()
-    )
+    if product_id:
+        query = query.filter(
+            SaleItem.product_id == product_id
+        )
+
+    if category_id:
+        query = query.filter(
+            Product.category_id == category_id
+        )
+
+    return query
 
 
+# ============================================================
+# DATE PRESETS
+# ============================================================
 
-# =====================================================
-# UPDATE CUSTOMER PURCHASE SUMMARY
-# =====================================================
-
-def update_customer_purchase_summary(
-    db: Session,
-    customer_id: int,
+def resolve_date_preset(
+    preset=None,
+    custom_from=None,
+    custom_to=None,
 ):
+    today = date.today()
 
+    if not preset:
+        return None, None
 
-    customer = (
+    preset = preset.lower().strip()
 
-        db.query(Customer)
+    if preset == "today":
+        return today, today
 
-        .options(
-            joinedload(
-                Customer.purchase_summary
+    if preset in {
+        "last_7_days",
+        "7_days",
+        "7days",
+    }:
+        return (
+            today - timedelta(days=6),
+            today,
+        )
+
+    if preset in {
+        "last_30_days",
+        "30_days",
+        "30days",
+    }:
+        return (
+            today - timedelta(days=29),
+            today,
+        )
+
+    if preset == "this_month":
+        first_day = today.replace(day=1)
+
+        return (
+            first_day,
+            today,
+        )
+
+    if preset == "last_month":
+        first_this_month = today.replace(day=1)
+
+        last_previous_month = (
+            first_this_month - timedelta(days=1)
+        )
+
+        first_previous_month = (
+            last_previous_month.replace(day=1)
+        )
+
+        return (
+            first_previous_month,
+            last_previous_month,
+        )
+
+    if preset == "custom":
+        start = _normalize_date(custom_from)
+        end = _normalize_date(custom_to)
+
+        if not start or not end:
+            raise ValueError(
+                "Custom date range requires "
+                "custom_from and custom_to."
             )
-        )
 
-        .filter(
-            Customer.id == customer_id
-        )
+        validate_date_range(start, end)
 
-        .first()
+        return start, end
 
+    raise ValueError(
+        "Invalid date preset. "
+        "Use today, last_7_days, last_30_days, "
+        "this_month, last_month, or custom."
     )
 
 
-    if not customer:
+# ============================================================
+# PERIOD
+# ============================================================
 
+def _to_date(value):
+    if value is None:
         return None
 
+    if isinstance(value, datetime):
+        return value.date()
+
+    if isinstance(value, date):
+        return value
+
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value).date()
+        except Exception:
+            try:
+                return datetime.strptime(
+                    value,
+                    "%Y-%m-%d",
+                ).date()
+            except Exception:
+                return None
+
+    return None
 
 
-    sales = (
+def _period_key(
+    sale_date,
+    period,
+):
+    current = _to_date(sale_date)
 
-        db.query(Sale)
+    if current is None:
+        return None
 
-        .filter(
-            Sale.customer_id == customer.id
-        )
+    period = period.lower()
 
-        .all()
+    if period == "daily":
+        return current
 
-    )
-
-
-
-    summary = customer.purchase_summary
-
-
-
-    if not summary:
-
-        summary = create_purchase_summary(
-            db,
-            customer.id,
-        )
-
-
-
-    total_orders = len(sales)
-
-    total_revenue = Decimal("0.00")
-
-    total_quantity = 0
-
-
-
-    first_purchase = None
-
-    last_purchase = None
-
-
-
-    product_frequency = {}
-
-    category_frequency = {}
-
-
-
-
-    for sale in sales:
-
-
-
-        total_revenue += Decimal(
-            str(
-                sale.total_amount
+    if period == "weekly":
+        return (
+            current
+            - timedelta(
+                days=current.weekday()
             )
         )
 
-
-
-        if (
-
-            first_purchase is None
-
-            or sale.sale_date < first_purchase
-
-        ):
-
-            first_purchase = sale.sale_date
-
-
-
-        if (
-
-            last_purchase is None
-
-            or sale.sale_date > last_purchase
-
-        ):
-
-            last_purchase = sale.sale_date
-
-
-
-
-        items = (
-
-            db.query(SaleItem)
-
-            .options(
-                joinedload(
-                    SaleItem.product
-                )
-            )
-
-            .filter(
-                SaleItem.sale_id == sale.id
-            )
-
-            .all()
-
-        )
-
-
-
-        for item in items:
-
-
-            total_quantity += item.quantity
-
-
-
-            if item.product:
-
-
-                product_name = (
-                    item.product.name
-                )
-
-
-                product_frequency[
-                    product_name
-                ] = (
-
-                    product_frequency.get(
-                        product_name,
-                        0
-                    )
-
-                    + item.quantity
-
-                )
-
-
-
-                if item.product.category:
-
-
-                    category_name = (
-                        item.product.category.name
-                    )
-
-
-                    category_frequency[
-                        category_name
-                    ] = (
-
-                        category_frequency.get(
-                            category_name,
-                            0
-                        )
-
-                        + item.quantity
-
-                    )
-
-
-
-
-
-
-    if total_orders:
-
-
-        average_order = (
-
-            total_revenue
-
-            /
-
-            Decimal(
-                total_orders
-            )
-
-        )
-
-
-    else:
-
-
-        average_order = Decimal(
-            "0.00"
-        )
-
-
-
-
-
-    # =====================================
-    # UPDATE SUMMARY
-    # =====================================
-
-
-    summary.total_orders = total_orders
-
-    summary.total_quantity_purchased = (
-        total_quantity
-    )
-
-    summary.total_revenue = (
-        total_revenue
-    )
-
-    summary.average_order_value = (
-        average_order
-    )
-
-    summary.first_purchase_date = (
-        first_purchase
-    )
-
-    summary.last_purchase_date = (
-        last_purchase
+    if period == "monthly":
+        return current.replace(day=1)
+
+    raise ValueError(
+        "period must be daily, weekly, or monthly."
     )
 
 
-
-
-
-    # =====================================
-    # UPDATE CUSTOMER
-    # =====================================
-
-
-    customer.total_orders = (
-        total_orders
-    )
-
-    customer.total_quantity_purchased = (
-        total_quantity
-    )
-
-    customer.lifetime_revenue = (
-        total_revenue
-    )
-
-    customer.average_order_value = (
-        average_order
-    )
-
-    customer.first_purchase_date = (
-        first_purchase
-    )
-
-    customer.last_purchase_date = (
-        last_purchase
-    )
-
-
-
-
-
-    # =====================================
-    # FAVOURITE PRODUCT
-    # =====================================
-
-
-    if product_frequency:
-
-
-        favourite_product = max(
-            product_frequency,
-            key=product_frequency.get
-        )
-
-
-        summary.favorite_product = (
-            favourite_product
-        )
-
-
-        customer.favorite_product = (
-            favourite_product
-        )
-
-
-
-
-
-    # =====================================
-    # FAVOURITE CATEGORY
-    # =====================================
-
-
-    if category_frequency:
-
-
-        favourite_category = max(
-            category_frequency,
-            key=category_frequency.get
-        )
-
-
-        summary.favorite_category = (
-            favourite_category
-        )
-
-
-        customer.favorite_category = (
-            favourite_category
-        )
-
-
-
-
-
-    update_customer_segment(
-        customer,
-        summary,
-    )
-
-
-
-    db.commit()
-
-    db.refresh(customer)
-
-
-    return customer
-
-
-
-
-
-
-# =====================================================
-# CUSTOMER SEGMENT CALCULATION
-# =====================================================
-
-def update_customer_segment(
-    customer: Customer,
-    summary: CustomerPurchaseSummary,
-):
-
-
-    revenue = Decimal(
-        str(
-            summary.total_revenue
-        )
-    )
-
-
-    orders = summary.total_orders
-
-
-
-
-    if (
-
-        revenue >= VIP_REVENUE
-
-        or orders >= VIP_ORDERS
-
-    ):
-
-
-        segment = "VIP"
-
-        is_vip = "Yes"
-
-
-
-    elif (
-
-        revenue >= LOYAL_REVENUE
-
-        or orders >= LOYAL_ORDERS
-
-    ):
-
-
-        segment = "Loyal"
-
-        is_vip = "No"
-
-
-
-    elif (
-
-        revenue >= REGULAR_REVENUE
-
-        or orders >= REGULAR_ORDERS
-
-    ):
-
-
-        segment = "Regular"
-
-        is_vip = "No"
-
-
-
-    else:
-
-
-        segment = "New"
-
-        is_vip = "No"
-
-
-
-
-
-    customer.customer_segment = segment
-
-    customer.is_vip = is_vip
-
-
-
-    summary.customer_segment = segment
-
-    summary.is_vip = is_vip
-
-
-
-    summary.purchase_frequency = (
-        calculate_purchase_frequency(
-            summary.first_purchase_date,
-            summary.last_purchase_date,
-            summary.total_orders,
-        )
-    )
-
-
-    customer.purchase_frequency = (
-        summary.purchase_frequency
-    )
-
-
-
-
-
-
-# =====================================================
-# PURCHASE FREQUENCY
-# =====================================================
-
-def calculate_purchase_frequency(
-    first_purchase,
-    last_purchase,
-    total_orders,
-):
-
-
-    if (
-
-        not first_purchase
-
-        or not last_purchase
-
-        or total_orders <= 1
-
-    ):
-
-        return Decimal(
-            "0.00"
-        )
-
-
-
-    days = (
-
-        last_purchase
-
-        -
-
-        first_purchase
-
-    ).days
-
-
-
-
-    if days <= 0:
-
-
-        return Decimal(
-            str(total_orders)
-        )
-
-
-
-    return round(
-
-        Decimal(
-            total_orders
-        )
-
-        /
-
-        Decimal(
-            days
-        ),
-
-        2,
-
-    )
-
-
-
-
-
-
-# =====================================================
-# FIRST PURCHASE NOTIFICATION
-# =====================================================
-
-def create_first_purchase_notification(
-    db: Session,
-    customer: Customer,
-):
-
-
-    notification = Notification(
-
-        company_id=customer.company_id,
-
-        user_id=customer.created_by,
-
-        title="First Purchase",
-
-        message=(
-
-            f"{customer.full_name} "
-
-            "completed first purchase."
-
-        ),
-
-        notification_type="CUSTOMER",
-
-    )
-
-
-    db.add(notification)
-
-
-
-
-
-
-# =====================================================
-# VIP CUSTOMER NOTIFICATION
-# =====================================================
-
-def create_vip_notification(
-    db: Session,
-    customer: Customer,
-):
-
-
-    if customer.customer_segment != "VIP":
-
-        return
-
-
-
-
-    notification = Notification(
-
-        company_id=customer.company_id,
-
-        user_id=None,
-
-        title="VIP Customer",
-
-        message=(
-
-            f"{customer.full_name} "
-
-            "became a VIP customer."
-
-        ),
-
-        notification_type="CUSTOMER",
-
-    )
-
-
-    db.add(notification)
-
-
-
-
-
-
-# =====================================================
-# INACTIVE CUSTOMER CHECK
-# =====================================================
-
-def check_inactive_customer(
-    db: Session,
-    customer: Customer,
-):
-
-
-    if not customer.last_purchase_date:
-
-        return
-
-
-
-    last_purchase = (
-        customer.last_purchase_date
-    )
-
-
-
-    if hasattr(
-        last_purchase,
-        "replace"
-    ):
-
-
-        last_purchase = (
-            last_purchase.replace(
-                tzinfo=None
-            )
-        )
-
-
-
-    days = (
-
-        datetime.utcnow()
-
-        -
-
-        last_purchase
-
-    ).days
-
-
-
-
-    if days < 90:
-
-        return
-
-
-
-
-    notification = Notification(
-
-        company_id=customer.company_id,
-
-        user_id=None,
-
-        title="Inactive Customer",
-
-        message=(
-
-            f"{customer.full_name} "
-
-            f"has been inactive for "
-
-            f"{days} days."
-
-        ),
-
-        notification_type="CUSTOMER",
-
-    )
-
-
-
-    db.add(notification)
-
-
-    # =====================================================
-# CUSTOMER ANALYTICS DASHBOARD
-# =====================================================
-
-def get_customer_dashboard(
+# ============================================================
+# SUMMARY
+# ============================================================
+
+def get_sales_analytics_summary(
     db: Session,
     company_id: int,
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
 ):
+    validate_date_range(
+        from_date,
+        to_date,
+    )
 
-
-    customers = (
-
-        db.query(Customer)
-
-        .filter(
-            Customer.company_id == company_id
+    sale_id_query = (
+        db.query(Sale.id)
+        .outerjoin(
+            SaleItem,
+            SaleItem.sale_id == Sale.id,
         )
-
-        .all()
-
-    )
-
-
-
-    total_customers = len(customers)
-
-
-
-    active_customers = sum(
-
-        1
-
-        for customer in customers
-
-        if customer.status == "ACTIVE"
-
-    )
-
-
-
-    inactive_customers = sum(
-
-        1
-
-        for customer in customers
-
-        if customer.status == "INACTIVE"
-
-    )
-
-
-
-    new_customers = sum(
-
-        1
-
-        for customer in customers
-
-        if customer.customer_segment == "New"
-
-    )
-
-
-
-    regular_customers = sum(
-
-        1
-
-        for customer in customers
-
-        if customer.customer_segment == "Regular"
-
-    )
-
-
-
-    loyal_customers = sum(
-
-        1
-
-        for customer in customers
-
-        if customer.customer_segment == "Loyal"
-
-    )
-
-
-
-    vip_customers = sum(
-
-        1
-
-        for customer in customers
-
-        if customer.customer_segment == "VIP"
-
-    )
-
-
-
-    total_revenue = sum(
-
-        Decimal(
-            str(
-                customer.lifetime_revenue or 0
-            )
+        .outerjoin(
+            Product,
+            Product.id == SaleItem.product_id,
         )
-
-        for customer in customers
-
     )
 
-
-
-    average_customer_spend = (
-
-        total_revenue
-
-        /
-
-        Decimal(total_customers)
-
-        if total_customers
-
-        else Decimal("0.00")
-
+    sale_id_query = _apply_common_filters(
+        sale_id_query,
+        company_id,
+        from_date,
+        to_date,
+        product_id,
+        category_id,
+        customer_id,
+        payment_method,
     )
 
-
-
-    average_purchase_frequency = (
-
-        sum(
-
-            Decimal(
-                str(
-                    customer.purchase_frequency or 0
-                )
-            )
-
-            for customer in customers
-
-        )
-
-        /
-
-        Decimal(total_customers)
-
-        if total_customers
-
-        else Decimal("0.00")
-
-    )
-
-
-
-    returning_customers = (
-
-        total_customers
-
-        -
-
-        new_customers
-
-    )
-
-
-
-    return {
-
-        "total_customers":
-            total_customers,
-
-        "active_customers":
-            active_customers,
-
-        "inactive_customers":
-            inactive_customers,
-
-        "new_customers":
-            new_customers,
-
-        "regular_customers":
-            regular_customers,
-
-        "loyal_customers":
-            loyal_customers,
-
-        "vip_customers":
-            vip_customers,
-
-        "returning_customers":
-            returning_customers,
-
-        "average_customer_spend":
-            average_customer_spend,
-
-        "total_revenue_generated":
-            total_revenue,
-
-        "average_purchase_frequency":
-            average_purchase_frequency,
-
-    }
-
-
-
-
-
-# =====================================================
-# TOP CUSTOMERS
-# =====================================================
-
-def get_top_customers(
-    db: Session,
-    company_id: int,
-    limit: int = 10,
-):
-
-
-    return (
-
-        db.query(Customer)
-
-        .filter(
-            Customer.company_id == company_id
-        )
-
-        .order_by(
-            Customer.lifetime_revenue.desc()
-        )
-
-        .limit(limit)
-
-        .all()
-
-    )
-
-
-
-
-
-
-# =====================================================
-# REVENUE BY CUSTOMER TYPE
-# =====================================================
-
-def revenue_by_customer_type(
-    db: Session,
-    company_id: int,
-):
-
-
-    rows = (
-
-        db.query(
-
-            Customer.customer_type,
-
-            func.sum(
-                Customer.lifetime_revenue
-            )
-
-        )
-
-        .filter(
-            Customer.company_id == company_id
-        )
-
-        .group_by(
-            Customer.customer_type
-        )
-
-        .all()
-
-    )
-
-
-
-    return [
-
-        {
-
-            "customer_type":
-                row[0],
-
-            "revenue":
-                float(row[1] or 0),
-
-        }
-
-        for row in rows
-
+    sale_ids = [
+        row[0]
+        for row in sale_id_query.distinct().all()
     ]
 
-
-
-
-
-
-# =====================================================
-# LOCATION DISTRIBUTION
-# =====================================================
-
-def location_distribution(
-    db: Session,
-    company_id: int,
-):
-
-
-    rows = (
-
-        db.query(
-
-            Customer.city,
-
-            func.count(
-                Customer.id
-            )
-
-        )
-
-        .filter(
-            Customer.company_id == company_id
-        )
-
-        .group_by(
-            Customer.city
-        )
-
-        .all()
-
-    )
-
-
-
-    return [
-
-        {
-
-            "city":
-                row[0],
-
-            "customers":
-                row[1],
-
+    if not sale_ids:
+        return {
+            "total_revenue": Decimal("0.00"),
+            "total_orders": 0,
+            "average_order_value": Decimal("0.00"),
+            "total_items_sold": 0,
+            "total_discount": Decimal("0.00"),
+            "total_tax": Decimal("0.00"),
         }
 
-        for row in rows
-
-    ]
-
-
-
-
-
-
-# =====================================================
-# MONTHLY CUSTOMER ACQUISITION
-# =====================================================
-
-def get_monthly_customer_acquisition(
-    db: Session,
-    company_id: int,
-):
-
-
-    rows = (
-
+    sales_summary = (
         db.query(
-
-            func.date_trunc(
-                "month",
-                Customer.created_at,
-            ),
-
-            func.count(
-                Customer.id
-            ),
-
-        )
-
-        .filter(
-            Customer.company_id == company_id
-        )
-
-        .group_by(
-            Customer.created_at
-        )
-
-        .order_by(
-            Customer.created_at
-        )
-
-        .all()
-
-    )
-
-
-
-    result = []
-
-
-
-    for row in rows:
-
-
-        result.append({
-
-            "month":
-
-                row[0].strftime("%b %Y")
-                if row[0]
-                else None,
-
-
-            "customers":
-                row[1],
-
-        })
-
-
-
-    return result
-
-
-
-
-
-
-# =====================================================
-# CUSTOMER GROWTH TREND
-# =====================================================
-
-def get_customer_growth_trend(
-    db: Session,
-    company_id: int,
-):
-
-
-    customers = (
-
-        db.query(Customer)
-
-        .filter(
-            Customer.company_id == company_id
-        )
-
-        .order_by(
-            Customer.created_at
-        )
-
-        .all()
-
-    )
-
-
-
-    growth = []
-
-    total = 0
-
-
-
-    for customer in customers:
-
-
-        total += 1
-
-
-        growth.append({
-
-            "date":
-
-                customer.created_at.date()
-                if customer.created_at
-                else None,
-
-
-            "total_customers":
-                total,
-
-        })
-
-
-
-    return growth
-
-
-
-
-
-
-# =====================================================
-# CUSTOMER SPENDING DISTRIBUTION
-# =====================================================
-
-def get_customer_spending_distribution(
-    db: Session,
-    company_id: int,
-):
-
-
-    customers = (
-
-        db.query(Customer)
-
-        .filter(
-            Customer.company_id == company_id
-        )
-
-        .all()
-
-    )
-
-
-
-    distribution = {
-
-        "0-1000":0,
-
-        "1000-10000":0,
-
-        "10000-50000":0,
-
-        "50000+":0,
-
-    }
-
-
-
-    for customer in customers:
-
-
-        revenue = float(
-            customer.lifetime_revenue or 0
-        )
-
-
-
-        if revenue < 1000:
-
-            distribution["0-1000"] += 1
-
-
-        elif revenue < 10000:
-
-            distribution["1000-10000"] += 1
-
-
-        elif revenue < 50000:
-
-            distribution["10000-50000"] += 1
-
-
-        else:
-
-            distribution["50000+"] += 1
-
-
-
-        return distribution
-
-
-# =====================================================
-# ANALYTICS DASHBOARD SUMMARY
-# =====================================================
-
-def get_dashboard_summary(
-    db: Session,
-    company_id: int,
-    filters=None,
-):
-    """
-    Complete Business Analytics Dashboard.
-    """
-
-    # ---------------------------------------------
-    # SALES QUERY
-    # ---------------------------------------------
-
-    sales_query = (
-        db.query(Sale)
-        .filter(
-            Sale.company_id == company_id
-        )
-    )
-
-    if filters:
-
-        if filters.get("from_date"):
-            sales_query = sales_query.filter(
-                Sale.sale_date >= filters["from_date"]
-            )
-
-        if filters.get("to_date"):
-            sales_query = sales_query.filter(
-                Sale.sale_date <= filters["to_date"]
-            )
-
-        if filters.get("payment_method"):
-            sales_query = sales_query.filter(
-                Sale.payment_method
-                == filters["payment_method"]
-            )
-
-        if filters.get("sales_channel"):
-            sales_query = sales_query.filter(
-                Sale.sales_channel
-                == filters["sales_channel"]
-            )
-
-    sales = sales_query.all()
-
-    # ---------------------------------------------
-    # TOTAL REVENUE
-    # ---------------------------------------------
-
-    total_revenue = sum(
-        (
-            Decimal(str(sale.total_amount or 0))
-            for sale in sales
-        ),
-        Decimal("0.00"),
-    )
-
-    # ---------------------------------------------
-    # TOTAL ORDERS
-    # ---------------------------------------------
-
-    total_orders = len(sales)
-
-    # ---------------------------------------------
-    # TOTAL PRODUCTS SOLD
-    # ---------------------------------------------
-
-    total_products_sold = (
-        db.query(
+            func.count(Sale.id),
             func.coalesce(
-                func.sum(SaleItem.quantity),
-                0
-            )
-        )
-        .join(
-            Sale,
-            Sale.id == SaleItem.sale_id
+                func.sum(Sale.total_amount),
+                0,
+            ),
         )
         .filter(
-            Sale.company_id == company_id
+            Sale.id.in_(sale_ids)
         )
-        .scalar()
-        or 0
+        .first()
     )
 
-    # ---------------------------------------------
-    # AVERAGE ORDER VALUE
-    # ---------------------------------------------
+    total_orders = int(
+        sales_summary[0] or 0
+    )
+
+    total_revenue = _safe_decimal(
+        sales_summary[1]
+    )
 
     average_order_value = (
-        total_revenue
-        / Decimal(str(total_orders))
+        total_revenue / Decimal(total_orders)
         if total_orders
         else Decimal("0.00")
     )
 
-    # ---------------------------------------------
-    # INVENTORY VALUE
-    # ---------------------------------------------
-
-    inventory_value = (
+    item_row = (
         db.query(
             func.coalesce(
-                func.sum(
-                    Inventory.available_stock
-                    * Product.unit_price
-                ),
-                0
-            )
+                func.sum(SaleItem.quantity),
+                0,
+            ),
+            func.coalesce(
+                func.sum(SaleItem.discount),
+                0,
+            ),
+            func.coalesce(
+                func.sum(SaleItem.tax),
+                0,
+            ),
+        )
+        .join(
+            Sale,
+            Sale.id == SaleItem.sale_id,
         )
         .join(
             Product,
-            Product.id == Inventory.product_id
+            Product.id == SaleItem.product_id,
         )
         .filter(
-            Inventory.company_id == company_id
+            Sale.id.in_(sale_ids)
         )
-        .scalar()
-        or 0
+        .first()
     )
 
-    total_inventory_value = Decimal(
-        str(inventory_value)
+    total_items_sold = int(
+        item_row[0] or 0
     )
 
-    # ---------------------------------------------
-    # LOW STOCK
-    # ---------------------------------------------
-
-    low_stock_products = (
-        db.query(Inventory)
-        .filter(
-            Inventory.company_id == company_id,
-            Inventory.stock_status.in_(
-                [
-                    "Low Stock",
-                    "LOW_STOCK",
-                    "low_stock",
-                    "Low",
-                    "LOW",
-                ]
-            )
-        )
-        .count()
+    total_discount = _safe_decimal(
+        item_row[1]
     )
 
-    # ---------------------------------------------
-    # OUT OF STOCK
-    # ---------------------------------------------
-
-    out_of_stock_products = (
-        db.query(Inventory)
-        .filter(
-            Inventory.company_id == company_id,
-            Inventory.stock_status.in_(
-                [
-                    "Out of Stock",
-                    "OUT_OF_STOCK",
-                    "out_of_stock",
-                    "Out",
-                    "OUT",
-                ]
-            )
-        )
-        .count()
-    )
-
-    # ---------------------------------------------
-    # TOTAL CATEGORIES
-    # ---------------------------------------------
-
-    total_categories = (
-        db.query(Category)
-        .filter(
-            Category.company_id == company_id
-        )
-        .count()
+    total_tax = _safe_decimal(
+        item_row[2]
     )
 
     return {
         "total_revenue": total_revenue,
         "total_orders": total_orders,
-        "total_products_sold": int(
-            total_products_sold
-        ),
         "average_order_value": average_order_value,
-        "total_inventory_value":
-            total_inventory_value,
-        "low_stock_products":
-            low_stock_products,
-        "out_of_stock_products":
-            out_of_stock_products,
-        "total_categories":
-            total_categories,
+        "total_items_sold": total_items_sold,
+        "total_discount": total_discount,
+        "total_tax": total_tax,
     }
 
 
-# =====================================================
+# ============================================================
 # REVENUE TREND
-# =====================================================
+# ============================================================
 
-def get_revenue_trend(
+def get_sales_revenue_trend(
     db: Session,
     company_id: int,
-    filters=None,
     period="daily",
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
 ):
+    validate_date_range(
+        from_date,
+        to_date,
+    )
+
+    period = period.lower()
+
+    if period not in {
+        "daily",
+        "weekly",
+        "monthly",
+    }:
+        raise ValueError(
+            "period must be daily, weekly, or monthly."
+        )
 
     query = (
         db.query(
-            func.date(
-                Sale.sale_date
-            ).label("date"),
-
-            func.sum(
-                Sale.total_amount
-            ).label("revenue"),
+            Sale.id,
+            Sale.sale_date,
+            Sale.total_amount,
         )
-        .filter(
-            Sale.company_id == company_id
+        .outerjoin(
+            SaleItem,
+            SaleItem.sale_id == Sale.id,
+        )
+        .outerjoin(
+            Product,
+            Product.id == SaleItem.product_id,
         )
     )
 
-    if filters:
-
-        if filters.get("from_date"):
-            query = query.filter(
-                Sale.sale_date
-                >= filters["from_date"]
-            )
-
-        if filters.get("to_date"):
-            query = query.filter(
-                Sale.sale_date
-                <= filters["to_date"]
-            )
-
-    rows = (
-        query
-        .group_by("date")
-        .order_by("date")
-        .all()
+    query = _apply_common_filters(
+        query,
+        company_id,
+        from_date,
+        to_date,
+        product_id,
+        category_id,
+        customer_id,
+        payment_method,
     )
+
+    rows = query.all()
+
+    sales_by_id = {}
+
+    for sale_id, sale_date, total_amount in rows:
+        if sale_id not in sales_by_id:
+            sales_by_id[sale_id] = (
+                sale_date,
+                _safe_decimal(total_amount),
+            )
+
+    grouped = {}
+
+    for sale_date, total_amount in sales_by_id.values():
+        key = _period_key(
+            sale_date,
+            period,
+        )
+
+        if key is None:
+            continue
+
+        grouped.setdefault(
+            key,
+            Decimal("0.00"),
+        )
+
+        grouped[key] += total_amount
 
     return [
         {
-            "date": str(row.date),
-            "revenue": Decimal(
-                str(row.revenue or 0)
-            ),
+            "date": key.isoformat(),
+            "revenue": grouped[key],
         }
-        for row in rows
+        for key in sorted(grouped.keys())
     ]
 
 
-# =====================================================
-# SALES TREND
-# =====================================================
+# ============================================================
+# SALES VS ORDERS
+# ============================================================
 
-def get_sales_trend(
+def get_sales_vs_orders(
     db: Session,
     company_id: int,
-    filters=None,
     period="daily",
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
 ):
+    validate_date_range(
+        from_date,
+        to_date,
+    )
+
+    period = period.lower()
+
+    if period not in {
+        "daily",
+        "weekly",
+        "monthly",
+    }:
+        raise ValueError(
+            "period must be daily, weekly, or monthly."
+        )
 
     query = (
         db.query(
-            func.date(
-                Sale.sale_date
-            ).label("date"),
-
-            func.count(
-                Sale.id
-            ).label("sales"),
+            Sale.id,
+            Sale.sale_date,
+            Sale.total_amount,
         )
-        .filter(
-            Sale.company_id == company_id
+        .outerjoin(
+            SaleItem,
+            SaleItem.sale_id == Sale.id,
+        )
+        .outerjoin(
+            Product,
+            Product.id == SaleItem.product_id,
         )
     )
 
-    if filters:
-
-        if filters.get("from_date"):
-            query = query.filter(
-                Sale.sale_date
-                >= filters["from_date"]
-            )
-
-        if filters.get("to_date"):
-            query = query.filter(
-                Sale.sale_date
-                <= filters["to_date"]
-            )
-
-    rows = (
-        query
-        .group_by("date")
-        .order_by("date")
-        .all()
+    query = _apply_common_filters(
+        query,
+        company_id,
+        from_date,
+        to_date,
+        product_id,
+        category_id,
+        customer_id,
+        payment_method,
     )
+
+    rows = query.all()
+
+    sales_by_id = {}
+
+    for sale_id, sale_date, total_amount in rows:
+        if sale_id not in sales_by_id:
+            sales_by_id[sale_id] = (
+                sale_date,
+                _safe_decimal(total_amount),
+            )
+
+    grouped = {}
+
+    for sale_date, total_amount in sales_by_id.values():
+        key = _period_key(
+            sale_date,
+            period,
+        )
+
+        if key is None:
+            continue
+
+        if key not in grouped:
+            grouped[key] = {
+                "revenue": Decimal("0.00"),
+                "orders": 0,
+            }
+
+        grouped[key]["revenue"] += total_amount
+        grouped[key]["orders"] += 1
 
     return [
         {
-            "date": str(row.date),
-            "sales": int(row.sales or 0),
+            "date": key.isoformat(),
+            "revenue": grouped[key]["revenue"],
+            "orders": grouped[key]["orders"],
         }
-        for row in rows
+        for key in sorted(grouped.keys())
     ]
 
 
-# =====================================================
+# ============================================================
 # TOP PRODUCTS
-# =====================================================
+# ============================================================
 
 def get_top_products(
     db: Session,
     company_id: int,
-    filters=None,
-    limit: int = 10,
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
+    sort_by="revenue",
+    limit=10,
+    offset=0,
 ):
+    validate_date_range(
+        from_date,
+        to_date,
+    )
+
+    sort_by = sort_by.lower()
+
+    if sort_by not in {
+        "revenue",
+        "quantity",
+    }:
+        raise ValueError(
+            "sort_by must be revenue or quantity."
+        )
+
+    limit = max(
+        1,
+        min(int(limit), 100),
+    )
+
+    offset = max(
+        0,
+        int(offset),
+    )
 
     query = (
         db.query(
-            Product.id.label(
-                "product_id"
-            ),
-
-            Product.name.label(
-                "product_name"
-            ),
-
-            func.sum(
-                SaleItem.quantity
-            ).label("quantity"),
-
-            func.sum(
-                SaleItem.quantity
-                * SaleItem.unit_price
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            Product.sku.label("sku"),
+            func.coalesce(
+                func.sum(SaleItem.quantity),
+                0,
+            ).label("quantity_sold"),
+            func.coalesce(
+                func.sum(
+                    SaleItem.quantity
+                    * SaleItem.unit_price
+                ),
+                0,
             ).label("revenue"),
         )
         .join(
             SaleItem,
-            SaleItem.product_id
-            == Product.id
+            SaleItem.product_id == Product.id,
         )
         .join(
             Sale,
-            Sale.id
-            == SaleItem.sale_id
-        )
-        .filter(
-            Sale.company_id == company_id
+            Sale.id == SaleItem.sale_id,
         )
     )
 
-    if filters:
+    query = _apply_common_filters(
+        query,
+        company_id,
+        from_date,
+        to_date,
+        product_id,
+        category_id,
+        customer_id,
+        payment_method,
+    )
 
-        if filters.get("from_date"):
-            query = query.filter(
-                Sale.sale_date
-                >= filters["from_date"]
-            )
+    query = query.group_by(
+        Product.id,
+        Product.name,
+        Product.sku,
+    )
 
-        if filters.get("to_date"):
-            query = query.filter(
-                Sale.sale_date
-                <= filters["to_date"]
-            )
-
-    rows = (
-        query
-        .group_by(
-            Product.id,
-            Product.name
-        )
-        .order_by(
+    if sort_by == "quantity":
+        query = query.order_by(
             func.sum(
                 SaleItem.quantity
             ).desc()
         )
+    else:
+        query = query.order_by(
+            func.sum(
+                SaleItem.quantity
+                * SaleItem.unit_price
+            ).desc()
+        )
+
+    rows = (
+        query
+        .offset(offset)
         .limit(limit)
         .all()
     )
 
     return [
         {
-            "product_id":
-                row.product_id,
-
-            "product_name":
-                row.product_name,
-
-            "quantity":
-                int(row.quantity or 0),
-
-            "revenue":
-                Decimal(
-                    str(row.revenue or 0)
-                ),
+            "product_id": row.product_id,
+            "product_name": row.product_name,
+            "sku": row.sku or "",
+            "quantity_sold": int(
+                row.quantity_sold or 0
+            ),
+            "revenue": _safe_decimal(
+                row.revenue
+            ),
         }
         for row in rows
     ]
 
 
-# =====================================================
-# TOP CATEGORIES
-# =====================================================
+# ============================================================
+# TOP CUSTOMERS
+# ============================================================
 
-def get_top_categories(
+def get_top_customers(
     db: Session,
     company_id: int,
-    filters=None,
-    limit: int = 10,
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
+    limit=10,
+    offset=0,
 ):
+    validate_date_range(
+        from_date,
+        to_date,
+    )
 
-    query = (
+    limit = max(
+        1,
+        min(int(limit), 100),
+    )
+
+    offset = max(
+        0,
+        int(offset),
+    )
+
+    # --------------------------------------------------------
+    # First identify the unique sales matching the filters.
+    # This prevents Sale.total_amount from being duplicated
+    # when a sale contains multiple SaleItems.
+    # --------------------------------------------------------
+
+    filtered_sales = (
         db.query(
-            Category.id.label(
-                "category_id"
-            ),
-
-            Category.name.label(
-                "category_name"
-            ),
-
-            func.sum(
-                SaleItem.quantity
-            ).label("quantity"),
-
-            func.sum(
-                SaleItem.quantity
-                * SaleItem.unit_price
-            ).label("revenue"),
+            Sale.id.label("sale_id"),
+            Sale.customer_id.label("customer_id"),
+            Sale.total_amount.label("total_amount"),
         )
-        .join(
+        .outerjoin(
+            SaleItem,
+            SaleItem.sale_id == Sale.id,
+        )
+        .outerjoin(
             Product,
-            Product.category_id
-            == Category.id
-        )
-        .join(
-            SaleItem,
-            SaleItem.product_id
-            == Product.id
-        )
-        .join(
-            Sale,
-            Sale.id
-            == SaleItem.sale_id
-        )
-        .filter(
-            Sale.company_id == company_id
+            Product.id == SaleItem.product_id,
         )
     )
 
-    if filters:
+    filtered_sales = _apply_common_filters(
+        filtered_sales,
+        company_id,
+        from_date,
+        to_date,
+        product_id,
+        category_id,
+        customer_id,
+        payment_method,
+    )
 
-        if filters.get("from_date"):
-            query = query.filter(
-                Sale.sale_date
-                >= filters["from_date"]
-            )
+    filtered_sales_subquery = (
+        filtered_sales
+        .distinct(Sale.id)
+        .subquery()
+    )
 
-        if filters.get("to_date"):
-            query = query.filter(
-                Sale.sale_date
-                <= filters["to_date"]
-            )
+    query = (
+        db.query(
+            Customer.id.label(
+                "customer_id"
+            ),
+            Customer.full_name.label(
+                "customer_name"
+            ),
+            func.count(
+                filtered_sales_subquery.c.sale_id
+            ).label(
+                "orders"
+            ),
+            func.coalesce(
+                func.sum(
+                    filtered_sales_subquery.c.total_amount
+                ),
+                0,
+            ).label(
+                "total_spend"
+            ),
+        )
+        .join(
+            filtered_sales_subquery,
+            filtered_sales_subquery.c.customer_id
+            == Customer.id,
+        )
+        .group_by(
+            Customer.id,
+            Customer.full_name,
+        )
+        .order_by(
+            func.coalesce(
+                func.sum(
+                    filtered_sales_subquery.c.total_amount
+                ),
+                0,
+            ).desc()
+        )
+    )
 
     rows = (
         query
-        .group_by(
-            Category.id,
-            Category.name
-        )
-        .order_by(
-            func.sum(
-                SaleItem.quantity
-            ).desc()
-        )
+        .offset(offset)
         .limit(limit)
         .all()
     )
 
-    return [
-        {
-            "category_id":
-                row.category_id,
+    result = []
 
-            "category_name":
-                row.category_name,
+    for row in rows:
+        orders = int(
+            row.orders or 0
+        )
 
-            "quantity":
-                int(row.quantity or 0),
+        total_spend = _safe_decimal(
+            row.total_spend
+        )
 
-            "revenue":
-                Decimal(
-                    str(row.revenue or 0)
-                ),
-        }
-        for row in rows
-    ]
+        average_order_value = (
+            total_spend / Decimal(orders)
+            if orders
+            else Decimal("0.00")
+        )
+
+        result.append(
+            {
+                "customer_id": row.customer_id,
+                "customer_name":
+                    row.customer_name or "Unknown",
+                "orders": orders,
+                "total_spend": total_spend,
+                "average_order_value":
+                    average_order_value,
+            }
+        )
+
+    return result
 
 
-# =====================================================
-# SALES BY PAYMENT METHOD
-# =====================================================
+# ============================================================
+# PAYMENT METHOD
+# ============================================================
 
-def get_sales_by_payment_method(
+def get_payment_method_analytics(
     db: Session,
     company_id: int,
-    filters=None,
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
 ):
+    validate_date_range(
+        from_date,
+        to_date,
+    )
 
     query = (
         db.query(
+            Sale.id,
+            Sale.payment_method,
+            Sale.total_amount,
+        )
+        .outerjoin(
+            SaleItem,
+            SaleItem.sale_id == Sale.id,
+        )
+        .outerjoin(
+            Product,
+            Product.id == SaleItem.product_id,
+        )
+    )
+
+    query = _apply_common_filters(
+        query,
+        company_id,
+        from_date,
+        to_date,
+        product_id,
+        category_id,
+        customer_id,
+        payment_method,
+    )
+
+    rows = query.all()
+
+    transactions = {}
+
+    for sale_id, method, total_amount in rows:
+        if sale_id not in transactions:
+            transactions[sale_id] = {
+                "method": method or "Other",
+                "revenue": _safe_decimal(
+                    total_amount
+                ),
+            }
+
+    grouped = {}
+
+    for item in transactions.values():
+        method = item["method"]
+
+        if method not in grouped:
+            grouped[method] = {
+                "transactions": 0,
+                "revenue": Decimal("0.00"),
+            }
+
+        grouped[method]["transactions"] += 1
+
+        grouped[method]["revenue"] += (
+            item["revenue"]
+        )
+
+    return [
+        {
+            "method": method,
+            "transactions":
+                values["transactions"],
+            "revenue":
+                values["revenue"],
+        }
+        for method, values in sorted(
+            grouped.items()
+        )
+    ]
+
+
+# ============================================================
+# EXPORT DATA
+# ============================================================
+
+def get_export_data(
+    db: Session,
+    company_id: int,
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
+):
+    validate_date_range(
+        from_date,
+        to_date,
+    )
+
+    query = (
+        db.query(
+            Sale.id.label("sale_id"),
+            Sale.sale_date.label("sale_date"),
             Sale.payment_method.label(
-                "method"
+                "payment_method"
             ),
-
-            func.count(
-                Sale.id
-            ).label("orders"),
-
-            func.sum(
-                Sale.total_amount
-            ).label("amount"),
-        )
-        .filter(
-            Sale.company_id == company_id
-        )
-    )
-
-    if filters:
-
-        if filters.get("from_date"):
-            query = query.filter(
-                Sale.sale_date
-                >= filters["from_date"]
-            )
-
-        if filters.get("to_date"):
-            query = query.filter(
-                Sale.sale_date
-                <= filters["to_date"]
-            )
-
-        if filters.get("payment_method"):
-            query = query.filter(
-                Sale.payment_method
-                == filters["payment_method"]
-            )
-
-    rows = (
-        query
-        .group_by(
-            Sale.payment_method
-        )
-        .all()
-    )
-
-    return [
-        {
-            "method":
-                row.method or "Unknown",
-
-            "orders":
-                int(row.orders or 0),
-
-            "amount":
-                Decimal(
-                    str(row.amount or 0)
-                ),
-        }
-        for row in rows
-    ]
-
-
-# =====================================================
-# SALES BY CHANNEL
-# =====================================================
-
-def get_sales_by_channel(
-    db: Session,
-    company_id: int,
-    filters=None,
-):
-
-    query = (
-        db.query(
             Sale.sales_channel.label(
-                "channel"
+                "sales_channel"
             ),
-
-            func.count(
-                Sale.id
-            ).label("orders"),
-
-            func.sum(
-                Sale.total_amount
-            ).label("revenue"),
-        )
-        .filter(
-            Sale.company_id == company_id
-        )
-    )
-
-    if filters:
-
-        if filters.get("from_date"):
-            query = query.filter(
-                Sale.sale_date
-                >= filters["from_date"]
-            )
-
-        if filters.get("to_date"):
-            query = query.filter(
-                Sale.sale_date
-                <= filters["to_date"]
-            )
-
-        if filters.get("sales_channel"):
-            query = query.filter(
-                Sale.sales_channel
-                == filters["sales_channel"]
-            )
-
-    rows = (
-        query
-        .group_by(
-            Sale.sales_channel
-        )
-        .all()
-    )
-
-    return [
-        {
-            "channel":
-                row.channel or "Unknown",
-
-            "orders":
-                int(row.orders or 0),
-
-            "revenue":
-                Decimal(
-                    str(row.revenue or 0)
-                ),
-        }
-        for row in rows
-    ]
-
-
-# =====================================================
-# INVENTORY DISTRIBUTION
-# =====================================================
-
-def get_inventory_distribution(
-    db: Session,
-    company_id: int,
-    filters=None,
-):
-
-    rows = (
-        db.query(
-            Category.name.label(
-                "category"
+            Customer.full_name.label(
+                "customer_name"
             ),
-
-            func.sum(
-                Inventory.available_stock
-            ).label("quantity"),
-        )
-        .join(
-            Product,
-            Product.id
-            == Inventory.product_id
-        )
-        .join(
-            Category,
-            Category.id
-            == Product.category_id
-        )
-        .filter(
-            Inventory.company_id
-            == company_id
-        )
-        .group_by(
-            Category.name
-        )
-        .all()
-    )
-
-    return [
-        {
-            "category":
-                row.category,
-
-            "quantity":
-                int(row.quantity or 0),
-        }
-        for row in rows
-    ]
-
-
-# =====================================================
-# STOCK STATUS SUMMARY
-# =====================================================
-
-def get_stock_status_summary(
-    db: Session,
-    company_id: int,
-    filters=None,
-):
-
-    rows = (
-        db.query(
-            Inventory.stock_status.label(
-                "status"
-            ),
-
-            func.count(
-                Inventory.id
-            ).label("count"),
-        )
-        .filter(
-            Inventory.company_id
-            == company_id
-        )
-        .group_by(
-            Inventory.stock_status
-        )
-        .all()
-    )
-
-    return [
-        {
-            "status":
-                row.status or "Unknown",
-
-            "count":
-                int(row.count or 0),
-        }
-        for row in rows
-    ]
-
-
-# =====================================================
-# INVENTORY VALUE BY CATEGORY
-# =====================================================
-
-def get_inventory_value_by_category(
-    db: Session,
-    company_id: int,
-    filters=None,
-):
-
-    rows = (
-        db.query(
-            Category.name.label(
-                "category_name"
-            ),
-
-            func.sum(
-                Inventory.available_stock
-                * Product.unit_price
-            ).label("value"),
-        )
-        .join(
-            Product,
-            Product.id
-            == Inventory.product_id
-        )
-        .join(
-            Category,
-            Category.id
-            == Product.category_id
-        )
-        .filter(
-            Inventory.company_id
-            == company_id
-        )
-        .group_by(
-            Category.name
-        )
-        .all()
-    )
-
-    return [
-        {
-            "category_name":
-                row.category_name,
-
-            "value":
-                Decimal(
-                    str(row.value or 0)
-                ),
-        }
-        for row in rows
-    ]
-
-
-# =====================================================
-# LOW STOCK PRODUCTS
-# =====================================================
-
-def get_low_stock_items(
-    db: Session,
-    company_id: int,
-    filters=None,
-):
-
-    query = (
-        db.query(
-            Product.id.label(
-                "product_id"
-            ),
-
             Product.name.label(
                 "product_name"
             ),
-
-            Product.sku.label(
-                "sku"
+            Product.sku.label("sku"),
+            SaleItem.quantity.label(
+                "quantity"
             ),
-
-            Product.brand.label(
-                "brand"
+            SaleItem.unit_price.label(
+                "unit_price"
             ),
-
-            Inventory.available_stock.label(
-                "available_stock"
+            SaleItem.discount.label(
+                "discount"
             ),
-
-            Inventory.reorder_level.label(
-                "reorder_level"
+            SaleItem.tax.label("tax"),
+            Sale.total_amount.label(
+                "sale_total"
             ),
         )
         .join(
-            Inventory,
-            Inventory.product_id
-            == Product.id
+            SaleItem,
+            SaleItem.sale_id == Sale.id,
         )
-        .filter(
-            Inventory.company_id
-            == company_id
+        .join(
+            Product,
+            Product.id == SaleItem.product_id,
         )
-    )
-
-    # ---------------------------------------------
-    # LOW STOCK CONDITION
-    # ---------------------------------------------
-
-    query = query.filter(
-        or_(
-            Inventory.stock_status.in_(
-                [
-                    "Low Stock",
-                    "LOW_STOCK",
-                    "low_stock",
-                    "Low",
-                    "LOW",
-                ]
-            ),
-
-            Inventory.available_stock
-            <= Inventory.reorder_level
+        .outerjoin(
+            Customer,
+            Customer.id == Sale.customer_id,
         )
     )
 
-    # ---------------------------------------------
-    # OPTIONAL PRODUCT FILTER
-    # ---------------------------------------------
+    query = _apply_common_filters(
+        query,
+        company_id,
+        from_date,
+        to_date,
+        product_id,
+        category_id,
+        customer_id,
+        payment_method,
+    )
 
-    if filters:
+    query = query.order_by(
+        Sale.sale_date.desc()
+    )
 
-        if filters.get("product"):
-            query = query.filter(
-                Product.name.ilike(
-                    f"%{filters['product']}%"
-                )
-            )
+    return query.all()
 
-        if filters.get("brand"):
-            query = query.filter(
-                Product.brand.ilike(
-                    f"%{filters['brand']}%"
-                )
-            )
 
-    rows = query.all()
+# ============================================================
+# CSV EXPORT
+# ============================================================
 
-    return [
-        {
-            "product_id":
-                row.product_id,
+def export_analytics_csv(
+    db: Session,
+    company_id: int,
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
+):
+    rows = get_export_data(
+        db=db,
+        company_id=company_id,
+        from_date=from_date,
+        to_date=to_date,
+        product_id=product_id,
+        category_id=category_id,
+        customer_id=customer_id,
+        payment_method=payment_method,
+    )
 
-            "product_name":
-                row.product_name,
+    output = StringIO()
 
-            "sku":
+    writer = csv.writer(output)
+
+    writer.writerow(
+        [
+            "Sale ID",
+            "Sale Date",
+            "Customer",
+            "Product",
+            "SKU",
+            "Quantity",
+            "Unit Price",
+            "Discount",
+            "Tax",
+            "Payment Method",
+            "Sales Channel",
+            "Sale Total",
+        ]
+    )
+
+    for row in rows:
+        sale_date = row.sale_date
+
+        if isinstance(
+            sale_date,
+            (datetime, date),
+        ):
+            sale_date = sale_date.isoformat()
+
+        writer.writerow(
+            [
+                row.sale_id,
+                sale_date or "",
+                row.customer_name or "",
+                row.product_name or "",
                 row.sku or "",
+                row.quantity or 0,
+                row.unit_price or 0,
+                row.discount or 0,
+                row.tax or 0,
+                row.payment_method or "",
+                row.sales_channel or "",
+                row.sale_total or 0,
+            ]
+        )
 
-            "brand":
-                row.brand or "",
-
-            "available_stock":
-                int(row.available_stock or 0),
-
-            "reorder_level":
-                int(row.reorder_level or 0),
-        }
-        for row in rows
-    ]
+    return output.getvalue()
 
 
-# =====================================================
-# OUT OF STOCK PRODUCTS
-# =====================================================
+# ============================================================
+# PDF EXPORT
+# ============================================================
 
-def get_out_of_stock_items(
+def export_analytics_pdf(
     db: Session,
     company_id: int,
-    filters=None,
+    from_date=None,
+    to_date=None,
+    product_id=None,
+    category_id=None,
+    customer_id=None,
+    payment_method=None,
 ):
+    rows = get_export_data(
+        db=db,
+        company_id=company_id,
+        from_date=from_date,
+        to_date=to_date,
+        product_id=product_id,
+        category_id=category_id,
+        customer_id=customer_id,
+        payment_method=payment_method,
+    )
 
-    query = (
-        db.query(
-            Product.id.label(
-                "product_id"
-            ),
+    buffer = BytesIO()
 
-            Product.name.label(
-                "product_name"
-            ),
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=25,
+        leftMargin=25,
+        topMargin=25,
+        bottomMargin=25,
+    )
 
-            Product.brand.label(
-                "brand"
-            ),
+    styles = getSampleStyleSheet()
 
-            Inventory.available_stock.label(
-                "available_stock"
-            ),
-        )
-        .join(
-            Inventory,
-            Inventory.product_id
-            == Product.id
-        )
-        .filter(
-            Inventory.company_id
-            == company_id
+    story = []
+
+    story.append(
+        Paragraph(
+            "RetailPulse Sales Analytics Report",
+            styles["Title"],
         )
     )
 
-    query = query.filter(
-        or_(
-            Inventory.stock_status.in_(
-                [
-                    "Out of Stock",
-                    "OUT_OF_STOCK",
-                    "out_of_stock",
-                    "Out",
-                    "OUT",
-                ]
-            ),
+    story.append(
+        Spacer(1, 10)
+    )
 
-            Inventory.available_stock <= 0
+    story.append(
+        Paragraph(
+            f"Date Range: "
+            f"{from_date or 'All'} "
+            f"to "
+            f"{to_date or 'All'}",
+            styles["Normal"],
         )
     )
 
-    if filters:
+    story.append(
+        Spacer(1, 15)
+    )
 
-        if filters.get("product"):
-            query = query.filter(
-                Product.name.ilike(
-                    f"%{filters['product']}%"
-                )
-            )
-
-        if filters.get("brand"):
-            query = query.filter(
-                Product.brand.ilike(
-                    f"%{filters['brand']}%"
-                )
-            )
-
-    rows = query.all()
-
-    return [
-        {
-            "product_id":
-                row.product_id,
-
-            "product_name":
-                row.product_name,
-
-            "brand":
-                row.brand,
-
-            "available_stock":
-                int(row.available_stock or 0),
-        }
-        for row in rows
+    data = [
+        [
+            "Sale ID",
+            "Date",
+            "Customer",
+            "Product",
+            "Qty",
+            "Revenue",
+        ]
     ]
+
+    for row in rows:
+        sale_date = row.sale_date
+
+        if isinstance(
+            sale_date,
+            (datetime, date),
+        ):
+            sale_date = sale_date.isoformat()
+
+        data.append(
+            [
+                str(row.sale_id),
+                str(sale_date or ""),
+                row.customer_name or "",
+                row.product_name or "",
+                str(row.quantity or 0),
+                str(row.sale_total or 0),
+            ]
+        )
+
+    if len(data) == 1:
+        data.append(
+            [
+                "",
+                "",
+                "No sales data available",
+                "",
+                "",
+                "",
+            ]
+        )
+
+    table = Table(
+        data,
+        repeatRows=1,
+    )
+
+    table.setStyle(
+        TableStyle(
+            [
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.grey,
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white,
+                ),
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.5,
+                    colors.grey,
+                ),
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold",
+                ),
+                (
+                    "FONTSIZE",
+                    (0, 0),
+                    (-1, -1),
+                    8,
+                ),
+                (
+                    "VALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "MIDDLE",
+                ),
+            ]
+        )
+    )
+
+    story.append(table)
+
+    document.build(story)
+
+    buffer.seek(0)
+
+    return buffer

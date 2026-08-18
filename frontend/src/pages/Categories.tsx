@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Box,
   Button,
+  Chip,
   Container,
   Dialog,
   DialogActions,
@@ -88,7 +89,11 @@ export default function Categories() {
 
   function handleAdd() {
     setEditingId(null);
-    setForm(emptyCategory);
+
+    setForm({
+      ...emptyCategory,
+    });
+
     setOpen(true);
   }
 
@@ -105,6 +110,11 @@ export default function Categories() {
   }
 
   async function handleSave() {
+    if (!form.name.trim()) {
+      alert("Category Name is required");
+      return;
+    }
+
     try {
       if (editingId) {
         await updateCategory(editingId, form);
@@ -113,6 +123,11 @@ export default function Categories() {
       }
 
       setOpen(false);
+
+      setForm({
+        ...emptyCategory,
+      });
+
       loadCategories();
     } catch (err) {
       console.log(err);
@@ -147,7 +162,8 @@ export default function Categories() {
       <Box
         sx={{
           flex: 1,
-          ml: "260px",
+          minWidth: 0,
+          ml: "280px",
         }}
       >
         <Topbar />
@@ -155,81 +171,196 @@ export default function Categories() {
         <Container
           maxWidth="xl"
           sx={{
-            mt: 12,
-            pb: 4,
+            mt: "72px",
+            py: 4,
+            px: {
+              xs: 2,
+              sm: 3,
+              lg: 4,
+            },
           }}
         >
+          {/* Header */}
+
           <Stack
-            direction="row"
+            direction={{
+              xs: "column",
+              sm: "row",
+            }}
             justifyContent="space-between"
-            alignItems="center"
+            alignItems={{
+              xs: "flex-start",
+              sm: "center",
+            }}
+            spacing={2}
             mb={3}
           >
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              color="white"
-            >
-              Categories
-            </Typography>
+            <Box>
+              <Typography
+                sx={{
+                  color: "#F8FAFC",
+                  fontSize: {
+                    xs: 28,
+                    md: 32,
+                  },
+                  fontWeight: 800,
+                  letterSpacing: "-0.5px",
+                }}
+              >
+                Categories
+              </Typography>
+
+              <Typography
+                sx={{
+                  color: "#64748B",
+                  fontSize: 14,
+                  mt: 0.5,
+                }}
+              >
+                Manage product categories and their status
+              </Typography>
+            </Box>
 
             <Button
               variant="contained"
               startIcon={<Add />}
               onClick={handleAdd}
               sx={{
-                borderRadius: 2,
-                px: 3,
+                px: 2.5,
+                py: 1.2,
+                borderRadius: 2.5,
+                textTransform: "none",
+                fontWeight: 700,
+                background:
+                  "linear-gradient(135deg,#2563EB,#4F46E5)",
+                boxShadow:
+                  "0 8px 20px rgba(37,99,235,0.25)",
               }}
             >
               Add Category
             </Button>
           </Stack>
 
-          <TextField
-            fullWidth
-            placeholder="Search Category..."
-            value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
-            sx={{
-              mb: 3,
-              "& .MuiOutlinedInput-root": {
-                bgcolor: "#1E293B",
-                color: "white",
-                borderRadius: 2,
-              },
-              "& input": {
-                color: "white",
-              },
-            }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search sx={{ color: "#94A3B8" }} />
-                </InputAdornment>
-              ),
-            }}
-          />
+          {/* Search */}
 
-                    <Paper
+          <Paper
             elevation={0}
             sx={{
-              bgcolor: "#1E293B",
-              borderRadius: 3,
-              border: "1px solid #334155",
+              p: 2.5,
+              mb: 3,
+              borderRadius: 3.5,
+              bgcolor: "#111827",
+              border: "1px solid #263449",
+            }}
+          >
+            <Typography
+              sx={{
+                color: "#F8FAFC",
+                fontSize: 16,
+                fontWeight: 700,
+                mb: 2,
+              }}
+            >
+              Search Categories
+            </Typography>
+
+            <TextField
+              fullWidth
+              placeholder="Search category..."
+              value={search}
+              onChange={(e) =>
+                setSearch(e.target.value)
+              }
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search
+                      sx={{
+                        color: "#64748B",
+                      }}
+                    />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  bgcolor: "#0F172A",
+                  color: "#F8FAFC",
+                  borderRadius: 2.5,
+
+                  "& fieldset": {
+                    borderColor: "#334155",
+                  },
+
+                  "&:hover fieldset": {
+                    borderColor: "#475569",
+                  },
+
+                  "&.Mui-focused fieldset": {
+                    borderColor: "#3B82F6",
+                  },
+                },
+
+                "& input::placeholder": {
+                  color: "#64748B",
+                  opacity: 1,
+                },
+              }}
+            />
+          </Paper>
+
+          {/* Category Table */}
+
+          <Paper
+            elevation={0}
+            sx={{
+              bgcolor: "#111827",
+              borderRadius: 3.5,
+              border: "1px solid #263449",
               overflow: "hidden",
             }}
           >
-            <TableContainer>
-              <Table>
+            <TableContainer
+              sx={{
+                width: "100%",
+                overflowX: "auto",
+
+                "&::-webkit-scrollbar": {
+                  height: 7,
+                },
+
+                "&::-webkit-scrollbar-track": {
+                  background: "#0F172A",
+                },
+
+                "&::-webkit-scrollbar-thumb": {
+                  background: "#334155",
+                  borderRadius: 10,
+                },
+              }}
+            >
+              <Table
+                sx={{
+                  minWidth: 700,
+                  tableLayout: "fixed",
+                }}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell
                       sx={{
-                        color: "white",
+                        width: "30%",
+                        bgcolor: "#172033",
+                        color: "#94A3B8",
                         fontWeight: 700,
+                        fontSize: 13,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        borderBottom:
+                          "1px solid #334155",
+                        borderRight:
+                          "1px solid #263449",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       Category Name
@@ -237,8 +368,17 @@ export default function Categories() {
 
                     <TableCell
                       sx={{
-                        color: "white",
+                        width: "40%",
+                        bgcolor: "#172033",
+                        color: "#94A3B8",
                         fontWeight: 700,
+                        fontSize: 13,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        borderBottom:
+                          "1px solid #334155",
+                        borderRight:
+                          "1px solid #263449",
                       }}
                     >
                       Description
@@ -246,18 +386,36 @@ export default function Categories() {
 
                     <TableCell
                       sx={{
-                        color: "white",
+                        width: "15%",
+                        bgcolor: "#172033",
+                        color: "#94A3B8",
                         fontWeight: 700,
+                        fontSize: 13,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        borderBottom:
+                          "1px solid #334155",
+                        borderRight:
+                          "1px solid #263449",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       Status
                     </TableCell>
 
                     <TableCell
-                      align="right"
                       sx={{
-                        color: "white",
+                        width: "15%",
+                        bgcolor: "#172033",
+                        color: "#94A3B8",
                         fontWeight: 700,
+                        fontSize: 13,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        borderBottom:
+                          "1px solid #334155",
+                        whiteSpace: "nowrap",
+                        textAlign: "left",
                       }}
                     >
                       Actions
@@ -266,73 +424,214 @@ export default function Categories() {
                 </TableHead>
 
                 <TableBody>
-                  {categories.map((category) => (
-                    <TableRow
-                      key={category.id}
-                      hover
-                    >
+                  {categories.length === 0 ? (
+                    <TableRow>
                       <TableCell
-                        sx={{ color: "white" }}
-                      >
-                        {category.name}
-                      </TableCell>
-
-                      <TableCell
+                        colSpan={4}
+                        align="center"
                         sx={{
-                          color: "#CBD5E1",
+                          py: 8,
+                          color: "#64748B",
+                          borderBottom: "none",
                         }}
                       >
-                        {category.description}
-                      </TableCell>
-
-                      <TableCell
-                        sx={{
-                          color:
-                            category.status ===
-                            "ACTIVE"
-                              ? "#22C55E"
-                              : "#EF4444",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {category.status}
-                      </TableCell>
-
-                      <TableCell align="right">
-                        <IconButton
-                          color="primary"
-                          onClick={() =>
-                            handleEdit(category)
-                          }
+                        <Typography
+                          sx={{
+                            fontSize: 16,
+                            fontWeight: 600,
+                            color: "#94A3B8",
+                          }}
                         >
-                          <Edit />
-                        </IconButton>
+                          No categories found
+                        </Typography>
 
-                        <IconButton
-                          color="error"
-                          onClick={() =>
-                            handleDelete(
-                              category.id
-                            )
-                          }
+                        <Typography
+                          sx={{
+                            fontSize: 13,
+                            mt: 0.5,
+                            color: "#64748B",
+                          }}
                         >
-                          <Delete />
-                        </IconButton>
+                          Try changing your search.
+                        </Typography>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    categories.map((category) => (
+                      <TableRow
+                        key={category.id}
+                        hover
+                        sx={{
+                          "&:hover": {
+                            bgcolor: "#172033",
+                          },
+                        }}
+                      >
+                        {/* Category Name */}
+
+                        <TableCell
+                          sx={{
+                            width: "30%",
+                            color: "#F8FAFC",
+                            fontWeight: 600,
+                            fontSize: 14,
+                            borderBottom:
+                              "1px solid #263449",
+                            borderRight:
+                              "1px solid #263449",
+                          }}
+                        >
+                          {category.name}
+                        </TableCell>
+
+                        {/* Description */}
+
+                        <TableCell
+                          sx={{
+                            width: "40%",
+                            color: "#CBD5E1",
+                            fontSize: 13,
+                            borderBottom:
+                              "1px solid #263449",
+                            borderRight:
+                              "1px solid #263449",
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {category.description ||
+                            "—"}
+                        </TableCell>
+
+                        {/* Status */}
+
+                        <TableCell
+                          sx={{
+                            width: "15%",
+                            borderBottom:
+                              "1px solid #263449",
+                            borderRight:
+                              "1px solid #263449",
+                          }}
+                        >
+                          <Chip
+                            label={category.status}
+                            size="small"
+                            sx={{
+                              fontWeight: 700,
+                              fontSize: 10,
+
+                              bgcolor:
+                                category.status ===
+                                "ACTIVE"
+                                  ? "rgba(34,197,94,0.12)"
+                                  : "rgba(239,68,68,0.12)",
+
+                              color:
+                                category.status ===
+                                "ACTIVE"
+                                  ? "#4ADE80"
+                                  : "#F87171",
+
+                              border:
+                                category.status ===
+                                "ACTIVE"
+                                  ? "1px solid rgba(34,197,94,0.25)"
+                                  : "1px solid rgba(239,68,68,0.25)",
+                            }}
+                          />
+                        </TableCell>
+
+                        {/* Actions */}
+
+                        <TableCell
+                          sx={{
+                            width: "15%",
+                            borderBottom:
+                              "1px solid #263449",
+                            whiteSpace: "nowrap",
+                            textAlign: "left",
+                            pl: 1,
+                          }}
+                        >
+                          <Stack
+                            direction="row"
+                            alignItems="center"
+                            spacing={0.5}
+                          >
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                handleEdit(category)
+                              }
+                              sx={{
+                                color: "#60A5FA",
+                                bgcolor:
+                                  "rgba(59,130,246,0.08)",
+
+                                "&:hover": {
+                                  bgcolor:
+                                    "rgba(59,130,246,0.18)",
+                                },
+                              }}
+                            >
+                              <Edit fontSize="small" />
+                            </IconButton>
+
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                handleDelete(
+                                  category.id
+                                )
+                              }
+                              sx={{
+                                color: "#F87171",
+                                bgcolor:
+                                  "rgba(239,68,68,0.08)",
+
+                                "&:hover": {
+                                  bgcolor:
+                                    "rgba(239,68,68,0.18)",
+                                },
+                              }}
+                            >
+                              <Delete fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
           </Paper>
 
-                    <Dialog
+          {/* Add / Edit Dialog */}
+
+          <Dialog
             open={open}
             onClose={() => setOpen(false)}
             fullWidth
             maxWidth="sm"
+            PaperProps={{
+              sx: {
+                bgcolor: "#111827",
+                color: "#F8FAFC",
+                borderRadius: 3.5,
+                border: "1px solid #263449",
+              },
+            }}
           >
-            <DialogTitle>
+            <DialogTitle
+              sx={{
+                fontSize: 22,
+                fontWeight: 800,
+                borderBottom:
+                  "1px solid #263449",
+              }}
+            >
               {editingId
                 ? "Edit Category"
                 : "Add Category"}
@@ -340,8 +639,10 @@ export default function Categories() {
 
             <DialogContent>
               <Stack
-                spacing={2}
-                sx={{ mt: 1 }}
+                spacing={2.2}
+                sx={{
+                  mt: 2,
+                }}
               >
                 <TextField
                   label="Category Name"
@@ -353,25 +654,79 @@ export default function Categories() {
                       name: e.target.value,
                     })
                   }
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      bgcolor: "#0F172A",
+                      color: "#F8FAFC",
+
+                      "& fieldset": {
+                        borderColor: "#334155",
+                      },
+
+                      "&:hover fieldset": {
+                        borderColor: "#475569",
+                      },
+
+                      "&.Mui-focused fieldset": {
+                        borderColor: "#3B82F6",
+                      },
+                    },
+
+                    "& .MuiInputLabel-root": {
+                      color: "#94A3B8",
+                    },
+
+                    "& .MuiInputLabel-root.Mui-focused": {
+                      color: "#60A5FA",
+                    },
+                  }}
                 />
 
                 <TextField
                   label="Description"
                   fullWidth
                   multiline
-                  rows={3}
+                  rows={4}
                   value={form.description}
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      description: e.target.value,
+                      description:
+                        e.target.value,
                     })
                   }
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      bgcolor: "#0F172A",
+                      color: "#F8FAFC",
+
+                      "& fieldset": {
+                        borderColor: "#334155",
+                      },
+
+                      "&:hover fieldset": {
+                        borderColor: "#475569",
+                      },
+
+                      "&.Mui-focused fieldset": {
+                        borderColor: "#3B82F6",
+                      },
+                    },
+
+                    "& .MuiInputLabel-root": {
+                      color: "#94A3B8",
+                    },
+
+                    "& .MuiInputLabel-root.Mui-focused": {
+                      color: "#60A5FA",
+                    },
+                  }}
                 />
 
                 <TextField
                   select
                   label="Status"
+                  fullWidth
                   value={form.status}
                   onChange={(e) =>
                     setForm({
@@ -379,6 +734,36 @@ export default function Categories() {
                       status: e.target.value,
                     })
                   }
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      bgcolor: "#0F172A",
+                      color: "#F8FAFC",
+
+                      "& fieldset": {
+                        borderColor: "#334155",
+                      },
+
+                      "&:hover fieldset": {
+                        borderColor: "#475569",
+                      },
+
+                      "&.Mui-focused fieldset": {
+                        borderColor: "#3B82F6",
+                      },
+                    },
+
+                    "& .MuiInputLabel-root": {
+                      color: "#94A3B8",
+                    },
+
+                    "& .MuiInputLabel-root.Mui-focused": {
+                      color: "#60A5FA",
+                    },
+
+                    "& .MuiSvgIcon-root": {
+                      color: "#94A3B8",
+                    },
+                  }}
                 >
                   <MenuItem value="ACTIVE">
                     Active
@@ -391,9 +776,23 @@ export default function Categories() {
               </Stack>
             </DialogContent>
 
-            <DialogActions>
+            <DialogActions
+              sx={{
+                px: 3,
+                py: 2,
+                borderTop:
+                  "1px solid #263449",
+              }}
+            >
               <Button
-                onClick={() => setOpen(false)}
+                onClick={() =>
+                  setOpen(false)
+                }
+                sx={{
+                  color: "#94A3B8",
+                  textTransform: "none",
+                  fontWeight: 600,
+                }}
               >
                 Cancel
               </Button>
@@ -408,10 +807,18 @@ export default function Categories() {
                   )
                 }
                 onClick={handleSave}
+                sx={{
+                  px: 3,
+                  borderRadius: 2,
+                  textTransform: "none",
+                  fontWeight: 700,
+                  background:
+                    "linear-gradient(135deg,#2563EB,#4F46E5)",
+                }}
               >
                 {editingId
-                  ? "Update"
-                  : "Save"}
+                  ? "Update Category"
+                  : "Save Category"}
               </Button>
             </DialogActions>
           </Dialog>

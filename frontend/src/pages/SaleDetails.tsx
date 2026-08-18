@@ -1,4 +1,3 @@
-
 import {
   useEffect,
   useState,
@@ -1025,10 +1024,17 @@ export default function SaleDetails() {
                     "-"}
                 </Typography>
 
-                <Typography
+                <Box
                   mt={2}
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                  flexWrap="wrap"
                 >
-                  Payment Status:{" "}
+                  <Typography component="span">
+                    Payment Status:
+                  </Typography>
+
                   <Chip
                     size="small"
                     label={
@@ -1044,7 +1050,7 @@ export default function SaleDetails() {
                         : "warning"
                     }
                   />
-                </Typography>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -1518,9 +1524,8 @@ export default function SaleDetails() {
               <EditIcon />
             }
             onClick={() =>
-              navigate(
-                `/sales/edit/${sale.id}`
-              )
+            navigate(`/sales/edit/${sale.id}`)
+
             }
             sx={{
               textTransform:
@@ -1679,4 +1684,3 @@ export default function SaleDetails() {
     </Box>
   );
 }
-

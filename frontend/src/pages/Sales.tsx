@@ -44,9 +44,6 @@ import {
   searchSales,
   sortSales,
 } from "../api/salesApi";
-// ============================================================
-// TYPES
-// ============================================================
 
 interface SaleItem {
   id?: number;
@@ -122,22 +119,10 @@ interface DashboardSummary {
   total_revenue?: number | string;
 }
 
-// ============================================================
-// COMPONENT
-// ============================================================
-
 export default function Sales() {
   const navigate = useNavigate();
 
-  // ==========================================================
-  // SALES
-  // ==========================================================
-
   const [sales, setSales] = useState<Sale[]>([]);
-
-  // ==========================================================
-  // DASHBOARD SUMMARY
-  // ==========================================================
 
   const [summary, setSummary] =
     useState<DashboardSummary>({
@@ -146,28 +131,21 @@ export default function Sales() {
       total_revenue: 0,
     });
 
-  // ==========================================================
-  // LOADING
-  // ==========================================================
-
-  const [loading, setLoading] =
-    useState(false);
-
-  // ==========================================================
-  // SEARCH
-  // ==========================================================
+  const [loading, setLoading] = useState(false);
 
   const [searchKeyword, setSearchKeyword] =
     useState("");
-
-  // ==========================================================
-  // FILTERS
-  // ==========================================================
 
   const [startDate, setStartDate] =
     useState("");
 
   const [endDate, setEndDate] =
+    useState("");
+
+  const [startDateDisplay, setStartDateDisplay] =
+    useState("");
+
+  const [endDateDisplay, setEndDateDisplay] =
     useState("");
 
   const [categoryId, setCategoryId] =
@@ -182,19 +160,11 @@ export default function Sales() {
   const [paymentStatus, setPaymentStatus] =
     useState("");
 
-  // ==========================================================
-  // SORT
-  // ==========================================================
-
   const [sortBy, setSortBy] =
     useState("sale_date");
 
   const [sortOrder, setSortOrder] =
     useState<"asc" | "desc">("desc");
-
-  // ==========================================================
-  // SNACKBAR
-  // ==========================================================
 
   const [snackbar, setSnackbar] =
     useState<{
@@ -206,10 +176,6 @@ export default function Sales() {
       message: "",
       type: "success",
     });
-
-  // ==========================================================
-  // TEXT FIELD STYLE
-  // ==========================================================
 
   const textFieldStyle = {
     "& .MuiInputLabel-root": {
@@ -241,15 +207,11 @@ export default function Sales() {
       color: "#fff",
     },
 
-    "& input[type='date']::-webkit-calendar-picker-indicator":
-      {
-        filter: "invert(1)",
-      },
+    "& input::placeholder": {
+      color: "#94a3b8",
+      opacity: 1,
+    },
   };
-
-  // ==========================================================
-  // RESPONSE NORMALIZER
-  // ==========================================================
 
   const extractSales = (
     response: any
@@ -269,10 +231,6 @@ export default function Sales() {
       : [];
   };
 
-  // ==========================================================
-  // LOAD SALES
-  // ==========================================================
-
   const loadSales = async () => {
     try {
       setLoading(true);
@@ -280,10 +238,9 @@ export default function Sales() {
       const response: any =
         await getSales();
 
-      const salesList =
-        extractSales(response);
-
-      setSales(salesList);
+      setSales(
+        extractSales(response)
+      );
     } catch (error: any) {
       console.error(
         "Load sales error:",
@@ -301,10 +258,6 @@ export default function Sales() {
       setLoading(false);
     }
   };
-
-  // ==========================================================
-  // LOAD DASHBOARD SUMMARY
-  // ==========================================================
 
   const loadSummary = async () => {
     try {
@@ -349,18 +302,10 @@ export default function Sales() {
     }
   };
 
-  // ==========================================================
-  // INITIAL LOAD
-  // ==========================================================
-
   useEffect(() => {
     loadSales();
     loadSummary();
   }, []);
-
-  // ==========================================================
-  // REFRESH
-  // ==========================================================
 
   const handleRefresh = async () => {
     await Promise.all([
@@ -368,10 +313,6 @@ export default function Sales() {
       loadSummary(),
     ]);
   };
-
-  // ==========================================================
-  // SEARCH
-  // ==========================================================
 
   const handleSearch = async () => {
     const keyword =
@@ -409,10 +350,6 @@ export default function Sales() {
     }
   };
 
-  // ==========================================================
-  // SEARCH ON ENTER
-  // ==========================================================
-
   const handleSearchKeyDown = (
     event: React.KeyboardEvent
   ) => {
@@ -420,10 +357,6 @@ export default function Sales() {
       handleSearch();
     }
   };
-
-  // ==========================================================
-  // FILTER
-  // ==========================================================
 
   const handleFilter = async () => {
     try {
@@ -435,13 +368,11 @@ export default function Sales() {
       > = {};
 
       if (startDate) {
-        params.start_date =
-          startDate;
+        params.start_date = startDate;
       }
 
       if (endDate) {
-        params.end_date =
-          endDate;
+        params.end_date = endDate;
       }
 
       if (categoryId) {
@@ -496,10 +427,6 @@ export default function Sales() {
     }
   };
 
-  // ==========================================================
-  // SORT
-  // ==========================================================
-
   const handleSort = async (
     field = sortBy,
     order = sortOrder
@@ -534,10 +461,6 @@ export default function Sales() {
     }
   };
 
-  // ==========================================================
-  // SORT BY CHANGE
-  // ==========================================================
-
   const handleSortByChange = async (
     value: string
   ) => {
@@ -548,10 +471,6 @@ export default function Sales() {
       sortOrder
     );
   };
-
-  // ==========================================================
-  // SORT ORDER CHANGE
-  // ==========================================================
 
   const handleSortOrderChange = async (
     value: "asc" | "desc"
@@ -564,28 +483,26 @@ export default function Sales() {
     );
   };
 
-  // ==========================================================
-  // CLEAR FILTERS
-  // ==========================================================
-
   const handleClearFilters =
     async () => {
       setSearchKeyword("");
+
       setStartDate("");
       setEndDate("");
+
+      setStartDateDisplay("");
+      setEndDateDisplay("");
+
       setCategoryId("");
       setSalesChannel("");
       setPaymentMethod("");
       setPaymentStatus("");
+
       setSortBy("sale_date");
       setSortOrder("desc");
 
       await loadSales();
     };
-
-  // ==========================================================
-  // DELETE SALE
-  // ==========================================================
 
   const handleDelete = async (
     saleId: number
@@ -633,41 +550,135 @@ export default function Sales() {
     }
   };
 
-  // ==========================================================
-  // FORMAT DATE
-  // ==========================================================
+  const handleStartDateChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const digits =
+      event.target.value
+        .replace(/\D/g, "")
+        .slice(0, 8);
+
+    let display = digits;
+
+    if (digits.length > 4) {
+      display =
+        `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      display =
+        `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+
+    setStartDateDisplay(display);
+
+    if (digits.length === 8) {
+      const day =
+        digits.slice(0, 2);
+
+      const month =
+        digits.slice(2, 4);
+
+      const year =
+        digits.slice(4, 8);
+
+      const date = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day)
+      );
+
+      if (
+        date.getFullYear() ===
+          Number(year) &&
+        date.getMonth() ===
+          Number(month) - 1 &&
+        date.getDate() ===
+          Number(day)
+      ) {
+        setStartDate(
+          `${year}-${month}-${day}`
+        );
+      } else {
+        setStartDate("");
+      }
+    } else {
+      setStartDate("");
+    }
+  };
+
+  const handleEndDateChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const digits =
+      event.target.value
+        .replace(/\D/g, "")
+        .slice(0, 8);
+
+    let display = digits;
+
+    if (digits.length > 4) {
+      display =
+        `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      display =
+        `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+
+    setEndDateDisplay(display);
+
+    if (digits.length === 8) {
+      const day =
+        digits.slice(0, 2);
+
+      const month =
+        digits.slice(2, 4);
+
+      const year =
+        digits.slice(4, 8);
+
+      const date = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day)
+      );
+
+      if (
+        date.getFullYear() ===
+          Number(year) &&
+        date.getMonth() ===
+          Number(month) - 1 &&
+        date.getDate() ===
+          Number(day)
+      ) {
+        setEndDate(
+          `${year}-${month}-${day}`
+        );
+      } else {
+        setEndDate("");
+      }
+    } else {
+      setEndDate("");
+    }
+  };
 
   const formatDate = (
-    date?: string
+    value?: string
   ) => {
-    if (!date) {
+    if (!value) {
       return "-";
     }
 
-    const parsed =
-      new Date(date);
+    const datePart =
+      value.split("T")[0];
 
-    if (
-      Number.isNaN(
-        parsed.getTime()
-      )
-    ) {
-      return date;
+    const parts =
+      datePart.split("-");
+
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
 
-    return parsed.toLocaleDateString(
-      "en-IN",
-      {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }
-    );
+    return value;
   };
-
-  // ==========================================================
-  // CUSTOMER NAME
-  // ==========================================================
 
   const getCustomerName = (
     sale: Sale
@@ -679,10 +690,6 @@ export default function Sales() {
       "-"
     );
   };
-
-  // ==========================================================
-  // ITEM COUNT
-  // ==========================================================
 
   const getItemCount = (
     sale: Sale
@@ -713,10 +720,6 @@ export default function Sales() {
     return 0;
   };
 
-  // ==========================================================
-  // TOTAL AMOUNT
-  // ==========================================================
-
   const getTotalAmount = (
     sale: Sale
   ) => {
@@ -728,10 +731,6 @@ export default function Sales() {
     );
   };
 
-  // ==========================================================
-  // PAYMENT STATUS
-  // ==========================================================
-
   const getPaymentStatus = (
     sale: Sale
   ) => {
@@ -741,10 +740,6 @@ export default function Sales() {
       "PAID"
     ).toUpperCase();
   };
-
-  // ==========================================================
-  // SUBTOTAL
-  // ==========================================================
 
   const getSubtotal = (
     sale: Sale
@@ -794,10 +789,6 @@ export default function Sales() {
     return 0;
   };
 
-  // ==========================================================
-  // DISCOUNT
-  // ==========================================================
-
   const getDiscount = (
     sale: Sale
   ) => {
@@ -806,10 +797,6 @@ export default function Sales() {
     );
   };
 
-  // ==========================================================
-  // TAX
-  // ==========================================================
-
   const getTax = (
     sale: Sale
   ) => {
@@ -817,10 +804,6 @@ export default function Sales() {
       sale.tax ?? 0
     );
   };
-
-  // ==========================================================
-  // CSV ESCAPE
-  // ==========================================================
 
   const escapeCSV = (
     value: unknown
@@ -832,10 +815,6 @@ export default function Sales() {
       '""'
     )}"`;
   };
-
-  // ==========================================================
-  // EXPORT CSV
-  // ==========================================================
 
   const exportSaleCSV = (
     sale: Sale
@@ -849,7 +828,11 @@ export default function Sales() {
         getCustomerName(sale);
 
       const saleDate =
-        sale.sale_date || "";
+        sale.sale_date
+          ? formatDate(
+              sale.sale_date
+            )
+          : "";
 
       const paymentMethod =
         sale.payment_method ||
@@ -873,7 +856,6 @@ export default function Sales() {
       const rows: string[][] =
         [];
 
-      // CSV HEADER
       rows.push([
         "Invoice Number",
         "Customer Name",
@@ -887,7 +869,6 @@ export default function Sales() {
         "Line Total",
       ]);
 
-      // ITEMS
       if (
         Array.isArray(
           sale.items
@@ -949,7 +930,6 @@ export default function Sales() {
         );
       }
 
-      // SUMMARY
       rows.push([]);
 
       rows.push([
@@ -1076,364 +1056,358 @@ export default function Sales() {
     }
   };
 
+  const exportSalePDF = async (
+    sale: Sale
+  ) => {
+    try {
+      const response =
+        await api.get(
+          `/sales/${sale.id}/export`
+        );
 
+      const exportData =
+        response.data;
 
-// ==========================================================
-// EXPORT PDF
-// ==========================================================
+      const doc = new jsPDF();
 
-const exportSalePDF = async (sale: Sale) => {
-  try {
-    // Get complete export data from backend
-    const response = await api.get(
-      `/sales/${sale.id}/export`
-    );
+      const invoiceNumber =
+        exportData.invoice_number ||
+        `INV-${exportData.sale_id}`;
 
-    const exportData = response.data;
+      const customerName =
+        exportData.customer_name ||
+        "-";
 
-    const doc = new jsPDF();
+      const saleDate =
+        exportData.sale_date
+          ? formatDate(
+              exportData.sale_date
+            )
+          : "-";
 
-    const invoiceNumber =
-      exportData.invoice_number ||
-      `INV-${exportData.sale_id}`;
+      const paymentMethod =
+        exportData.payment_method ||
+        "-";
 
-    const customerName =
-      exportData.customer_name || "-";
+      const paymentStatus =
+        exportData.payment_status ||
+        "-";
 
-    const saleDate = exportData.sale_date
-      ? formatDate(exportData.sale_date)
-      : "-";
+      const subtotal = Number(
+        exportData.subtotal || 0
+      );
 
-    const paymentMethod =
-      exportData.payment_method || "-";
+      const discount = Number(
+        exportData.discount || 0
+      );
 
-    const paymentStatus =
-      exportData.payment_status || "-";
+      const tax = Number(
+        exportData.tax || 0
+      );
 
-    const subtotal = Number(
-      exportData.subtotal || 0
-    );
+      const grandTotal = Number(
+        exportData.total_amount || 0
+      );
 
-    const discount = Number(
-      exportData.discount || 0
-    );
+      doc.setFontSize(20);
 
-    const tax = Number(
-      exportData.tax || 0
-    );
-
-    const grandTotal = Number(
-      exportData.total_amount || 0
-    );
-
-    // ======================================================
-    // HEADER
-    // ======================================================
-
-    doc.setFontSize(20);
-
-    doc.text(
-      "SALES INVOICE",
-      105,
-      20,
-      {
-        align: "center",
-      }
-    );
-
-    doc.setFontSize(11);
-
-    doc.text(
-      `Invoice Number: ${invoiceNumber}`,
-      20,
-      35
-    );
-
-    doc.text(
-      `Sale Date: ${saleDate}`,
-      20,
-      43
-    );
-
-    doc.text(
-      `Customer: ${customerName}`,
-      20,
-      51
-    );
-
-    doc.text(
-      `Payment Method: ${paymentMethod}`,
-      20,
-      59
-    );
-
-    doc.text(
-      `Payment Status: ${paymentStatus}`,
-      20,
-      67
-    );
-
-    // ======================================================
-    // TABLE HEADER
-    // ======================================================
-
-    let y = 82;
-
-    doc.setFontSize(10);
-
-    doc.text(
-      "Product",
-      20,
-      y
-    );
-
-    doc.text(
-      "SKU",
-      75,
-      y
-    );
-
-    doc.text(
-      "Qty",
-      110,
-      y
-    );
-
-    doc.text(
-      "Unit Price",
-      130,
-      y
-    );
-
-    doc.text(
-      "Line Total",
-      165,
-      y
-    );
-
-    doc.line(
-      20,
-      y + 2,
-      195,
-      y + 2
-    );
-
-    y += 10;
-
-    // ======================================================
-    // ITEMS
-    // ======================================================
-
-    if (
-      Array.isArray(exportData.items) &&
-      exportData.items.length > 0
-    ) {
-      exportData.items.forEach(
-        (item: any) => {
-          if (y > 270) {
-            doc.addPage();
-            y = 20;
-          }
-
-          const productName =
-            item.product_name || "-";
-
-          const sku =
-            item.sku || "-";
-
-          const quantity =
-            Number(item.quantity || 0);
-
-          const unitPrice =
-            Number(item.unit_price || 0);
-
-          const lineTotal =
-            Number(item.line_total || 0);
-
-          doc.text(
-            String(productName).substring(
-              0,
-              25
-            ),
-            20,
-            y
-          );
-
-          doc.text(
-            String(sku).substring(
-              0,
-              15
-            ),
-            75,
-            y
-          );
-
-          doc.text(
-            String(quantity),
-            110,
-            y
-          );
-
-          doc.text(
-            `Rs. ${unitPrice.toFixed(2)}`,
-            130,
-            y
-          );
-
-          doc.text(
-            `Rs. ${lineTotal.toFixed(2)}`,
-            165,
-            y
-          );
-
-          y += 8;
+      doc.text(
+        "SALES INVOICE",
+        105,
+        20,
+        {
+          align: "center",
         }
       );
-    } else {
+
+      doc.setFontSize(11);
+
       doc.text(
-        "No item details available",
+        `Invoice Number: ${invoiceNumber}`,
+        20,
+        35
+      );
+
+      doc.text(
+        `Sale Date: ${saleDate}`,
+        20,
+        43
+      );
+
+      doc.text(
+        `Customer: ${customerName}`,
+        20,
+        51
+      );
+
+      doc.text(
+        `Payment Method: ${paymentMethod}`,
+        20,
+        59
+      );
+
+      doc.text(
+        `Payment Status: ${paymentStatus}`,
+        20,
+        67
+      );
+
+      let y = 82;
+
+      doc.setFontSize(10);
+
+      doc.text(
+        "Product",
         20,
         y
       );
 
+      doc.text(
+        "SKU",
+        75,
+        y
+      );
+
+      doc.text(
+        "Qty",
+        110,
+        y
+      );
+
+      doc.text(
+        "Unit Price",
+        130,
+        y
+      );
+
+      doc.text(
+        "Line Total",
+        165,
+        y
+      );
+
+      doc.line(
+        20,
+        y + 2,
+        195,
+        y + 2
+      );
+
       y += 10;
-    }
 
-    // ======================================================
-    // PRICING SUMMARY
-    // ======================================================
+      if (
+        Array.isArray(
+          exportData.items
+        ) &&
+        exportData.items.length > 0
+      ) {
+        exportData.items.forEach(
+          (item: any) => {
+            if (y > 270) {
+              doc.addPage();
+              y = 20;
+            }
 
-    if (y > 245) {
-      doc.addPage();
-      y = 30;
-    }
+            const productName =
+              item.product_name ||
+              "-";
 
-    y += 8;
+            const sku =
+              item.sku || "-";
 
-    doc.line(
-      120,
-      y,
-      195,
-      y
-    );
+            const quantity =
+              Number(
+                item.quantity || 0
+              );
 
-    y += 10;
+            const unitPrice =
+              Number(
+                item.unit_price || 0
+              );
 
-    doc.text(
-      "Subtotal:",
-      125,
-      y
-    );
+            const lineTotal =
+              Number(
+                item.line_total || 0
+              );
 
-    doc.text(
-      `Rs. ${subtotal.toFixed(2)}`,
-      165,
-      y
-    );
+            doc.text(
+              String(
+                productName
+              ).substring(
+                0,
+                25
+              ),
+              20,
+              y
+            );
 
-    y += 8;
+            doc.text(
+              String(sku).substring(
+                0,
+                15
+              ),
+              75,
+              y
+            );
 
-    doc.text(
-      "Discount:",
-      125,
-      y
-    );
+            doc.text(
+              String(quantity),
+              110,
+              y
+            );
 
-    doc.text(
-      `Rs. ${discount.toFixed(2)}`,
-      165,
-      y
-    );
+            doc.text(
+              `Rs. ${unitPrice.toFixed(
+                2
+              )}`,
+              130,
+              y
+            );
 
-    y += 8;
+            doc.text(
+              `Rs. ${lineTotal.toFixed(
+                2
+              )}`,
+              165,
+              y
+            );
 
-    doc.text(
-      "Tax:",
-      125,
-      y
-    );
+            y += 8;
+          }
+        );
+      } else {
+        doc.text(
+          "No item details available",
+          20,
+          y
+        );
 
-    doc.text(
-      `Rs. ${tax.toFixed(2)}`,
-      165,
-      y
-    );
-
-    y += 10;
-
-    doc.setFontSize(12);
-
-    doc.text(
-      "Grand Total:",
-      125,
-      y
-    );
-
-    doc.text(
-      `Rs. ${grandTotal.toFixed(2)}`,
-      165,
-      y
-    );
-
-    // ======================================================
-    // FOOTER
-    // ======================================================
-
-    doc.setFontSize(9);
-
-    doc.text(
-      "Thank you for your business!",
-      105,
-      285,
-      {
-        align: "center",
+        y += 10;
       }
-    );
 
-    // ======================================================
-    // SAVE
-    // ======================================================
+      if (y > 245) {
+        doc.addPage();
+        y = 30;
+      }
 
-    doc.save(
-      `${invoiceNumber}.pdf`
-    );
+      y += 8;
 
-    setSnackbar({
-      open: true,
-      message:
-        "Invoice PDF exported successfully",
-      type: "success",
-    });
-  } catch (error: any) {
-    console.error(
-      "PDF export error:",
-      error
-    );
+      doc.line(
+        120,
+        y,
+        195,
+        y
+      );
 
-    setSnackbar({
-      open: true,
-      message:
-        error?.response?.data?.detail ||
-        "Failed to export PDF",
-      type: "error",
-    });
-  }
-};
+      y += 10;
 
+      doc.text(
+        "Subtotal:",
+        125,
+        y
+      );
 
-      
-  // ==========================================================
-  // RENDER
-  // ==========================================================
+      doc.text(
+        `Rs. ${subtotal.toFixed(
+          2
+        )}`,
+        165,
+        y
+      );
+
+      y += 8;
+
+      doc.text(
+        "Discount:",
+        125,
+        y
+      );
+
+      doc.text(
+        `Rs. ${discount.toFixed(
+          2
+        )}`,
+        165,
+        y
+      );
+
+      y += 8;
+
+      doc.text(
+        "Tax:",
+        125,
+        y
+      );
+
+      doc.text(
+        `Rs. ${tax.toFixed(
+          2
+        )}`,
+        165,
+        y
+      );
+
+      y += 10;
+
+      doc.setFontSize(12);
+
+      doc.text(
+        "Grand Total:",
+        125,
+        y
+      );
+
+      doc.text(
+        `Rs. ${grandTotal.toFixed(
+          2
+        )}`,
+        165,
+        y
+      );
+
+      doc.setFontSize(9);
+
+      doc.text(
+        "Thank you for your business!",
+        105,
+        285,
+        {
+          align: "center",
+        }
+      );
+
+      doc.save(
+        `${invoiceNumber}.pdf`
+      );
+
+      setSnackbar({
+        open: true,
+        message:
+          "Invoice PDF exported successfully",
+        type: "success",
+      });
+    } catch (error: any) {
+      console.error(
+        "PDF export error:",
+        error
+      );
+
+      setSnackbar({
+        open: true,
+        message:
+          error?.response?.data?.detail ||
+          "Failed to export PDF",
+        type: "error",
+      });
+    }
+  };
 
   return (
     <Box
       sx={{
         minHeight: "100vh",
-
         background:
           "linear-gradient(135deg,#020617,#0f172a,#1e293b)",
-
         py: 4,
       }}
     >
@@ -1443,29 +1417,18 @@ const exportSalePDF = async (sale: Sale) => {
           width: "100%",
         }}
       >
-        {/* ==================================================
-            HEADER
-        ================================================== */}
-
         <Paper
           sx={{
             p: {
               xs: 3,
               md: 4,
             },
-
             mb: 3,
-
-            background:
-              "#111827",
-
+            background: "#111827",
             border:
               "1px solid #334155",
-
             borderRadius: 4,
-
             color: "#fff",
-
             boxShadow:
               "0 10px 30px rgba(0,0,0,0.35)",
           }}
@@ -1477,9 +1440,7 @@ const exportSalePDF = async (sale: Sale) => {
                 xs: "2rem",
                 md: "2.5rem",
               },
-
               fontWeight: 700,
-
               mb: 1,
             }}
           >
@@ -1488,9 +1449,7 @@ const exportSalePDF = async (sale: Sale) => {
 
           <Typography
             sx={{
-              color:
-                "#cbd5e1",
-
+              color: "#cbd5e1",
               mb: 3,
             }}
           >
@@ -1501,34 +1460,26 @@ const exportSalePDF = async (sale: Sale) => {
           <Box
             sx={{
               display: "flex",
-
               flexWrap: "wrap",
-
               gap: 2,
             }}
           >
             <Button
               variant="outlined"
-              startIcon={
-                <Refresh />
-              }
+              startIcon={<Refresh />}
               onClick={
                 handleRefresh
               }
               disabled={loading}
               sx={{
                 color: "#fff",
-
                 borderColor:
                   "#64748b",
-
                 textTransform:
                   "none",
-
                 "&:hover": {
                   borderColor:
                     "#94a3b8",
-
                   background:
                     "#1e293b",
                 },
@@ -1539,9 +1490,7 @@ const exportSalePDF = async (sale: Sale) => {
 
             <Button
               variant="contained"
-              startIcon={
-                <Add />
-              }
+              startIcon={<Add />}
               onClick={() =>
                 navigate(
                   "/sales/add"
@@ -1550,12 +1499,9 @@ const exportSalePDF = async (sale: Sale) => {
               sx={{
                 textTransform:
                   "none",
-
                 fontWeight: 700,
-
                 background:
                   "#2563eb",
-
                 "&:hover": {
                   background:
                     "#1d4ed8",
@@ -1567,46 +1513,30 @@ const exportSalePDF = async (sale: Sale) => {
           </Box>
         </Paper>
 
-        {/* ==================================================
-            SUMMARY CARDS
-        ================================================== */}
-
         <Box
           sx={{
             display: "grid",
-
             gridTemplateColumns: {
               xs: "1fr",
               sm: "repeat(3, 1fr)",
             },
-
             gap: 2,
-
             mb: 3,
           }}
         >
-          {/* TOTAL SALES */}
-
           <Paper
             sx={{
               p: 3,
-
-              background:
-                "#111827",
-
+              background: "#111827",
               border:
                 "1px solid #334155",
-
               borderRadius: 3,
-
               color: "#fff",
             }}
           >
             <Typography
               sx={{
-                color:
-                  "#cbd5e1",
-
+                color: "#cbd5e1",
                 mb: 1,
               }}
             >
@@ -1622,28 +1552,19 @@ const exportSalePDF = async (sale: Sale) => {
             </Typography>
           </Paper>
 
-          {/* TOTAL ITEMS */}
-
           <Paper
             sx={{
               p: 3,
-
-              background:
-                "#111827",
-
+              background: "#111827",
               border:
                 "1px solid #334155",
-
               borderRadius: 3,
-
               color: "#fff",
             }}
           >
             <Typography
               sx={{
-                color:
-                  "#cbd5e1",
-
+                color: "#cbd5e1",
                 mb: 1,
               }}
             >
@@ -1659,28 +1580,19 @@ const exportSalePDF = async (sale: Sale) => {
             </Typography>
           </Paper>
 
-          {/* REVENUE */}
-
           <Paper
             sx={{
               p: 3,
-
-              background:
-                "#111827",
-
+              background: "#111827",
               border:
                 "1px solid #334155",
-
               borderRadius: 3,
-
               color: "#fff",
             }}
           >
             <Typography
               sx={{
-                color:
-                  "#cbd5e1",
-
+                color: "#cbd5e1",
                 mb: 1,
               }}
             >
@@ -1700,7 +1612,6 @@ const exportSalePDF = async (sale: Sale) => {
                 {
                   minimumFractionDigits:
                     2,
-
                   maximumFractionDigits:
                     2,
                 }
@@ -1709,27 +1620,17 @@ const exportSalePDF = async (sale: Sale) => {
           </Paper>
         </Box>
 
-        {/* ==================================================
-            SEARCH & FILTER PANEL
-        ================================================== */}
-
         <Paper
           sx={{
             p: {
               xs: 2,
               md: 3,
             },
-
             mb: 3,
-
-            background:
-              "#111827",
-
+            background: "#111827",
             border:
               "1px solid #334155",
-
             borderRadius: 3,
-
             color: "#fff",
           }}
         >
@@ -1741,23 +1642,16 @@ const exportSalePDF = async (sale: Sale) => {
             Search & Filters
           </Typography>
 
-          {/* SEARCH + SORT */}
-
           <Box
             sx={{
               display: "grid",
-
               gridTemplateColumns: {
                 xs: "1fr",
                 sm: "repeat(2, 1fr)",
                 lg: "2fr 1fr 1fr 1fr",
               },
-
               gap: 2,
-
-              alignItems:
-                "center",
-
+              alignItems: "center",
               mb: 2,
             }}
           >
@@ -1789,15 +1683,11 @@ const exportSalePDF = async (sale: Sale) => {
               disabled={loading}
               sx={{
                 minHeight: 56,
-
                 textTransform:
                   "none",
-
                 fontWeight: 700,
-
                 background:
                   "#2563eb",
-
                 "&:hover": {
                   background:
                     "#1d4ed8",
@@ -1864,38 +1754,37 @@ const exportSalePDF = async (sale: Sale) => {
             </TextField>
           </Box>
 
-          {/* DATE + OTHER FILTERS */}
-
           <Box
             sx={{
               display: "grid",
-
               gridTemplateColumns: {
                 xs: "1fr",
                 sm: "repeat(2, 1fr)",
                 md: "repeat(3, 1fr)",
                 lg: "repeat(4, 1fr)",
               },
-
               gap: 2,
-
-              alignItems:
-                "center",
+              alignItems: "center",
             }}
           >
             <TextField
               label="Start Date"
-              type="date"
+              type="text"
               value={
-                startDate
+                startDateDisplay
               }
-              onChange={(e) =>
-                setStartDate(
-                  e.target.value
-                )
+              onChange={
+                handleStartDateChange
               }
-              InputLabelProps={{
-                shrink: true,
+              placeholder="DD/MM/YYYY"
+              slotProps={{
+                inputLabel: {
+                  shrink: true,
+                },
+                htmlInput: {
+                  maxLength: 10,
+                  inputMode: "numeric",
+                },
               }}
               sx={
                 textFieldStyle
@@ -1905,17 +1794,22 @@ const exportSalePDF = async (sale: Sale) => {
 
             <TextField
               label="End Date"
-              type="date"
+              type="text"
               value={
-                endDate
+                endDateDisplay
               }
-              onChange={(e) =>
-                setEndDate(
-                  e.target.value
-                )
+              onChange={
+                handleEndDateChange
               }
-              InputLabelProps={{
-                shrink: true,
+              placeholder="DD/MM/YYYY"
+              slotProps={{
+                inputLabel: {
+                  shrink: true,
+                },
+                htmlInput: {
+                  maxLength: 10,
+                  inputMode: "numeric",
+                },
               }}
               sx={
                 textFieldStyle
@@ -2056,15 +1950,11 @@ const exportSalePDF = async (sale: Sale) => {
               disabled={loading}
               sx={{
                 minHeight: 56,
-
                 textTransform:
                   "none",
-
                 fontWeight: 700,
-
                 background:
                   "#2563eb",
-
                 "&:hover": {
                   background:
                     "#1d4ed8",
@@ -2082,21 +1972,15 @@ const exportSalePDF = async (sale: Sale) => {
               disabled={loading}
               sx={{
                 minHeight: 56,
-
                 textTransform:
                   "none",
-
                 fontWeight: 600,
-
                 color: "#fff",
-
                 borderColor:
                   "#64748b",
-
                 "&:hover": {
                   borderColor:
                     "#94a3b8",
-
                   background:
                     "#1e293b",
                 },
@@ -2107,20 +1991,12 @@ const exportSalePDF = async (sale: Sale) => {
           </Box>
         </Paper>
 
-        {/* ==================================================
-            SALES TABLE
-        ================================================== */}
-
         <Paper
           sx={{
-            background:
-              "#111827",
-
+            background: "#111827",
             border:
               "1px solid #334155",
-
             borderRadius: 3,
-
             overflow: "hidden",
           }}
         >
@@ -2141,9 +2017,7 @@ const exportSalePDF = async (sale: Sale) => {
                     sx={{
                       background:
                         "#1e293b",
-
                       color: "#fff",
-
                       fontWeight: 700,
                     }}
                   >
@@ -2154,9 +2028,7 @@ const exportSalePDF = async (sale: Sale) => {
                     sx={{
                       background:
                         "#1e293b",
-
                       color: "#fff",
-
                       fontWeight: 700,
                     }}
                   >
@@ -2167,9 +2039,7 @@ const exportSalePDF = async (sale: Sale) => {
                     sx={{
                       background:
                         "#1e293b",
-
                       color: "#fff",
-
                       fontWeight: 700,
                     }}
                   >
@@ -2181,9 +2051,7 @@ const exportSalePDF = async (sale: Sale) => {
                     sx={{
                       background:
                         "#1e293b",
-
                       color: "#fff",
-
                       fontWeight: 700,
                     }}
                   >
@@ -2195,9 +2063,7 @@ const exportSalePDF = async (sale: Sale) => {
                     sx={{
                       background:
                         "#1e293b",
-
                       color: "#fff",
-
                       fontWeight: 700,
                     }}
                   >
@@ -2209,9 +2075,7 @@ const exportSalePDF = async (sale: Sale) => {
                     sx={{
                       background:
                         "#1e293b",
-
                       color: "#fff",
-
                       fontWeight: 700,
                     }}
                   >
@@ -2223,9 +2087,7 @@ const exportSalePDF = async (sale: Sale) => {
                     sx={{
                       background:
                         "#1e293b",
-
                       color: "#fff",
-
                       fontWeight: 700,
                     }}
                   >
@@ -2235,8 +2097,6 @@ const exportSalePDF = async (sale: Sale) => {
               </TableHead>
 
               <TableBody>
-                {/* LOADING */}
-
                 {loading &&
                 sales.length ===
                   0 ? (
@@ -2247,7 +2107,6 @@ const exportSalePDF = async (sale: Sale) => {
                       sx={{
                         color:
                           "#cbd5e1",
-
                         py: 5,
                       }}
                     >
@@ -2256,8 +2115,6 @@ const exportSalePDF = async (sale: Sale) => {
                   </TableRow>
                 ) : sales.length ===
                   0 ? (
-                  /* EMPTY */
-
                   <TableRow>
                     <TableCell
                       colSpan={7}
@@ -2265,7 +2122,6 @@ const exportSalePDF = async (sale: Sale) => {
                       sx={{
                         color:
                           "#cbd5e1",
-
                         py: 5,
                       }}
                     >
@@ -2274,9 +2130,7 @@ const exportSalePDF = async (sale: Sale) => {
                   </TableRow>
                 ) : (
                   sales.map(
-                    (
-                      sale
-                    ) => {
+                    (sale) => {
                       const status =
                         getPaymentStatus(
                           sale
@@ -2296,16 +2150,12 @@ const exportSalePDF = async (sale: Sale) => {
                               },
                           }}
                         >
-                          {/* INVOICE */}
-
                           <TableCell
                             sx={{
                               color:
                                 "#60a5fa",
-
                               fontWeight:
                                 700,
-
                               borderColor:
                                 "#334155",
                             }}
@@ -2314,13 +2164,10 @@ const exportSalePDF = async (sale: Sale) => {
                               `INV-${sale.id}`}
                           </TableCell>
 
-                          {/* CUSTOMER */}
-
                           <TableCell
                             sx={{
                               color:
                                 "#fff",
-
                               borderColor:
                                 "#334155",
                             }}
@@ -2330,13 +2177,10 @@ const exportSalePDF = async (sale: Sale) => {
                             )}
                           </TableCell>
 
-                          {/* DATE */}
-
                           <TableCell
                             sx={{
                               color:
                                 "#fff",
-
                               borderColor:
                                 "#334155",
                             }}
@@ -2346,14 +2190,11 @@ const exportSalePDF = async (sale: Sale) => {
                             )}
                           </TableCell>
 
-                          {/* ITEMS */}
-
                           <TableCell
                             align="center"
                             sx={{
                               color:
                                 "#fff",
-
                               borderColor:
                                 "#334155",
                             }}
@@ -2363,17 +2204,13 @@ const exportSalePDF = async (sale: Sale) => {
                             )}
                           </TableCell>
 
-                          {/* TOTAL */}
-
                           <TableCell
                             align="right"
                             sx={{
                               color:
                                 "#fff",
-
                               fontWeight:
                                 700,
-
                               borderColor:
                                 "#334155",
                             }}
@@ -2386,14 +2223,11 @@ const exportSalePDF = async (sale: Sale) => {
                               {
                                 minimumFractionDigits:
                                   2,
-
                                 maximumFractionDigits:
                                   2,
                               }
                             )}
                           </TableCell>
-
-                          {/* PAYMENT STATUS */}
 
                           <TableCell
                             align="center"
@@ -2410,7 +2244,6 @@ const exportSalePDF = async (sale: Sale) => {
                               sx={{
                                 fontWeight:
                                   700,
-
                                 background:
                                   status ===
                                   "PAID"
@@ -2422,14 +2255,11 @@ const exportSalePDF = async (sale: Sale) => {
                                       "CANCELLED"
                                     ? "#dc2626"
                                     : "#64748b",
-
                                 color:
                                   "#fff",
                               }}
                             />
                           </TableCell>
-
-                          {/* ACTIONS */}
 
                           <TableCell
                             align="center"
@@ -2442,18 +2272,13 @@ const exportSalePDF = async (sale: Sale) => {
                               sx={{
                                 display:
                                   "flex",
-
                                 justifyContent:
                                   "center",
-
                                 alignItems:
                                   "center",
-
                                 gap: 0.5,
                               }}
                             >
-                              {/* VIEW */}
-
                               <IconButton
                                 size="small"
                                 onClick={() =>
@@ -2470,13 +2295,11 @@ const exportSalePDF = async (sale: Sale) => {
                                 <Visibility fontSize="small" />
                               </IconButton>
 
-                              {/* EDIT */}
-
                               <IconButton
                                 size="small"
                                 onClick={() =>
                                   navigate(
-                                    `/sales/${sale.id}/edit`
+                                    `/sales/edit/${sale.id}`
                                   )
                                 }
                                 title="Edit Sale"
@@ -2487,8 +2310,6 @@ const exportSalePDF = async (sale: Sale) => {
                               >
                                 <Edit fontSize="small" />
                               </IconButton>
-
-                              {/* PDF */}
 
                               <IconButton
                                 size="small"
@@ -2506,8 +2327,6 @@ const exportSalePDF = async (sale: Sale) => {
                                 <PictureAsPdf fontSize="small" />
                               </IconButton>
 
-                              {/* CSV */}
-
                               <IconButton
                                 size="small"
                                 onClick={() =>
@@ -2523,8 +2342,6 @@ const exportSalePDF = async (sale: Sale) => {
                               >
                                 <Description fontSize="small" />
                               </IconButton>
-
-                              {/* DELETE */}
 
                               <IconButton
                                 size="small"
@@ -2553,10 +2370,6 @@ const exportSalePDF = async (sale: Sale) => {
           </TableContainer>
         </Paper>
       </Container>
-
-      {/* ==================================================
-          SNACKBAR
-      ================================================== */}
 
       <Snackbar
         open={

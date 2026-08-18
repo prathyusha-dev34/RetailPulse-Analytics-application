@@ -1,245 +1,138 @@
-from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
+# ============================================================
+# COMMON
+# ============================================================
+
+class AnalyticsDateRange(BaseModel):
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
 
 
-# =====================================================
-# DASHBOARD SUMMARY
-# =====================================================
+# ============================================================
+# SUMMARY / KPI
+# ============================================================
+
+class SalesAnalyticsSummary(BaseModel):
+    total_revenue: Decimal = Field(default=Decimal("0.00"))
+    total_orders: int = Field(default=0)
+    average_order_value: Decimal = Field(default=Decimal("0.00"))
+    total_items_sold: int = Field(default=0)
+    total_discount: Decimal = Field(default=Decimal("0.00"))
+    total_tax: Decimal = Field(default=Decimal("0.00"))
 
 
-class DashboardSummary(BaseModel):
-
-    total_revenue: Decimal
-
-    total_orders: int
-
-    total_products_sold: int
-
-    average_order_value: Decimal
-
-    total_inventory_value: Decimal
-
-    low_stock_products: int
-
-    out_of_stock_products: int
-
-    total_categories: int
-
-
-
-
-
-# =====================================================
+# ============================================================
 # REVENUE TREND
-# =====================================================
+# ============================================================
+
+class SalesTrendItem(BaseModel):
+    date: str
+    revenue: Decimal = Field(default=Decimal("0.00"))
 
 
-class RevenueTrend(BaseModel):
+# ============================================================
+# SALES VS ORDERS
+# ============================================================
 
+class SalesVsOrdersItem(BaseModel):
     date: str
 
-    revenue: Decimal
+    revenue: Decimal = Field(
+        default=Decimal("0.00")
+    )
+
+    orders: int = Field(
+        default=0
+    )
 
 
-
-
-
-# =====================================================
-# SALES TREND
-# =====================================================
-
-
-class SalesTrend(BaseModel):
-
-    date: str
-
-    sales: int
-
-
-
-
-
-# =====================================================
+# ============================================================
 # PRODUCT ANALYTICS
-# =====================================================
+# ============================================================
 
-
-class ProductAnalytics(BaseModel):
-
+class ProductAnalyticsItem(BaseModel):
     product_id: int
 
     product_name: str
 
-    quantity: int
+    sku: str = ""
 
-    revenue: Decimal
+    quantity_sold: int = Field(
+        default=0
+    )
 
-
-
-
-
-# =====================================================
-# CATEGORY ANALYTICS
-# =====================================================
+    revenue: Decimal = Field(
+        default=Decimal("0.00")
+    )
 
 
-class CategoryAnalytics(BaseModel):
+# ============================================================
+# CUSTOMER ANALYTICS
+# ============================================================
+
+class CustomerAnalyticsItem(BaseModel):
+    customer_id: int
+
+    customer_name: str
+
+    orders: int = Field(
+        default=0
+    )
+
+    total_spend: Decimal = Field(
+        default=Decimal("0.00")
+    )
+
+    average_order_value: Decimal = Field(
+        default=Decimal("0.00")
+    )
+
+
+# ============================================================
+# PAYMENT METHOD ANALYTICS
+# ============================================================
+
+class PaymentMethodAnalyticsItem(BaseModel):
+    method: str
+
+    transactions: int = Field(
+        default=0
+    )
+
+    revenue: Decimal = Field(
+        default=Decimal("0.00")
+    )
+
+
+# ============================================================
+# EXPORT
+# ============================================================
+
+class AnalyticsExportResponse(BaseModel):
+    filename: str
+    content_type: str
+
+
+# ============================================================
+# FILTERS
+# ============================================================
+
+class AnalyticsFilters(BaseModel):
+    from_date: Optional[str] = None
+
+    to_date: Optional[str] = None
+
+    period: str = "daily"
+
+    product_id: Optional[int] = None
 
     category_id: Optional[int] = None
 
-    category_name: str
-
-    quantity: int
-
-    revenue: Decimal
-
-
-
-
-
-# =====================================================
-# PAYMENT ANALYTICS
-# =====================================================
-
-
-class PaymentAnalytics(BaseModel):
-
-    method: str
-
-    orders: int
-
-    amount: Decimal
-
-
-
-
-
-# =====================================================
-# SALES CHANNEL ANALYTICS
-# =====================================================
-
-
-class SalesChannelAnalytics(BaseModel):
-
-    channel: str
-
-    orders: int
-
-    revenue: Decimal
-
-
-
-
-
-# =====================================================
-# INVENTORY DISTRIBUTION
-# =====================================================
-
-
-class InventoryDistribution(BaseModel):
-
-    category: str
-
-    quantity: int
-
-
-
-
-
-# =====================================================
-# INVENTORY VALUE BY CATEGORY
-# =====================================================
-
-
-class InventoryValue(BaseModel):
-
-    category_name: str
-
-    value: Decimal
-
-
-
-
-
-# =====================================================
-# STOCK STATUS
-# =====================================================
-
-
-class StockStatus(BaseModel):
-
-    status: str
-
-    count: int
-
-
-
-
-
-# =====================================================
-# LOW STOCK PRODUCTS
-# =====================================================
-
-
-class LowStockProduct(BaseModel):
-
-    product_id:int
-
-    product_name:str
-
-    sku:str
-
-    brand:str
-
-    available_stock:int
-
-    reorder_level:int
-
-
-
-# =====================================================
-# OUT OF STOCK PRODUCTS
-# =====================================================
-
-
-class OutOfStockProduct(BaseModel):
-
-    product_id: int
-
-    product_name: str
-
-    brand: Optional[str] = None
-
-    available_stock: int
-
-
-
-
-
-# =====================================================
-# ANALYTICS FILTERS
-# =====================================================
-
-
-class AnalyticsFilter(BaseModel):
-
-    from_date: Optional[date] = None
-
-    to_date: Optional[date] = None
-
-
-    product: Optional[str] = None
-
-    category: Optional[str] = None
-
-    brand: Optional[str] = None
-
-
-    sales_channel: Optional[str] = None
+    customer_id: Optional[int] = None
 
     payment_method: Optional[str] = None
