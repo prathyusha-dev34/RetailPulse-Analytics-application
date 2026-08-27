@@ -1,269 +1,534 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from decimal import Decimal
+from io import BytesIO, StringIO
 import csv
-import io
+import math
+from statistics import mean, pstdev
+from typing import Any, Optional
 
-from sqlalchemy import func, desc
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
+from app.models.product import Product
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
-from app.models.product import Product
 from app.models.demand_forecast import DemandForecast
 from app.models.forecast_history import ForecastHistory
-from app.models.user import User
-from app.models.notification import Notification
 
 
-# ==========================================================
-# PDF
-# ==========================================================
-
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Paragraph,
-    Spacer,
-)
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
-
-
-# ==========================================================
+# ============================================================
 # CONSTANTS
-# ==========================================================
-
-FORECAST_PERIODS = {
-    "7_DAYS": 7,
-    "30_DAYS": 30,
-    "90_DAYS": 90,
-}
-
-VALID_FORECAST_PERIODS = set(
-    FORECAST_PERIODS.keys()
-)
+# ============================================================
 
 DEFAULT_FORECAST_DAYS = 30
-HISTORICAL_DAYS = 30
-DEFAULT_REORDER_LEVEL = 10
+DEFAULT_LEAD_TIME_DAYS = 7
+DEFAULT_SAFETY_STOCK_DAYS = 3
+HISTORICAL_DAYS = 90
+
+VALID_FORECAST_DAYS = {7, 30, 90}
+
+OUT_OF_STOCK = "OUT_OF_STOCK"
+STOCKOUT_RISK = "STOCKOUT_RISK"
+LOW_STOCK = "LOW_STOCK"
+HEALTHY = "HEALTHY"
+OVERSTOCK = "OVERSTOCK"
+
+INVENTORY_SORT_FIELDS = {
+    "product",
+    "sku",
+    "current_stock",
+    "forecasted_demand",
+    "recommended_quantity",
+    "days_of_stock_remaining",
+    "stock_risk",
+    "confidence_score",
+}
+
+INVENTORY_SORT_ORDERS = {
+    "asc",
+    "desc",
+}
 
 
-# ==========================================================
-# RECOMMENDATIONS
-# ==========================================================
+# ============================================================
+# SAFE CONVERSION HELPERS
+# ============================================================
 
-IMMEDIATE_RESTOCK = "Immediate Restock Required"
-REORDER_SOON = "Reorder Soon"
-OVERSTOCK_RISK = "Overstock Risk"
-STOCK_HEALTHY = "Stock Level Healthy"
+def _safe_float(
+    value: Any,
+    default: float = 0.0,
+) -> float:
+    if value is None:
+        return default
 
-STABLE_DEMAND = "Stable Demand"
-HIGH_GROWTH = "High Growth"
-DECLINING_DEMAND = "Declining Demand"
+    try:
+        result = float(value)
+
+        if not math.isfinite(result):
+            return default
+
+        return result
+
+    except (TypeError, ValueError, OverflowError):
+        return default
 
 
-# ==========================================================
-# NORMALIZE FORECAST PERIOD
-# ==========================================================
+def _safe_int(
+    value: Any,
+    default: int = 0,
+) -> int:
+    if value is None:
+        return default
+
+    try:
+        if isinstance(value, bool):
+            return int(value)
+
+        return int(float(value))
+
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _safe_decimal(
+    value: Any,
+    default: Decimal = Decimal("0"),
+) -> Decimal:
+    if value is None:
+        return default
+
+    try:
+        if isinstance(value, Decimal):
+            result = value
+        else:
+            result = Decimal(str(value))
+
+        if not result.is_finite():
+            return default
+
+        return result
+
+    except (TypeError, ValueError, ArithmeticError):
+        return default
+
+
+# ============================================================
+# FORECAST PERIOD HELPERS
+# ============================================================
 
 def normalize_forecast_period(
-    period: str | None,
-) -> str | None:
+    forecast_period: Optional[str],
+) -> str:
+    if forecast_period is None:
+        return str(DEFAULT_FORECAST_DAYS)
 
-    if not period:
-        return None
-
-    value = (
-        str(period)
-        .strip()
-        .upper()
-        .replace("-", "_")
-        .replace(" ", "_")
-    )
+    value = str(forecast_period).strip().lower()
 
     aliases = {
-        "7_DAYS": "7_DAYS",
-        "7_DAY": "7_DAYS",
-        "7": "7_DAYS",
+        "7": "7",
+        "7d": "7",
+        "7day": "7",
+        "7days": "7",
+        "week": "7",
+        "weekly": "7",
 
-        "30_DAYS": "30_DAYS",
-        "30_DAY": "30_DAYS",
-        "30": "30_DAYS",
+        "30": "30",
+        "30d": "30",
+        "30day": "30",
+        "30days": "30",
+        "month": "30",
+        "monthly": "30",
 
-        "90_DAYS": "90_DAYS",
-        "90_DAY": "90_DAYS",
-        "90": "90_DAYS",
-
-        "CUSTOM": "CUSTOM",
+        "90": "90",
+        "90d": "90",
+        "90day": "90",
+        "90days": "90",
+        "quarter": "90",
+        "quarterly": "90",
     }
 
-    return aliases.get(value)
+    return aliases.get(value, value)
 
-
-# ==========================================================
-# VALIDATE FORECAST PERIOD
-# ==========================================================
 
 def validate_forecast_period(
-    forecast_period: str,
+    forecast_period: Optional[str],
 ) -> str:
-
     normalized = normalize_forecast_period(
         forecast_period
     )
 
-    if normalized not in VALID_FORECAST_PERIODS:
-
+    if normalized not in {"7", "30", "90"}:
         raise ValueError(
-            "Invalid forecast period. "
-            "Allowed values: 7_DAYS, 30_DAYS, 90_DAYS"
+            "forecast_period must be one of 7, 30, or 90 days"
         )
 
     return normalized
 
 
-# ==========================================================
-# DECIMAL
-# ==========================================================
+def _period_to_days(
+    period: Any,
+    default: int = DEFAULT_FORECAST_DAYS,
+) -> int:
+    if period is None:
+        return default
 
-def format_decimal(value):
+    if isinstance(period, bool):
+        return default
 
-    if value is None:
-        return Decimal("0.00")
+    if isinstance(period, int):
+        return max(period, 1)
 
-    return Decimal(str(value))
+    value = str(period).strip().lower()
 
+    mapping = {
+        "7": 7,
+        "7d": 7,
+        "7day": 7,
+        "7days": 7,
+        "week": 7,
+        "weekly": 7,
 
-# ==========================================================
-# FORECAST DAYS
-# ==========================================================
+        "30": 30,
+        "30d": 30,
+        "30day": 30,
+        "30days": 30,
+        "month": 30,
+        "monthly": 30,
+
+        "90": 90,
+        "90d": 90,
+        "90day": 90,
+        "90days": 90,
+        "quarter": 90,
+        "quarterly": 90,
+    }
+
+    if value in mapping:
+        return mapping[value]
+
+    try:
+        return max(
+            int(float(value)),
+            1,
+        )
+
+    except (TypeError, ValueError, OverflowError):
+        return default
+
 
 def get_forecast_days(
-    forecast_period: str,
-    start_date=None,
-    end_date=None,
-):
+    forecast_period: Optional[str] = None,
+    forecast_days: Optional[int] = None,
+) -> int:
+    if forecast_period is not None:
+        return int(
+            validate_forecast_period(
+                forecast_period
+            )
+        )
 
-    normalized = normalize_forecast_period(
-        forecast_period
-    )
-
-    if normalized == "CUSTOM":
-
-        if start_date and end_date:
-            return (
-                end_date - start_date
-            ).days + 1
-
+    if forecast_days is None:
         return DEFAULT_FORECAST_DAYS
 
-    return FORECAST_PERIODS.get(
-        normalized,
+    days = _safe_int(
+        forecast_days,
         DEFAULT_FORECAST_DAYS,
     )
 
+    if days <= 0:
+        raise ValueError(
+            "forecast_days must be greater than zero"
+        )
 
-# ==========================================================
-# DATE RANGE
-# ==========================================================
+    if days not in VALID_FORECAST_DAYS:
+        raise ValueError(
+            "forecast_days must be 7, 30, or 90"
+        )
+
+    return days
+
+
+def normalize_task11_forecast_days(
+    forecast_days: Any,
+) -> int:
+    days = _period_to_days(
+        forecast_days,
+        DEFAULT_FORECAST_DAYS,
+    )
+
+    if days not in VALID_FORECAST_DAYS:
+        raise ValueError(
+            "forecast_days must be 7, 30, or 90"
+        )
+
+    return days
+
+
+# ============================================================
+# DATE HELPERS
+# ============================================================
 
 def get_date_range(
-    forecast_period,
-    start_date=None,
-    end_date=None,
-):
-
-    normalized = normalize_forecast_period(
-        forecast_period
+    days: int,
+) -> tuple[datetime, datetime]:
+    normalized_days = max(
+        _safe_int(
+            days,
+            HISTORICAL_DAYS,
+        ),
+        1,
     )
 
-    if normalized == "CUSTOM":
+    now = datetime.utcnow()
 
-        return start_date, end_date
+    end_date = now
 
-    days = get_forecast_days(
-        normalized
+    start_day = (
+        now.date()
+        - timedelta(
+            days=normalized_days - 1
+        )
     )
 
-    end = datetime.now()
-
-    start = (
-        end
-        - timedelta(days=days)
+    start_date = datetime.combine(
+        start_day,
+        datetime.min.time(),
     )
 
-    return start, end
+    return start_date, end_date
 
 
-# ==========================================================
-# MOVING AVERAGE
-# ==========================================================
+# ============================================================
+# FORECAST CALCULATIONS
+# ============================================================
 
 def calculate_moving_average(
-    total_sales: int,
-    days: int,
-):
+    values: list[Any],
+    window: int = 7,
+) -> float:
+    if not values:
+        return 0.0
 
-    if days <= 0:
-        return 0
+    window = max(
+        _safe_int(window, 7),
+        1,
+    )
+
+    numeric_values = [
+        max(
+            _safe_float(value),
+            0.0,
+        )
+        for value in values[-window:]
+    ]
+
+    if not numeric_values:
+        return 0.0
 
     return round(
-        total_sales / days,
+        sum(numeric_values)
+        / len(numeric_values),
         2,
     )
 
 
-# ==========================================================
-# PREDICTION
-# ==========================================================
+def calculate_average_daily_sales(
+    historical_sales: Any,
+    historical_days: int = HISTORICAL_DAYS,
+) -> float:
+    days = max(
+        _safe_int(
+            historical_days,
+            HISTORICAL_DAYS,
+        ),
+        1,
+    )
+
+    sales = max(
+        _safe_float(
+            historical_sales
+        ),
+        0.0,
+    )
+
+    return round(
+        sales / days,
+        4,
+    )
+
 
 def calculate_prediction(
-    historical_sales: int,
-    forecast_period: str,
-    start_date=None,
-    end_date=None,
-):
-
-    days = get_forecast_days(
-        forecast_period,
-        start_date,
-        end_date,
+    values: list[Any],
+    forecast_days: int,
+) -> list[float]:
+    days = max(
+        _safe_int(
+            forecast_days,
+            DEFAULT_FORECAST_DAYS,
+        ),
+        1,
     )
 
-    daily_average = calculate_moving_average(
-        historical_sales,
-        HISTORICAL_DAYS,
+    if not values:
+        return [0.0] * days
+
+    numeric_values = [
+        max(
+            _safe_float(value),
+            0.0,
+        )
+        for value in values
+    ]
+
+    if not numeric_values:
+        return [0.0] * days
+
+    recent_window = min(
+        len(numeric_values),
+        7,
     )
 
-    prediction = (
-        daily_average * days
+    recent = numeric_values[-recent_window:]
+
+    if not recent:
+        return [0.0] * days
+
+    average = (
+        sum(recent)
+        / len(recent)
     )
 
-    return int(
-        round(prediction)
-    )
+    trend = 0.0
 
+    if len(numeric_values) >= 2:
+        trend_window = min(
+            len(numeric_values),
+            14,
+        )
 
-# ==========================================================
-# GROWTH
-# ==========================================================
+        first = numeric_values[-trend_window]
+        last = numeric_values[-1]
+
+        denominator = max(
+            abs(first),
+            1.0,
+        )
+
+        trend = (
+            (last - first)
+            / denominator
+        )
+
+        trend = max(
+            min(trend, 0.25),
+            -0.25,
+        )
+
+    predictions = []
+
+    for index in range(days):
+        factor = (
+            1.0
+            + (
+                trend
+                * (
+                    (index + 1)
+                    / days
+                )
+            )
+        )
+
+        prediction = max(
+            average * factor,
+            0.0,
+        )
+
+        predictions.append(
+            round(
+                prediction,
+                2,
+            )
+        )
+
+    return predictions
+
 
 def calculate_growth_percentage(
-    historical_sales,
-    predicted_demand,
-):
+    historical: Any,
+    forecasted: Any,
+    historical_days: int = HISTORICAL_DAYS,
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+) -> float:
+    """
+    Compare historical and forecast demand over the
+    same number of days.
 
-    if not historical_sales:
+    Example:
+
+        Historical sales = 8
+        Historical days = 90
+        Forecast days = 30
+
+        Historical 30-day equivalent:
+            8 / 90 * 30 = 2.67
+
+        Forecast = 2.67
+
+        Growth = approximately 0%
+    """
+
+    historical_value = max(
+        _safe_float(
+            historical
+        ),
+        0.0,
+    )
+
+    forecasted_value = max(
+        _safe_float(
+            forecasted
+        ),
+        0.0,
+    )
+
+    historical_period = max(
+        _safe_int(
+            historical_days,
+            HISTORICAL_DAYS,
+        ),
+        1,
+    )
+
+    forecast_period = max(
+        _safe_int(
+            forecast_days,
+            DEFAULT_FORECAST_DAYS,
+        ),
+        1,
+    )
+
+    normalized_historical = (
+        historical_value
+        / historical_period
+        * forecast_period
+    )
+
+    if normalized_historical <= 0:
+
+        if forecasted_value > 0:
+            return 100.0
+
         return 0.0
 
     growth = (
         (
-            predicted_demand
-            - historical_sales
+            forecasted_value
+            - normalized_historical
         )
-        / historical_sales
-    ) * 100
+        / normalized_historical
+    ) * 100.0
 
     return round(
         growth,
@@ -271,136 +536,528 @@ def calculate_growth_percentage(
     )
 
 
-# ==========================================================
-# CONFIDENCE
-# ==========================================================
-
 def calculate_confidence_score(
-    historical_sales: int,
-):
+    values: list[Any],
+) -> float:
+    """
+    Calculate a practical demand confidence score.
 
-    if historical_sales >= 100:
-        return 90.0
+    The old implementation could easily return 0 when the
+    history contained many zero-sales days.
 
-    if historical_sales >= 50:
-        return 75.0
+    This version considers:
 
-    if historical_sales >= 10:
-        return 60.0
+    - total history available
+    - active sales days
+    - demand consistency
+    - actual demand presence
+    """
 
-    return 40.0
-
-
-# ==========================================================
-# ACCURACY
-# ==========================================================
-
-def calculate_forecast_accuracy(
-    historical_sales: int,
-    predicted_demand: int,
-):
-
-    if historical_sales == 0:
+    if not values:
         return 0.0
 
-    error = abs(
-        historical_sales
-        - predicted_demand
+    numeric_values = [
+        max(
+            _safe_float(value),
+            0.0,
+        )
+        for value in values
+    ]
+
+    if not numeric_values:
+        return 0.0
+
+    total_sales = sum(
+        numeric_values
     )
 
-    accuracy = (
+    if total_sales <= 0:
+        return 0.0
+
+    active_days = sum(
         1
-        - (
-            error
-            / historical_sales
+        for value in numeric_values
+        if value > 0
+    )
+
+    average = mean(
+        numeric_values
+    )
+
+    if average <= 0:
+        return 0.0
+
+    deviation = pstdev(
+        numeric_values
+    )
+
+    coefficient = (
+        deviation / average
+    )
+
+    # Demand consistency.
+    consistency_score = (
+        100.0
+        / (
+            1.0
+            + coefficient
         )
-    ) * 100
+    )
+
+    consistency_score = max(
+        min(
+            consistency_score,
+            100.0,
+        ),
+        0.0,
+    )
+
+    # History availability.
+    history_score = min(
+        len(numeric_values) / 90.0,
+        1.0,
+    ) * 30.0
+
+    # Active sales days.
+    activity_ratio = (
+        active_days
+        / max(
+            len(numeric_values),
+            1,
+        )
+    )
+
+    activity_score = min(
+        activity_ratio * 30.0,
+        30.0,
+    )
+
+    confidence = (
+        consistency_score * 0.40
+        + history_score
+        + activity_score
+    )
 
     return round(
         max(
-            accuracy,
-            0,
+            min(
+                confidence,
+                100.0,
+            ),
+            0.0,
         ),
         2,
     )
 
 
-# ==========================================================
-# INVENTORY RECOMMENDATION
-# ==========================================================
+def calculate_forecast_accuracy(
+    actual: Any,
+    predicted: Any,
+) -> float:
+    actual_value = _safe_float(actual)
+    predicted_value = _safe_float(predicted)
 
-def calculate_inventory_recommendations(
-    current_stock: int,
-    available_stock: int,
-    reorder_level: int,
-    predicted_demand: int,
-):
-
-    if predicted_demand > available_stock:
-
-        if available_stock <= 0:
-            return IMMEDIATE_RESTOCK
-
-        return REORDER_SOON
-
-    if available_stock > (
-        predicted_demand * 3
-    ):
-        return OVERSTOCK_RISK
-
-    if available_stock <= reorder_level:
-        return REORDER_SOON
-
-    return STOCK_HEALTHY
-
-
-# ==========================================================
-# CATEGORY RECOMMENDATION
-# ==========================================================
-
-def calculate_category_recommendation(
-    growth_percentage: float,
-):
-
-    if growth_percentage >= 20:
-        return HIGH_GROWTH
-
-    if growth_percentage <= -20:
-        return DECLINING_DEMAND
-
-    return STABLE_DEMAND
-
-
-# ==========================================================
-# FORECAST VALUE
-# ==========================================================
-
-def calculate_forecast_value(
-    predicted_demand,
-    unit_price,
-):
-
-    return (
-        format_decimal(unit_price)
-        * Decimal(
-            str(predicted_demand)
+    if actual_value == 0:
+        return (
+            100.0
+            if predicted_value == 0
+            else 0.0
         )
+
+    error = abs(
+        actual_value
+        - predicted_value
+    )
+
+    accuracy = (
+        1.0
+        - (
+            error
+            / abs(actual_value)
+        )
+    ) * 100.0
+
+    return round(
+        max(
+            min(
+                accuracy,
+                100.0,
+            ),
+            0.0,
+        ),
+        2,
     )
 
 
-# ==========================================================
-# HISTORICAL SALES
-# ==========================================================
+def calculate_task11_forecasted_demand(
+    average_daily_sales: Any,
+    forecast_days: Any,
+) -> float:
+    daily = max(
+        _safe_float(
+            average_daily_sales
+        ),
+        0.0,
+    )
+
+    days = max(
+        _safe_int(
+            forecast_days,
+            DEFAULT_FORECAST_DAYS,
+        ),
+        1,
+    )
+
+    return round(
+        daily * days,
+        2,
+    )
+
+
+# ============================================================
+# INVENTORY / PRODUCT STOCK
+# ============================================================
+
+def _get_related_inventory(
+    product: Product,
+) -> Any:
+    try:
+        inventory = getattr(
+            product,
+            "inventory",
+            None,
+        )
+
+        if inventory is not None:
+            return inventory
+
+    except Exception:
+        pass
+
+    return None
+
+
+def _extract_stock_value(
+    obj: Any,
+) -> Optional[int]:
+
+    if obj is None:
+        return None
+
+    fields = (
+        "current_stock",
+        "available_quantity",
+        "available_stock",
+        "quantity_in_stock",
+        "on_hand_quantity",
+        "on_hand_stock",
+        "stock_quantity",
+        "quantity",
+        "stock",
+        "total_quantity",
+        "inventory_quantity",
+    )
+
+    for field in fields:
+
+        try:
+
+            if not hasattr(
+                obj,
+                field,
+            ):
+                continue
+
+            value = getattr(
+                obj,
+                field,
+            )
+
+            if value is None:
+                continue
+
+            if isinstance(
+                value,
+                (int, float, Decimal),
+            ):
+                return max(
+                    _safe_int(value),
+                    0,
+                )
+
+        except Exception:
+            continue
+
+    return None
+
+
+def _get_product_stock(
+    product: Product,
+) -> int:
+    """
+    Inventory relation is preferred.
+    """
+
+    inventory = _get_related_inventory(
+        product
+    )
+
+    inventory_stock = _extract_stock_value(
+        inventory
+    )
+
+    if inventory_stock is not None:
+        return inventory_stock
+
+    product_fields = (
+        "stock_quantity",
+        "current_stock",
+        "quantity_in_stock",
+        "available_stock",
+        "stock",
+        "inventory",
+    )
+
+    for field in product_fields:
+
+        try:
+
+            if not hasattr(
+                product,
+                field,
+            ):
+                continue
+
+            value = getattr(
+                product,
+                field,
+            )
+
+            if value is None:
+                continue
+
+            if isinstance(
+                value,
+                (int, float, Decimal),
+            ):
+                return max(
+                    _safe_int(value),
+                    0,
+                )
+
+        except Exception:
+            continue
+
+    return 0
+
+
+# ============================================================
+# PRODUCT HELPERS
+# ============================================================
+
+def _get_product_supplier(
+    product: Product,
+) -> str:
+
+    for field in (
+        "supplier_name",
+        "supplier",
+    ):
+
+        try:
+
+            if not hasattr(
+                product,
+                field,
+            ):
+                continue
+
+            value = getattr(
+                product,
+                field,
+            )
+
+            if value:
+
+                if isinstance(
+                    value,
+                    str,
+                ):
+                    return value
+
+                name = getattr(
+                    value,
+                    "name",
+                    None,
+                )
+
+                if name:
+                    return str(name)
+
+                return str(value)
+
+        except Exception:
+            continue
+
+    return "Unknown"
+
+
+def _get_product_category(
+    product: Product,
+) -> tuple[Optional[int], str]:
+
+    category_id = getattr(
+        product,
+        "category_id",
+        None,
+    )
+
+    category_name = (
+        getattr(
+            product,
+            "category_name",
+            None,
+        )
+        or "Uncategorized"
+    )
+
+    category = getattr(
+        product,
+        "category",
+        None,
+    )
+
+    if category is not None:
+
+        category_name = (
+            getattr(
+                category,
+                "name",
+                None,
+            )
+            or category_name
+        )
+
+    return (
+        (
+            _safe_int(
+                category_id
+            )
+            if category_id is not None
+            else None
+        ),
+        str(category_name),
+    )
+
+
+def _get_product_brand(
+    product: Product,
+) -> str:
+
+    for field in (
+        "brand",
+        "brand_name",
+    ):
+
+        try:
+
+            if not hasattr(
+                product,
+                field,
+            ):
+                continue
+
+            value = getattr(
+                product,
+                field,
+            )
+
+            if value:
+
+                if isinstance(
+                    value,
+                    str,
+                ):
+                    return value
+
+                name = getattr(
+                    value,
+                    "name",
+                    None,
+                )
+
+                if name:
+                    return str(name)
+
+                return str(value)
+
+        except Exception:
+            continue
+
+    return "Unknown"
+
+
+def _get_product_price(
+    product: Product,
+) -> float:
+
+    for field in (
+        "unit_price",
+        "selling_price",
+        "price",
+        "sale_price",
+    ):
+
+        try:
+
+            if not hasattr(
+                product,
+                field,
+            ):
+                continue
+
+            value = getattr(
+                product,
+                field,
+            )
+
+            if value is not None:
+
+                return max(
+                    _safe_float(value),
+                    0.0,
+                )
+
+        except Exception:
+            continue
+
+    return 0.0
+
+
+# ============================================================
+# SALES HISTORY
+# ============================================================
 
 def get_historical_sales(
     db: Session,
     company_id: int,
     product_id: int,
-    start_date=None,
-    end_date=None,
-):
+    days: int = HISTORICAL_DAYS,
+) -> float:
 
-    query = (
+    normalized_days = max(
+        _safe_int(
+            days,
+            HISTORICAL_DAYS,
+        ),
+        1,
+    )
+
+    start_date, end_date = get_date_range(
+        normalized_days
+    )
+
+    result = (
         db.query(
             func.coalesce(
                 func.sum(
@@ -411,74 +1068,77 @@ def get_historical_sales(
         )
         .join(
             Sale,
-            Sale.id == SaleItem.sale_id,
+            Sale.id
+            == SaleItem.sale_id,
         )
         .filter(
             Sale.company_id == company_id,
             SaleItem.product_id == product_id,
+            Sale.created_at >= start_date,
+            Sale.created_at <= end_date,
         )
+        .scalar()
     )
 
-    if hasattr(
-        Sale,
-        "is_deleted",
-    ):
-
-        query = query.filter(
-            Sale.is_deleted == False
-        )
-
-    if start_date and end_date:
-
-        query = query.filter(
-            Sale.sale_date >= start_date,
-            Sale.sale_date <= end_date,
-        )
-
-    else:
-
-        query = query.filter(
-            Sale.sale_date >= (
-                datetime.now()
-                - timedelta(
-                    days=HISTORICAL_DAYS
-                )
-            )
-        )
-
-    result = query.scalar()
-
-    return int(
-        result or 0
+    return round(
+        max(
+            _safe_float(result),
+            0.0,
+        ),
+        2,
     )
 
-
-# ==========================================================
-# DAILY SALES HISTORY
-# ==========================================================
 
 def get_daily_sales_history(
     db: Session,
     company_id: int,
     product_id: int,
-):
+    days: int = HISTORICAL_DAYS,
+) -> list[dict[str, Any]]:
+    """
+    Returns exactly `days` calendar dates.
+    Missing sales dates are zero.
+    """
 
-    start_date = (
-        datetime.now()
+    normalized_days = max(
+        _safe_int(
+            days,
+            HISTORICAL_DAYS,
+        ),
+        1,
+    )
+
+    now = datetime.utcnow()
+
+    start_day = (
+        now.date()
         - timedelta(
-            days=HISTORICAL_DAYS
+            days=normalized_days - 1
         )
     )
 
-    query = (
+    start_date = datetime.combine(
+        start_day,
+        datetime.min.time(),
+    )
+
+    end_date = now
+
+    rows = (
         db.query(
             func.date(
-                Sale.sale_date
-            ).label("date"),
-
-            func.sum(
-                SaleItem.quantity
-            ).label("quantity"),
+                Sale.created_at
+            ).label(
+                "sale_date"
+            ),
+            func.coalesce(
+                func.sum(
+                    SaleItem.quantity
+                ),
+                0,
+            ).label(
+                "quantity"
+            ),
         )
         .join(
             Sale,
@@ -487,103 +1147,555 @@ def get_daily_sales_history(
         .filter(
             Sale.company_id == company_id,
             SaleItem.product_id == product_id,
-            Sale.sale_date >= start_date,
+            Sale.created_at >= start_date,
+            Sale.created_at <= end_date,
         )
-    )
-
-    if hasattr(
-        Sale,
-        "is_deleted",
-    ):
-
-        query = query.filter(
-            Sale.is_deleted == False
-        )
-
-    rows = (
-        query
         .group_by(
             func.date(
-                Sale.sale_date
+                Sale.created_at
             )
         )
         .order_by(
             func.date(
-                Sale.sale_date
+                Sale.created_at
             )
         )
         .all()
     )
 
-    return [
-        {
-            "date": row.date,
-            "quantity": int(
-                row.quantity or 0
+    sales_by_date: dict[str, float] = {}
+
+    for row in rows:
+
+        date_value = row.sale_date
+
+        if hasattr(
+            date_value,
+            "isoformat",
+        ):
+            date_key = (
+                date_value.isoformat()
+            )
+        else:
+            date_key = str(
+                date_value
+            )
+
+        sales_by_date[
+            date_key
+        ] = max(
+            _safe_float(
+                row.quantity
             ),
+            0.0,
+        )
+
+    result = []
+
+    for offset in range(
+        normalized_days
+    ):
+
+        current_date = (
+            start_day
+            + timedelta(
+                days=offset
+            )
+        )
+
+        date_key = (
+            current_date.isoformat()
+        )
+
+        result.append(
+            {
+                "date": date_key,
+                "quantity": round(
+                    sales_by_date.get(
+                        date_key,
+                        0.0,
+                    ),
+                    2,
+                ),
+            }
+        )
+
+    return result
+
+
+# ============================================================
+# INVENTORY CALCULATIONS
+# ============================================================
+
+def calculate_safety_stock(
+    average_daily_sales: Any,
+    safety_stock_days: int = DEFAULT_SAFETY_STOCK_DAYS,
+    historical_values: Optional[list[Any]] = None,
+) -> int:
+
+    daily = max(
+        _safe_float(
+            average_daily_sales
+        ),
+        0.0,
+    )
+
+    days = max(
+        _safe_int(
+            safety_stock_days,
+            DEFAULT_SAFETY_STOCK_DAYS,
+        ),
+        0,
+    )
+
+    base_safety = (
+        daily * days
+    )
+
+    variability_buffer = 0.0
+
+    if historical_values:
+
+        values = [
+            max(
+                _safe_float(
+                    value
+                ),
+                0.0,
+            )
+            for value in historical_values
+        ]
+
+        if len(values) >= 2:
+
+            variability_buffer = (
+                pstdev(values)
+                * math.sqrt(
+                    max(
+                        days,
+                        1,
+                    )
+                )
+            )
+
+    return max(
+        math.ceil(
+            base_safety
+            + variability_buffer
+        ),
+        0,
+    )
+
+
+def calculate_reorder_point(
+    average_daily_sales: Any,
+    lead_time_days: int = DEFAULT_LEAD_TIME_DAYS,
+    safety_stock: Any = 0,
+) -> int:
+
+    daily = max(
+        _safe_float(
+            average_daily_sales
+        ),
+        0.0,
+    )
+
+    lead_days = max(
+        _safe_int(
+            lead_time_days,
+            DEFAULT_LEAD_TIME_DAYS,
+        ),
+        0,
+    )
+
+    safety = max(
+        _safe_float(
+            safety_stock
+        ),
+        0.0,
+    )
+
+    return max(
+        math.ceil(
+            daily * lead_days
+            + safety
+        ),
+        0,
+    )
+
+
+def calculate_days_of_stock_remaining(
+    current_stock: Any,
+    average_daily_sales: Any,
+) -> Optional[float]:
+
+    stock = max(
+        _safe_float(
+            current_stock
+        ),
+        0.0,
+    )
+
+    daily = max(
+        _safe_float(
+            average_daily_sales
+        ),
+        0.0,
+    )
+
+    if daily <= 0:
+        return None
+
+    return round(
+        stock / daily,
+        2,
+    )
+
+
+def calculate_recommended_reorder_quantity(
+    current_stock: Any,
+    forecasted_demand: Any,
+    safety_stock: Any = 0,
+    lead_time_days: int = DEFAULT_LEAD_TIME_DAYS,
+    average_daily_sales: Any = 0,
+) -> int:
+    """
+    Smart replenishment quantity.
+
+    Target stock is based on the greater of:
+
+        - forecast demand for the forecast period
+        - lead-time demand
+
+    plus safety stock.
+
+    Then subtract current stock.
+    """
+
+    stock = max(
+        _safe_float(
+            current_stock
+        ),
+        0.0,
+    )
+
+    demand = max(
+        _safe_float(
+            forecasted_demand
+        ),
+        0.0,
+    )
+
+    safety = max(
+        _safe_float(
+            safety_stock
+        ),
+        0.0,
+    )
+
+    daily = max(
+        _safe_float(
+            average_daily_sales
+        ),
+        0.0,
+    )
+
+    lead_days = max(
+        _safe_int(
+            lead_time_days,
+            DEFAULT_LEAD_TIME_DAYS,
+        ),
+        0,
+    )
+
+    lead_time_demand = (
+        daily * lead_days
+    )
+
+    target_demand = max(
+        demand,
+        lead_time_demand,
+    )
+
+    target_stock = (
+        target_demand
+        + safety
+    )
+
+    required_quantity = (
+        target_stock
+        - stock
+    )
+
+    return max(
+        math.ceil(
+            required_quantity
+        ),
+        0,
+    )
+
+
+def calculate_stock_risk(
+    current_stock: Any,
+    reorder_point: Any,
+    days_of_stock_remaining: Any,
+    average_daily_sales: Any = 0,
+) -> str:
+    """
+    Inventory risk classification.
+
+    Priority:
+
+        OUT_OF_STOCK
+        STOCKOUT_RISK
+        LOW_STOCK
+        OVERSTOCK
+        HEALTHY
+
+    IMPORTANT:
+    Products with zero sales history are NOT automatically
+    classified as OVERSTOCK. There is insufficient demand
+    information, so they remain HEALTHY unless stock is
+    actually zero or below a positive reorder point.
+    """
+
+    stock = max(
+        _safe_float(
+            current_stock
+        ),
+        0.0,
+    )
+
+    reorder = max(
+        _safe_float(
+            reorder_point
+        ),
+        0.0,
+    )
+
+    daily = max(
+        _safe_float(
+            average_daily_sales
+        ),
+        0.0,
+    )
+
+    # ========================================================
+    # 1. OUT OF STOCK
+    # ========================================================
+
+    if stock <= 0:
+        return OUT_OF_STOCK
+
+    # ========================================================
+    # 2. NO DEMAND HISTORY
+    # ========================================================
+
+    if daily <= 0:
+
+        if (
+            reorder > 0
+            and stock <= reorder
+        ):
+            return LOW_STOCK
+
+        return HEALTHY
+
+    # ========================================================
+    # 3. DAYS OF STOCK
+    # ========================================================
+
+    days_remaining = None
+
+    if days_of_stock_remaining is not None:
+
+        days_remaining = _safe_float(
+            days_of_stock_remaining
+        )
+
+    # ========================================================
+    # 4. IMMEDIATE STOCKOUT RISK
+    # ========================================================
+
+    if (
+        days_remaining is not None
+        and days_remaining <= 3
+    ):
+        return STOCKOUT_RISK
+
+    # ========================================================
+    # 5. BELOW REORDER POINT
+    # ========================================================
+
+    if stock <= reorder:
+        return LOW_STOCK
+
+    # ========================================================
+    # 6. OVERSTOCK
+    # ========================================================
+
+    if (
+        days_remaining is not None
+        and days_remaining >= 90
+    ):
+        return OVERSTOCK
+
+    # ========================================================
+    # 7. HEALTHY
+    # ========================================================
+
+    return HEALTHY
+
+
+def calculate_inventory_recommendations(
+    current_stock: Any,
+    forecasted_demand: Any,
+    average_daily_sales: Any,
+    lead_time_days: int = DEFAULT_LEAD_TIME_DAYS,
+    safety_stock_days: int = DEFAULT_SAFETY_STOCK_DAYS,
+    historical_values: Optional[list[Any]] = None,
+) -> dict[str, Any]:
+
+    safety_stock = calculate_safety_stock(
+        average_daily_sales=average_daily_sales,
+        safety_stock_days=safety_stock_days,
+        historical_values=historical_values,
+    )
+
+    reorder_point = calculate_reorder_point(
+        average_daily_sales=average_daily_sales,
+        lead_time_days=lead_time_days,
+        safety_stock=safety_stock,
+    )
+
+    days_remaining = (
+        calculate_days_of_stock_remaining(
+            current_stock=current_stock,
+            average_daily_sales=average_daily_sales,
+        )
+    )
+
+    recommended_quantity = (
+        calculate_recommended_reorder_quantity(
+            current_stock=current_stock,
+            forecasted_demand=forecasted_demand,
+            safety_stock=safety_stock,
+            lead_time_days=lead_time_days,
+            average_daily_sales=average_daily_sales,
+        )
+    )
+
+    stock_risk = calculate_stock_risk(
+        current_stock=current_stock,
+        reorder_point=reorder_point,
+        days_of_stock_remaining=days_remaining,
+        average_daily_sales=average_daily_sales,
+    )
+
+    reorder_required = (
+        recommended_quantity > 0
+        or stock_risk
+        in {
+            OUT_OF_STOCK,
+            STOCKOUT_RISK,
+            LOW_STOCK,
         }
-        for row in rows
-    ]
+    )
+
+    return {
+        "safety_stock": safety_stock,
+        "reorder_point": reorder_point,
+        "days_of_stock_remaining": days_remaining,
+        "recommended_quantity": recommended_quantity,
+        "stock_risk": stock_risk,
+        "reorder_required": reorder_required,
+    }
 
 
-# ==========================================================
-# PRODUCT VALIDATION
-# ==========================================================
+def calculate_category_recommendation(
+    current_stock: Any,
+    forecasted_demand: Any,
+) -> int:
+
+    required = (
+        _safe_float(
+            forecasted_demand
+        )
+        - _safe_float(
+            current_stock
+        )
+    )
+
+    return max(
+        math.ceil(
+            max(
+                required,
+                0.0,
+            )
+        ),
+        0,
+    )
+
+
+def calculate_forecast_value(
+    forecasted_demand: Any,
+    unit_price: Any,
+) -> float:
+
+    demand = max(
+        _safe_float(
+            forecasted_demand
+        ),
+        0.0,
+    )
+
+    price = max(
+        _safe_float(
+            unit_price
+        ),
+        0.0,
+    )
+
+    return round(
+        demand * price,
+        2,
+    )
+
+
+# ============================================================
+# FORECAST DATA PREPARATION
+# ============================================================
 
 def validate_product_for_forecast(
     db: Session,
     company_id: int,
     product_id: int,
-):
+) -> Product:
 
-    query = (
+    product = (
         db.query(Product)
-        .options(
-            joinedload(
-                Product.category
-            )
-        )
         .filter(
             Product.id == product_id,
             Product.company_id == company_id,
         )
+        .first()
     )
 
-    if hasattr(
-        Product,
-        "status",
-    ):
-
-        query = query.filter(
-            Product.status == "ACTIVE"
-        )
-
-    product = query.first()
-
     if not product:
-
         raise ValueError(
-            "Inactive or invalid product "
-            "cannot generate forecast"
+            "Product not found"
         )
 
     return product
 
 
-# ==========================================================
-# PREPARE FORECAST DATA
-# ==========================================================
-
 def prepare_forecast_data(
     db: Session,
     company_id: int,
     product_id: int,
-    forecast_period: str,
-):
-
-    forecast_period = validate_forecast_period(
-        forecast_period
-    )
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+    historical_days: int = HISTORICAL_DAYS,
+) -> dict[str, Any]:
 
     product = validate_product_for_forecast(
         db=db,
@@ -591,158 +1703,161 @@ def prepare_forecast_data(
         product_id=product_id,
     )
 
-    historical_sales = get_historical_sales(
+    normalized_forecast_days = (
+        normalize_task11_forecast_days(
+            forecast_days
+        )
+    )
+
+    normalized_historical_days = max(
+        _safe_int(
+            historical_days,
+            HISTORICAL_DAYS,
+        ),
+        1,
+    )
+
+    history = get_daily_sales_history(
         db=db,
         company_id=company_id,
         product_id=product_id,
+        days=normalized_historical_days,
     )
 
-    if historical_sales == 0:
-
-        raise ValueError(
-            "Forecast requires historical sales data"
+    values = [
+        max(
+            _safe_float(
+                row.get("quantity")
+            ),
+            0.0,
         )
+        for row in history
+    ]
 
-    predicted_demand = calculate_prediction(
-        historical_sales,
-        forecast_period,
+    historical_sales = round(
+        sum(values),
+        2,
     )
 
-    growth_percentage = (
-        calculate_growth_percentage(
-            historical_sales,
-            predicted_demand,
+    average_daily_sales = (
+        calculate_average_daily_sales(
+            historical_sales=historical_sales,
+            historical_days=normalized_historical_days,
         )
     )
 
-    confidence = (
+    predictions = calculate_prediction(
+        values=values,
+        forecast_days=normalized_forecast_days,
+    )
+
+    forecasted_demand = (
+        calculate_task11_forecasted_demand(
+            average_daily_sales=average_daily_sales,
+            forecast_days=normalized_forecast_days,
+        )
+    )
+
+    confidence_score = (
         calculate_confidence_score(
-            historical_sales
-        )
-    )
-
-    accuracy = (
-        calculate_forecast_accuracy(
-            historical_sales,
-            predicted_demand,
-        )
-    )
-
-    current_stock = int(
-        product.stock_quantity or 0
-    )
-
-    available_stock = current_stock
-
-    reorder_level = DEFAULT_REORDER_LEVEL
-
-    recommendation = (
-        calculate_inventory_recommendations(
-            current_stock=current_stock,
-            available_stock=available_stock,
-            reorder_level=reorder_level,
-            predicted_demand=predicted_demand,
-        )
-    )
-
-    forecast_value = (
-        calculate_forecast_value(
-            predicted_demand,
-            product.unit_price,
+            values
         )
     )
 
     return {
         "product": product,
-
-        "historical_sales":
-            historical_sales,
-
-        "predicted_demand":
-            predicted_demand,
-
-        "expected_growth_percentage":
-            growth_percentage,
-
-        "confidence_score":
-            confidence,
-
-        "forecast_accuracy":
-            accuracy,
-
-        "current_stock":
-            current_stock,
-
-        "available_stock":
-            available_stock,
-
-        "reorder_level":
-            reorder_level,
-
-        "recommendation":
-            recommendation,
-
-        "forecast_value":
-            forecast_value,
+        "history": history,
+        "values": values,
+        "historical_sales": historical_sales,
+        "average_daily_sales": average_daily_sales,
+        "predictions": predictions,
+        "forecasted_demand": forecasted_demand,
+        "confidence_score": confidence_score,
     }
 
 
-# ==========================================================
-# EXISTING FORECAST
-# ==========================================================
+# ============================================================
+# DATABASE FORECAST STORAGE
+# ============================================================
 
 def check_existing_forecast(
     db: Session,
     company_id: int,
     product_id: int,
-    forecast_period: str,
+    forecast_days: int,
 ):
 
-    forecast_period = validate_forecast_period(
-        forecast_period
+    normalized_days = _safe_int(
+        forecast_days,
+        DEFAULT_FORECAST_DAYS,
     )
 
-    return (
+    query = (
         db.query(DemandForecast)
         .filter(
             DemandForecast.company_id
             == company_id,
-
             DemandForecast.product_id
             == product_id,
-
-            DemandForecast.forecast_period
-            == forecast_period,
         )
+    )
+
+    if hasattr(
+        DemandForecast,
+        "forecast_days",
+    ):
+        query = query.filter(
+            DemandForecast.forecast_days
+            == normalized_days
+        )
+
+    return (
+        query
         .order_by(
-            desc(
-                DemandForecast.generated_at
-            ),
-            desc(
-                DemandForecast.id
-            ),
+            DemandForecast.id.desc()
         )
         .first()
     )
 
 
-# ==========================================================
-# SAVE FORECAST HISTORY
-# ==========================================================
-
 def save_forecast_history(
     db: Session,
-    forecast_id: int,
-    historical_sales: int,
-    prediction: int,
-    accuracy: float,
+    company_id: int,
+    product_id: int,
+    forecasted_demand: Any,
+    confidence_score: Any,
+    forecast_days: int,
 ):
 
+    values = {
+        "company_id": company_id,
+        "product_id": product_id,
+        "forecasted_demand": _safe_float(
+            forecasted_demand
+        ),
+        "confidence_score": _safe_float(
+            confidence_score
+        ),
+    }
+
+    if hasattr(
+        ForecastHistory,
+        "forecast_days",
+    ):
+        values[
+            "forecast_days"
+        ] = forecast_days
+
+    if hasattr(
+        ForecastHistory,
+        "created_at",
+    ):
+        values[
+            "created_at"
+        ] = datetime.utcnow()
+
     history = ForecastHistory(
-        forecast_id=forecast_id,
-        historical_sales=historical_sales,
-        prediction=prediction,
-        accuracy=accuracy,
+        **values
     )
 
     db.add(history)
@@ -750,2030 +1865,2076 @@ def save_forecast_history(
     return history
 
 
-# ==========================================================
-# CREATE / UPDATE FORECAST
-# ==========================================================
-
 def create_or_update_forecast(
     db: Session,
     company_id: int,
     product_id: int,
-    forecast_period: str,
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+    forecast_period: Optional[str] = None,
 ):
 
-    forecast_period = validate_forecast_period(
-        forecast_period
-    )
+    if forecast_period is not None:
 
-    try:
-
-        data = prepare_forecast_data(
-            db=db,
-            company_id=company_id,
-            product_id=product_id,
-            forecast_period=forecast_period,
-        )
-
-        product = data["product"]
-
-        existing = check_existing_forecast(
-            db=db,
-            company_id=company_id,
-            product_id=product_id,
-            forecast_period=forecast_period,
-        )
-
-        if existing:
-
-            forecast = existing
-
-            forecast.predicted_demand = (
-                data["predicted_demand"]
-            )
-
-            forecast.historical_sales = (
-                data["historical_sales"]
-            )
-
-            forecast.expected_growth_percentage = (
-                data[
-                    "expected_growth_percentage"
-                ]
-            )
-
-            forecast.confidence_score = (
-                data["confidence_score"]
-            )
-
-            forecast.forecast_accuracy = (
-                data["forecast_accuracy"]
-            )
-
-            forecast.current_stock = (
-                data["current_stock"]
-            )
-
-            forecast.available_stock = (
-                data["available_stock"]
-            )
-
-            forecast.reorder_level = (
-                data["reorder_level"]
-            )
-
-            forecast.recommendation = (
-                data["recommendation"]
-            )
-
-            forecast.forecast_value = (
-                data["forecast_value"]
-            )
-
-            forecast.forecast_period = (
+        days = int(
+            validate_forecast_period(
                 forecast_period
             )
-
-        else:
-
-            forecast = DemandForecast(
-
-                company_id=company_id,
-
-                product_id=product.id,
-
-                category_id=product.category_id,
-
-                forecast_period=forecast_period,
-
-                historical_sales=
-                    data["historical_sales"],
-
-                predicted_demand=
-                    data["predicted_demand"],
-
-                expected_growth_percentage=
-                    data[
-                        "expected_growth_percentage"
-                    ],
-
-                confidence_score=
-                    data["confidence_score"],
-
-                forecast_accuracy=
-                    data["forecast_accuracy"],
-
-                current_stock=
-                    data["current_stock"],
-
-                available_stock=
-                    data["available_stock"],
-
-                reorder_level=
-                    data["reorder_level"],
-
-                recommendation=
-                    data["recommendation"],
-
-                forecast_value=
-                    data["forecast_value"],
-            )
-
-            db.add(forecast)
-
-            db.flush()
-
-        save_forecast_history(
-            db=db,
-            forecast_id=forecast.id,
-            historical_sales=
-                data["historical_sales"],
-            prediction=
-                data["predicted_demand"],
-            accuracy=
-                data["forecast_accuracy"],
         )
 
-        db.commit()
+    else:
 
-        db.refresh(forecast)
+        days = normalize_task11_forecast_days(
+            forecast_days
+        )
 
-        return forecast
+    data = prepare_forecast_data(
+        db=db,
+        company_id=company_id,
+        product_id=product_id,
+        forecast_days=days,
+        historical_days=HISTORICAL_DAYS,
+    )
 
-    except Exception:
+    existing = check_existing_forecast(
+        db=db,
+        company_id=company_id,
+        product_id=product_id,
+        forecast_days=days,
+    )
 
-        db.rollback()
+    forecast_values = {
+        "company_id": company_id,
+        "product_id": product_id,
+        "forecasted_demand": data[
+            "forecasted_demand"
+        ],
+        "confidence_score": data[
+            "confidence_score"
+        ],
+    }
 
-        raise
+    if existing:
 
+        for field, value in forecast_values.items():
 
-# ==========================================================
-# GENERATE ALL FORECASTS
-# ==========================================================
+            if hasattr(
+                existing,
+                field,
+            ):
+
+                setattr(
+                    existing,
+                    field,
+                    value,
+                )
+
+        if hasattr(
+            existing,
+            "forecast_days",
+        ):
+
+            existing.forecast_days = days
+
+        forecast = existing
+
+    else:
+
+        if hasattr(
+            DemandForecast,
+            "forecast_days",
+        ):
+
+            forecast_values[
+                "forecast_days"
+            ] = days
+
+        forecast = DemandForecast(
+            **forecast_values
+        )
+
+        db.add(forecast)
+
+    save_forecast_history(
+        db=db,
+        company_id=company_id,
+        product_id=product_id,
+        forecasted_demand=data[
+            "forecasted_demand"
+        ],
+        confidence_score=data[
+            "confidence_score"
+        ],
+        forecast_days=days,
+    )
+
+    return forecast
+
 
 def generate_all_forecasts(
     db: Session,
     company_id: int,
-    forecast_period: str,
+    forecast_period: Optional[str] = None,
+    forecast_days: Optional[int] = None,
 ):
 
-    """
-    IMPORTANT:
-    This function is intentionally defined at module level.
+    if forecast_period is not None:
 
-    forecast.py imports this function directly.
-    """
+        days = int(
+            validate_forecast_period(
+                forecast_period
+            )
+        )
 
-    forecast_period = validate_forecast_period(
-        forecast_period
-    )
+    else:
 
-    query = (
+        days = normalize_task11_forecast_days(
+            forecast_days
+            if forecast_days is not None
+            else DEFAULT_FORECAST_DAYS
+        )
+
+    products = (
         db.query(Product)
         .filter(
-            Product.company_id == company_id
+            Product.company_id
+            == company_id
         )
+        .all()
     )
-
-    if hasattr(
-        Product,
-        "status",
-    ):
-
-        query = query.filter(
-            Product.status == "ACTIVE"
-        )
-
-    products = query.all()
 
     forecasts = []
 
-    for product in products:
+    try:
 
-        try:
+        for product in products:
 
-            forecast = (
-                create_or_update_forecast(
-                    db=db,
-                    company_id=company_id,
-                    product_id=product.id,
-                    forecast_period=forecast_period,
-                )
+            forecast = create_or_update_forecast(
+                db=db,
+                company_id=company_id,
+                product_id=product.id,
+                forecast_days=days,
             )
 
             forecasts.append(
                 forecast
             )
 
-        except ValueError:
+        db.commit()
 
-            # Product has no historical sales.
-            continue
+    except Exception:
+
+        db.rollback()
+        raise
 
     return forecasts
 
 
-# ==========================================================
-# GET COMPANY FORECASTS
-# ==========================================================
+# ============================================================
+# INVENTORY FORECAST
+# ============================================================
 
-def _get_company_forecasts(
+def build_inventory_forecast(
     db: Session,
     company_id: int,
-):
+    product: Product,
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+    lead_time_days: int = DEFAULT_LEAD_TIME_DAYS,
+    safety_stock_days: int = DEFAULT_SAFETY_STOCK_DAYS,
+) -> dict[str, Any]:
 
-    return (
-        db.query(DemandForecast)
-        .options(
-            joinedload(
-                DemandForecast.product
+    days = normalize_task11_forecast_days(
+        forecast_days
+    )
+
+    history = get_daily_sales_history(
+        db=db,
+        company_id=company_id,
+        product_id=product.id,
+        days=HISTORICAL_DAYS,
+    )
+
+    values = [
+        max(
+            _safe_float(
+                row.get("quantity")
             ),
-            joinedload(
-                DemandForecast.category
-            ),
+            0.0,
         )
+        for row in history
+    ]
+
+    historical_sales = round(
+        sum(values),
+        2,
+    )
+
+    average_daily_sales = (
+        calculate_average_daily_sales(
+            historical_sales=historical_sales,
+            historical_days=HISTORICAL_DAYS,
+        )
+    )
+
+    forecasted_demand = (
+        calculate_task11_forecasted_demand(
+            average_daily_sales=average_daily_sales,
+            forecast_days=days,
+        )
+    )
+
+    confidence_score = (
+        calculate_confidence_score(
+            values
+        )
+    )
+
+    # ========================================================
+    # CURRENT STOCK
+    # ========================================================
+
+    current_stock = _get_product_stock(
+        product
+    )
+
+    # ========================================================
+    # INVENTORY RECOMMENDATION
+    # ========================================================
+
+    recommendation = (
+        calculate_inventory_recommendations(
+            current_stock=current_stock,
+            forecasted_demand=forecasted_demand,
+            average_daily_sales=average_daily_sales,
+            lead_time_days=lead_time_days,
+            safety_stock_days=safety_stock_days,
+            historical_values=values,
+        )
+    )
+
+    category_id, category_name = (
+        _get_product_category(
+            product
+        )
+    )
+
+    supplier = _get_product_supplier(
+        product
+    )
+
+    brand = _get_product_brand(
+        product
+    )
+
+    unit_price = _get_product_price(
+        product
+    )
+
+    return {
+        "product_id": product.id,
+
+        "product": getattr(
+            product,
+            "name",
+            "",
+        ),
+
+        "sku": getattr(
+            product,
+            "sku",
+            "",
+        ),
+
+        "category_id": category_id,
+
+        "category": category_name,
+
+        "brand": brand,
+
+        "supplier": supplier,
+
+        "unit_price": unit_price,
+
+        "forecast_days": days,
+
+        "historical_days": HISTORICAL_DAYS,
+
+        "historical_sales": historical_sales,
+
+        "average_daily_sales": (
+            average_daily_sales
+        ),
+
+        "forecasted_demand": round(
+            forecasted_demand,
+            2,
+        ),
+
+        "forecast_value": (
+            calculate_forecast_value(
+                forecasted_demand,
+                unit_price,
+            )
+        ),
+
+        "confidence_score": (
+            confidence_score
+        ),
+
+        "current_stock": current_stock,
+
+        **recommendation,
+    }
+
+
+def generate_inventory_forecasts(
+    db: Session,
+    company_id: int,
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+    lead_time_days: int = DEFAULT_LEAD_TIME_DAYS,
+    safety_stock_days: int = DEFAULT_SAFETY_STOCK_DAYS,
+) -> list[dict[str, Any]]:
+
+    days = normalize_task11_forecast_days(
+        forecast_days
+    )
+
+    lead_time_days = max(
+        _safe_int(
+            lead_time_days,
+            DEFAULT_LEAD_TIME_DAYS,
+        ),
+        0,
+    )
+
+    safety_stock_days = max(
+        _safe_int(
+            safety_stock_days,
+            DEFAULT_SAFETY_STOCK_DAYS,
+        ),
+        0,
+    )
+
+    products = (
+        db.query(Product)
         .filter(
-            DemandForecast.company_id
+            Product.company_id
             == company_id
         )
         .all()
     )
 
-
-# ==========================================================
-# LATEST FORECAST PER PRODUCT
-# ==========================================================
-
-def _latest_forecast_per_product(
-    forecasts,
-):
-
-    latest = {}
-
-    for item in forecasts:
-
-        normalized_period = (
-            normalize_forecast_period(
-                item.forecast_period
-            )
-        )
-
-        if (
-            normalized_period
-            not in VALID_FORECAST_PERIODS
-        ):
-            continue
-
-        product_id = item.product_id
-
-        if product_id not in latest:
-
-            latest[product_id] = item
-
-            continue
-
-        current = latest[product_id]
-
-        current_date = (
-            current.generated_at
-        )
-
-        item_date = (
-            item.generated_at
-        )
-
-        if (
-            item_date
-            and current_date
-        ):
-
-            if item_date > current_date:
-                latest[product_id] = item
-
-        elif item.id > current.id:
-
-            latest[product_id] = item
-
-    return list(
-        latest.values()
-    )
-
-
-# ==========================================================
-# LATEST FORECAST PER PRODUCT + PERIOD
-# ==========================================================
-
-def _latest_forecast_per_product_period(
-    forecasts,
-):
-
-    latest = {}
-
-    for item in forecasts:
-
-        normalized_period = (
-            normalize_forecast_period(
-                item.forecast_period
-            )
-        )
-
-        if (
-            normalized_period
-            not in VALID_FORECAST_PERIODS
-        ):
-            continue
-
-        key = (
-            item.product_id,
-            normalized_period,
-        )
-
-        if key not in latest:
-
-            latest[key] = item
-
-            continue
-
-        current = latest[key]
-
-        if (
-            item.generated_at
-            and current.generated_at
-            and item.generated_at
-            > current.generated_at
-        ):
-
-            latest[key] = item
-
-        elif item.id > current.id:
-
-            latest[key] = item
-
-    return list(
-        latest.values()
-    )
-
-
-# ==========================================================
-# PRODUCT FORECASTS
-# ==========================================================
-
-def get_product_forecasts(
-    db: Session,
-    company_id: int,
-    forecast_period: str | None = None,
-    search: str | None = None,
-    category_id: int | None = None,
-    brand: str | None = None,
-    sort_by: str = "highest_demand",
-):
-
-    normalized_period = (
-        normalize_forecast_period(
-            forecast_period
-        )
-    )
-
-    if (
-        forecast_period
-        and normalized_period
-        not in VALID_FORECAST_PERIODS
-    ):
-
-        raise ValueError(
-            "Invalid forecast period. "
-            "Use 7_DAYS, 30_DAYS or 90_DAYS."
-        )
-
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
-    )
-
-    forecasts = [
-        item
-        for item in forecasts
-        if normalize_forecast_period(
-            item.forecast_period
-        ) in VALID_FORECAST_PERIODS
-    ]
-
-    # ------------------------------------------------------
-    # Period filter
-    # ------------------------------------------------------
-
-    if normalized_period:
-
-        forecasts = [
-            item
-            for item in forecasts
-            if normalize_forecast_period(
-                item.forecast_period
-            ) == normalized_period
-        ]
-
-    # ------------------------------------------------------
-    # ONE ROW PER PRODUCT
-    # ------------------------------------------------------
-
-    forecasts = (
-        _latest_forecast_per_product(
-            forecasts
-        )
-    )
-
-    # ------------------------------------------------------
-    # SEARCH
-    # ------------------------------------------------------
-
-    if search:
-
-        search_value = (
-            search.strip().lower()
-        )
-
-        forecasts = [
-            item
-            for item in forecasts
-            if (
-                item.product
-                and search_value
-                in (
-                    item.product.name
-                    or ""
-                ).lower()
-            )
-        ]
-
-    # ------------------------------------------------------
-    # CATEGORY
-    # ------------------------------------------------------
-
-    if category_id is not None:
-
-        forecasts = [
-            item
-            for item in forecasts
-            if item.category_id
-            == category_id
-        ]
-
-    # ------------------------------------------------------
-    # BRAND
-    # ------------------------------------------------------
-
-    if brand:
-
-        brand_value = (
-            brand.strip().lower()
-        )
-
-        forecasts = [
-            item
-            for item in forecasts
-            if (
-                item.product
-                and item.product.brand
-                and brand_value
-                in item.product.brand.lower()
-            )
-        ]
-
-    # ------------------------------------------------------
-    # SORT
-    # ------------------------------------------------------
-
-    if sort_by == "highest_demand":
-
-        forecasts.sort(
-            key=lambda x:
-                x.predicted_demand or 0,
-            reverse=True,
-        )
-
-    elif sort_by == "lowest_stock":
-
-        forecasts.sort(
-            key=lambda x:
-                x.available_stock or 0
-        )
-
-    elif sort_by == "highest_growth":
-
-        forecasts.sort(
-            key=lambda x:
-                x.expected_growth_percentage
-                or 0,
-            reverse=True,
-        )
-
-    elif sort_by == "accuracy":
-
-        forecasts.sort(
-            key=lambda x:
-                x.forecast_accuracy or 0,
-            reverse=True,
-        )
-
-    elif sort_by == "lowest_demand":
-
-        forecasts.sort(
-            key=lambda x:
-                x.predicted_demand or 0
-        )
-
-    else:
-
-        forecasts.sort(
-            key=lambda x:
-                x.predicted_demand or 0,
-            reverse=True,
-        )
-
-    # ------------------------------------------------------
-    # RESPONSE
-    # ------------------------------------------------------
-
     result = []
 
-    for item in forecasts:
+    for product in products:
 
         result.append(
-            {
-                "id":
-                    item.id,
-
-                "product_id":
-                    item.product_id,
-
-                "category_id":
-                    item.category_id,
-
-                "product_name":
-                    (
-                        item.product.name
-                        if item.product
-                        else ""
-                    ),
-
-                "category_name":
-                    (
-                        item.category.name
-                        if item.category
-                        else ""
-                    ),
-
-                "brand":
-                    (
-                        item.product.brand
-                        if item.product
-                        else None
-                    ),
-
-                "current_stock":
-                    int(
-                        item.current_stock
-                        or 0
-                    ),
-
-                "available_stock":
-                    int(
-                        item.available_stock
-                        or 0
-                    ),
-
-                "reorder_level":
-                    int(
-                        item.reorder_level
-                        or 0
-                    ),
-
-                "historical_sales":
-                    int(
-                        item.historical_sales
-                        or 0
-                    ),
-
-                "predicted_demand":
-                    int(
-                        item.predicted_demand
-                        or 0
-                    ),
-
-                "expected_growth_percentage":
-                    float(
-                        item.expected_growth_percentage
-                        or 0
-                    ),
-
-                "confidence_score":
-                    float(
-                        item.confidence_score
-                        or 0
-                    ),
-
-                "forecast_accuracy":
-                    float(
-                        item.forecast_accuracy
-                        or 0
-                    ),
-
-                "forecast_period":
-                    normalize_forecast_period(
-                        item.forecast_period
-                    ),
-
-                "recommendation":
-                    item.recommendation
-                    or "",
-
-                "forecast_value":
-                    float(
-                        item.forecast_value
-                        or 0
-                    ),
-
-                "generated_at":
-                    item.generated_at,
-            }
+            build_inventory_forecast(
+                db=db,
+                company_id=company_id,
+                product=product,
+                forecast_days=days,
+                lead_time_days=lead_time_days,
+                safety_stock_days=safety_stock_days,
+            )
         )
 
     return result
 
-
-# ==========================================================
-# CATEGORY FORECASTS
-# ==========================================================
-
-def get_category_forecasts(
-    db: Session,
-    company_id: int,
-):
-
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
-    )
-
-    forecasts = [
-        item
-        for item in forecasts
-        if normalize_forecast_period(
-            item.forecast_period
-        ) in VALID_FORECAST_PERIODS
-    ]
-
-    # One latest forecast per product.
-    # This prevents duplicate product counting.
-    forecasts = (
-        _latest_forecast_per_product(
-            forecasts
-        )
-    )
-
-    category_data = {}
-
-    for item in forecasts:
-
-        category_id = (
-            item.category_id
-        )
-
-        category_name = (
-            item.category.name
-            if item.category
-            else ""
-        )
-
-        if category_id not in category_data:
-
-            category_data[
-                category_id
-            ] = {
-                "category_id":
-                    category_id,
-
-                "category_name":
-                    category_name,
-
-                "historical":
-                    0,
-
-                "prediction":
-                    0,
-
-                "forecast_value":
-                    Decimal("0"),
-
-                "confidence_values":
-                    [],
-
-                "accuracy_values":
-                    [],
-            }
-
-        data = category_data[
-            category_id
-        ]
-
-        data["historical"] += int(
-            item.historical_sales
-            or 0
-        )
-
-        data["prediction"] += int(
-            item.predicted_demand
-            or 0
-        )
-
-        data["forecast_value"] += (
-            format_decimal(
-                item.forecast_value
-            )
-        )
-
-        data[
-            "confidence_values"
-        ].append(
-            float(
-                item.confidence_score
-                or 0
-            )
-        )
-
-        data[
-            "accuracy_values"
-        ].append(
-            float(
-                item.forecast_accuracy
-                or 0
-            )
-        )
-
-    result = []
-
-    for data in category_data.values():
-
-        historical = data[
-            "historical"
-        ]
-
-        prediction = data[
-            "prediction"
-        ]
-
-        if historical:
-
-            growth = (
-                (
-                    (
-                        prediction
-                        - historical
-                    )
-                    / historical
-                )
-                * 100
-            )
-
-        else:
-
-            growth = 0
-
-        confidence_values = data[
-            "confidence_values"
-        ]
-
-        accuracy_values = data[
-            "accuracy_values"
-        ]
-
-        confidence = (
-            sum(
-                confidence_values
-            )
-            / len(
-                confidence_values
-            )
-            if confidence_values
-            else 0
-        )
-
-        accuracy = (
-            sum(
-                accuracy_values
-            )
-            / len(
-                accuracy_values
-            )
-            if accuracy_values
-            else 0
-        )
-
-        recommendation = (
-            calculate_category_recommendation(
-                growth
-            )
-        )
-
-        result.append(
-            {
-                "category_id":
-                    data["category_id"],
-
-                "category_name":
-                    data["category_name"],
-
-                "total_historical_sales":
-                    historical,
-
-                "predicted_demand":
-                    prediction,
-
-                "expected_growth_percentage":
-                    round(
-                        growth,
-                        2,
-                    ),
-
-                "confidence_score":
-                    round(
-                        confidence,
-                        2,
-                    ),
-
-                "forecast_accuracy":
-                    round(
-                        accuracy,
-                        2,
-                    ),
-
-                "recommendation":
-                    recommendation,
-
-                "forecast_value":
-                    float(
-                        data[
-                            "forecast_value"
-                        ]
-                    ),
-            }
-        )
-
-    result.sort(
-        key=lambda x:
-            x["predicted_demand"],
-        reverse=True,
-    )
-
-    return result
-
-
-# ==========================================================
-# INVENTORY RECOMMENDATIONS
-# ==========================================================
 
 def get_inventory_recommendations(
     db: Session,
     company_id: int,
-):
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+    lead_time_days: int = DEFAULT_LEAD_TIME_DAYS,
+    safety_stock_days: int = DEFAULT_SAFETY_STOCK_DAYS,
+) -> list[dict[str, Any]]:
 
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
+    return generate_inventory_forecasts(
+        db=db,
+        company_id=company_id,
+        forecast_days=forecast_days,
+        lead_time_days=lead_time_days,
+        safety_stock_days=safety_stock_days,
     )
 
-    forecasts = [
-        item
-        for item in forecasts
-        if normalize_forecast_period(
-            item.forecast_period
-        ) in VALID_FORECAST_PERIODS
-    ]
 
-    forecasts = (
-        _latest_forecast_per_product(
-            forecasts
-        )
+# ============================================================
+# VALIDATION
+# ============================================================
+
+def validate_inventory_forecast_parameters(
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+    lead_time_days: int = DEFAULT_LEAD_TIME_DAYS,
+    safety_stock_days: int = DEFAULT_SAFETY_STOCK_DAYS,
+) -> dict[str, int]:
+
+    days = normalize_task11_forecast_days(
+        forecast_days
     )
 
-    result = []
-
-    for item in forecasts:
-
-        if (
-            item.recommendation
-            == STOCK_HEALTHY
-        ):
-            continue
-
-        result.append(
-            {
-                "product_id":
-                    item.product_id,
-
-                "product_name":
-                    (
-                        item.product.name
-                        if item.product
-                        else ""
-                    ),
-
-                "category_name":
-                    (
-                        item.category.name
-                        if item.category
-                        else ""
-                    ),
-
-                "current_stock":
-                    int(
-                        item.current_stock
-                        or 0
-                    ),
-
-                "available_stock":
-                    int(
-                        item.available_stock
-                        or 0
-                    ),
-
-                "predicted_demand":
-                    int(
-                        item.predicted_demand
-                        or 0
-                    ),
-
-                "recommendation":
-                    item.recommendation
-                    or "",
-
-                "confidence_score":
-                    float(
-                        item.confidence_score
-                        or 0
-                    ),
-            }
-        )
-
-    return result
-
-
-# ==========================================================
-# FORECAST DASHBOARD
-# ==========================================================
-
-def get_forecast_dashboard(
-    db: Session,
-    company_id: int,
-):
-
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
+    lead_days = _safe_int(
+        lead_time_days,
+        DEFAULT_LEAD_TIME_DAYS,
     )
 
-    forecasts = [
-        item
-        for item in forecasts
-        if normalize_forecast_period(
-            item.forecast_period
-        ) in VALID_FORECAST_PERIODS
-    ]
-
-    # IMPORTANT:
-    # Dashboard uses latest forecast per product.
-    # So one product does not become 3 forecasts
-    # just because 7/30/90 day records exist.
-
-    latest_forecasts = (
-        _latest_forecast_per_product(
-            forecasts
-        )
+    safety_days = _safe_int(
+        safety_stock_days,
+        DEFAULT_SAFETY_STOCK_DAYS,
     )
 
-    total_predicted_demand = sum(
-        int(
-            item.predicted_demand
-            or 0
+    if lead_days < 0:
+        raise ValueError(
+            "lead_time_days cannot be negative"
         )
-        for item in latest_forecasts
-    )
 
-    total_forecasts = len(
-        latest_forecasts
-    )
-
-    products_expected_to_run_out = sum(
-        1
-        for item in latest_forecasts
-        if (
-            item.predicted_demand
-            or 0
+    if safety_days < 0:
+        raise ValueError(
+            "safety_stock_days cannot be negative"
         )
-        > (
-            item.available_stock
-            or 0
-        )
-    )
-
-    high_growth_products = sum(
-        1
-        for item in latest_forecasts
-        if (
-            item.expected_growth_percentage
-            or 0
-        ) >= 20
-    )
-
-    slow_moving_products = sum(
-        1
-        for item in latest_forecasts
-        if (
-            item.predicted_demand
-            or 0
-        )
-        < (
-            item.historical_sales
-            or 0
-        )
-    )
-
-    accuracy_values = [
-        float(
-            item.forecast_accuracy
-            or 0
-        )
-        for item in latest_forecasts
-    ]
-
-    accuracy = (
-        sum(
-            accuracy_values
-        )
-        / len(
-            accuracy_values
-        )
-        if accuracy_values
-        else 0
-    )
 
     return {
-        "total_predicted_demand":
-            int(
-                total_predicted_demand
-            ),
-
-        "products_expected_to_run_out":
-            int(
-                products_expected_to_run_out
-            ),
-
-        "high_growth_products":
-            int(
-                high_growth_products
-            ),
-
-        "slow_moving_products":
-            int(
-                slow_moving_products
-            ),
-
-        "forecast_accuracy":
-            round(
-                float(
-                    accuracy
-                ),
-                2,
-            ),
-
-        "total_forecasts":
-            int(
-                total_forecasts
-            ),
+        "forecast_days": days,
+        "lead_time_days": lead_days,
+        "safety_stock_days": safety_days,
     }
 
 
-# ==========================================================
-# HISTORICAL VS FORECAST
-# ==========================================================
+def validate_inventory_filters(
+    stock_risk: Optional[str] = None,
+    sort_by: str = "product",
+    sort_order: str = "asc",
+) -> dict[str, Any]:
 
-def get_historical_vs_forecast(
-    db: Session,
-    company_id: int,
-):
+    valid_risks = {
+        OUT_OF_STOCK,
+        STOCKOUT_RISK,
+        LOW_STOCK,
+        HEALTHY,
+        OVERSTOCK,
+    }
 
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
+    normalized_risk = None
+
+    if stock_risk:
+
+        normalized_risk = (
+            str(stock_risk)
+            .strip()
+            .upper()
+        )
+
+        if normalized_risk not in valid_risks:
+
+            raise ValueError(
+                "Invalid stock_risk"
+            )
+
+    normalized_sort = (
+        str(sort_by)
+        .strip()
+        .lower()
     )
 
-    forecasts = (
-        _latest_forecast_per_product_period(
-            forecasts
+    if normalized_sort not in INVENTORY_SORT_FIELDS:
+
+        raise ValueError(
+            "Invalid sort_by"
+        )
+
+    normalized_order = (
+        str(sort_order)
+        .strip()
+        .lower()
+    )
+
+    if normalized_order not in INVENTORY_SORT_ORDERS:
+
+        raise ValueError(
+            "sort_order must be asc or desc"
+        )
+
+    return {
+        "stock_risk": normalized_risk,
+        "sort_by": normalized_sort,
+        "sort_order": normalized_order,
+    }
+
+
+# ============================================================
+# PRODUCT FORECASTS
+# ============================================================
+
+def get_product_forecasts(
+    db: Session,
+    company_id: int,
+    product_id: Optional[int] = None,
+    period: str = "30",
+    forecast_days: Optional[int] = None,
+    forecast_period: Optional[str] = None,
+    search: Optional[str] = None,
+    category_id: Optional[int] = None,
+    brand: Optional[str] = None,
+    sort_by: str = "highest_demand",
+) -> list[dict[str, Any]]:
+
+    days = get_forecast_days(
+        forecast_period=forecast_period,
+        forecast_days=(
+            forecast_days
+            if forecast_days is not None
+            else period
+        ),
+    )
+
+    products_query = (
+        db.query(Product)
+        .filter(
+            Product.company_id
+            == company_id
         )
     )
 
-    period_data = {}
+    if product_id is not None:
 
-    for item in forecasts:
-
-        period = (
-            normalize_forecast_period(
-                item.forecast_period
+        products_query = (
+            products_query.filter(
+                Product.id
+                == product_id
             )
         )
 
-        if period not in VALID_FORECAST_PERIODS:
-            continue
+    if (
+        category_id is not None
+        and hasattr(
+            Product,
+            "category_id",
+        )
+    ):
 
-        if period not in period_data:
-
-            period_data[period] = {
-                "historical_sales": 0,
-                "predicted_sales": 0,
-            }
-
-        period_data[
-            period
-        ]["historical_sales"] += int(
-            item.historical_sales
-            or 0
+        products_query = (
+            products_query.filter(
+                Product.category_id
+                == category_id
+            )
         )
 
-        period_data[
-            period
-        ]["predicted_sales"] += int(
-            item.predicted_demand
-            or 0
-        )
+    products = products_query.all()
+
+    search_value = (
+        str(search).strip().lower()
+        if search
+        else ""
+    )
+
+    brand_value = (
+        str(brand).strip().lower()
+        if brand
+        else ""
+    )
 
     result = []
 
-    for period in [
-        "7_DAYS",
-        "30_DAYS",
-        "90_DAYS",
-    ]:
+    for product in products:
 
-        if period not in period_data:
-            continue
+        name = str(
+            getattr(
+                product,
+                "name",
+                "",
+            )
+        )
 
-        result.append(
-            {
-                "period":
-                    period,
+        sku = str(
+            getattr(
+                product,
+                "sku",
+                "",
+            )
+        )
 
-                "historical_sales":
-                    period_data[
-                        period
-                    ]["historical_sales"],
+        product_brand = (
+            _get_product_brand(
+                product
+            )
+        )
 
-                "predicted_sales":
-                    period_data[
-                        period
-                    ]["predicted_sales"],
-            }
+        if search_value:
+
+            if (
+                search_value
+                not in name.lower()
+                and search_value
+                not in sku.lower()
+            ):
+                continue
+
+        if brand_value:
+
+            if (
+                brand_value
+                not in product_brand.lower()
+            ):
+                continue
+
+        row = build_inventory_forecast(
+            db=db,
+            company_id=company_id,
+            product=product,
+            forecast_days=days,
+        )
+
+        result.append(row)
+
+    sort_value = (
+        str(
+            sort_by
+            or "highest_demand"
+        )
+        .strip()
+        .lower()
+    )
+
+    if sort_value in {
+        "highest_demand",
+        "forecasted_demand",
+        "demand",
+    }:
+
+        result.sort(
+            key=lambda row:
+                _safe_float(
+                    row.get(
+                        "forecasted_demand"
+                    )
+                ),
+            reverse=True,
+        )
+
+    elif sort_value == "lowest_demand":
+
+        result.sort(
+            key=lambda row:
+                _safe_float(
+                    row.get(
+                        "forecasted_demand"
+                    )
+                )
+        )
+
+    elif sort_value in {
+        "highest_confidence",
+        "confidence_score",
+    }:
+
+        result.sort(
+            key=lambda row:
+                _safe_float(
+                    row.get(
+                        "confidence_score"
+                    )
+                ),
+            reverse=True,
+        )
+
+    elif sort_value in {
+        "recommended_quantity",
+        "reorder",
+    }:
+
+        result.sort(
+            key=lambda row:
+                _safe_float(
+                    row.get(
+                        "recommended_quantity"
+                    )
+                ),
+            reverse=True,
+        )
+
+    elif sort_value == "product":
+
+        result.sort(
+            key=lambda row:
+                str(
+                    row.get(
+                        "product",
+                        "",
+                    )
+                ).lower()
+        )
+
+    elif sort_value == "sku":
+
+        result.sort(
+            key=lambda row:
+                str(
+                    row.get(
+                        "sku",
+                        "",
+                    )
+                ).lower()
         )
 
     return result
 
 
-# ==========================================================
-# PRODUCT TREND
-# ==========================================================
+# ============================================================
+# CATEGORY FORECASTS
+# ============================================================
 
-def get_product_trend(
+def get_category_forecasts(
     db: Session,
     company_id: int,
-):
+    forecast_period: Optional[str] = None,
+) -> list[dict[str, Any]]:
 
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
+    days = get_forecast_days(
+        forecast_period=forecast_period,
+        forecast_days=None,
     )
 
-    forecasts = [
-        item
-        for item in forecasts
-        if normalize_forecast_period(
-            item.forecast_period
-        ) in VALID_FORECAST_PERIODS
-    ]
+    rows = get_product_forecasts(
+        db=db,
+        company_id=company_id,
+        forecast_period=str(days),
+    )
 
-    forecasts = (
-        _latest_forecast_per_product(
-            forecasts
+    categories: dict[
+        str,
+        dict[str, Any]
+    ] = {}
+
+    for row in rows:
+
+        category_id = row.get(
+            "category_id"
         )
-    )
+
+        category_name = row.get(
+            "category",
+            "Uncategorized",
+        )
+
+        key = (
+            str(category_id)
+            if category_id is not None
+            else str(category_name)
+        )
+
+        if key not in categories:
+
+            categories[key] = {
+                "category_id": category_id,
+                "category": category_name,
+                "forecast_days": days,
+                "product_count": 0,
+                "historical_sales": 0.0,
+                "forecasted_demand": 0.0,
+                "current_stock": 0,
+                "recommended_quantity": 0,
+                "forecast_value": 0.0,
+                "confidence_total": 0.0,
+            }
+
+        category = categories[key]
+
+        category[
+            "product_count"
+        ] += 1
+
+        category[
+            "historical_sales"
+        ] += _safe_float(
+            row.get(
+                "historical_sales"
+            )
+        )
+
+        category[
+            "forecasted_demand"
+        ] += _safe_float(
+            row.get(
+                "forecasted_demand"
+            )
+        )
+
+        category[
+            "current_stock"
+        ] += _safe_int(
+            row.get(
+                "current_stock"
+            )
+        )
+
+        category[
+            "recommended_quantity"
+        ] += _safe_int(
+            row.get(
+                "recommended_quantity"
+            )
+        )
+
+        category[
+            "forecast_value"
+        ] += _safe_float(
+            row.get(
+                "forecast_value"
+            )
+        )
+
+        category[
+            "confidence_total"
+        ] += _safe_float(
+            row.get(
+                "confidence_score"
+            )
+        )
 
     result = []
 
-    for item in forecasts:
+    for category in categories.values():
+
+        count = max(
+            _safe_int(
+                category[
+                    "product_count"
+                ]
+            ),
+            1,
+        )
+
+        average_confidence = (
+            category[
+                "confidence_total"
+            ]
+            / count
+        )
+
+        forecasted = _safe_float(
+            category[
+                "forecasted_demand"
+            ]
+        )
+
+        stock = _safe_float(
+            category[
+                "current_stock"
+            ]
+        )
+
+        category[
+            "historical_sales"
+        ] = round(
+            _safe_float(
+                category[
+                    "historical_sales"
+                ]
+            ),
+            2,
+        )
+
+        category[
+            "forecasted_demand"
+        ] = round(
+            forecasted,
+            2,
+        )
+
+        category[
+            "current_stock"
+        ] = _safe_int(
+            category[
+                "current_stock"
+            ]
+        )
+
+        category[
+            "recommended_quantity"
+        ] = _safe_int(
+            category[
+                "recommended_quantity"
+            ]
+        )
+
+        category[
+            "forecast_value"
+        ] = round(
+            _safe_float(
+                category[
+                    "forecast_value"
+                ]
+            ),
+            2,
+        )
+
+        category[
+            "average_confidence"
+        ] = round(
+            average_confidence,
+            2,
+        )
+
+        category[
+            "category_recommendation"
+        ] = calculate_category_recommendation(
+            stock,
+            forecasted,
+        )
 
         result.append(
-            {
-                "product":
-                    (
-                        item.product.name
-                        if item.product
-                        else ""
-                    ),
-
-                "demand":
-                    int(
-                        item.predicted_demand
-                        or 0
-                    ),
-            }
+            category
         )
 
     result.sort(
-        key=lambda x:
-            x["demand"],
+        key=lambda row:
+            _safe_float(
+                row.get(
+                    "forecasted_demand"
+                )
+            ),
         reverse=True,
     )
-
-    return result[:10]
-
-
-# ==========================================================
-# CATEGORY TREND
-# ==========================================================
-
-def get_category_trend(
-    db: Session,
-    company_id: int,
-):
-
-    categories = get_category_forecasts(
-        db,
-        company_id,
-    )
-
-    categories.sort(
-        key=lambda x:
-            x["predicted_demand"],
-        reverse=True,
-    )
-
-    return [
-        {
-            "category":
-                item["category_name"],
-
-            "demand":
-                item["predicted_demand"],
-        }
-        for item in categories
-    ]
-
-
-# ==========================================================
-# SEASONAL PATTERN
-# ==========================================================
-
-def get_seasonal_pattern(
-    db: Session,
-    company_id: int,
-):
-
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
-    )
-
-    forecasts = (
-        _latest_forecast_per_product_period(
-            forecasts
-        )
-    )
-
-    result = []
-
-    for item in forecasts:
-
-        if (
-            normalize_forecast_period(
-                item.forecast_period
-            )
-            not in VALID_FORECAST_PERIODS
-        ):
-            continue
-
-        month = ""
-
-        if item.generated_at:
-
-            month = (
-                item.generated_at
-                .strftime("%B")
-            )
-
-        result.append(
-            {
-                "month":
-                    month,
-
-                "sales":
-                    int(
-                        item.historical_sales
-                        or 0
-                    ),
-
-                "forecast":
-                    int(
-                        item.predicted_demand
-                        or 0
-                    ),
-
-                "period":
-                    normalize_forecast_period(
-                        item.forecast_period
-                    ),
-            }
-        )
 
     return result
 
 
-# ==========================================================
+# ============================================================
+# INVENTORY FORECAST API
+# ============================================================
+
+def get_inventory_forecast(
+    db: Session,
+    company_id: int,
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+    lead_time_days: int = DEFAULT_LEAD_TIME_DAYS,
+    safety_stock_days: int = DEFAULT_SAFETY_STOCK_DAYS,
+    stock_risk: Optional[str] = None,
+    sort_by: str = "product",
+    sort_order: str = "asc",
+    search: str = "",
+) -> list[dict[str, Any]]:
+
+    parameters = (
+        validate_inventory_forecast_parameters(
+            forecast_days=forecast_days,
+            lead_time_days=lead_time_days,
+            safety_stock_days=safety_stock_days,
+        )
+    )
+
+    filters = validate_inventory_filters(
+        stock_risk=stock_risk,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    rows = get_inventory_recommendations(
+        db=db,
+        company_id=company_id,
+        forecast_days=parameters[
+            "forecast_days"
+        ],
+        lead_time_days=parameters[
+            "lead_time_days"
+        ],
+        safety_stock_days=parameters[
+            "safety_stock_days"
+        ],
+    )
+
+    search_value = (
+        str(search).strip().lower()
+        if search
+        else ""
+    )
+
+    if search_value:
+
+        rows = [
+            row
+            for row in rows
+            if (
+                search_value
+                in str(
+                    row.get(
+                        "product",
+                        "",
+                    )
+                ).lower()
+                or
+                search_value
+                in str(
+                    row.get(
+                        "sku",
+                        "",
+                    )
+                ).lower()
+            )
+        ]
+
+    if filters["stock_risk"]:
+
+        rows = [
+            row
+            for row in rows
+            if row.get(
+                "stock_risk"
+            )
+            == filters[
+                "stock_risk"
+            ]
+        ]
+
+    field = filters[
+        "sort_by"
+    ]
+
+    reverse = (
+        filters[
+            "sort_order"
+        ]
+        == "desc"
+    )
+
+    numeric_fields = {
+        "current_stock",
+        "recommended_quantity",
+        "forecasted_demand",
+        "days_of_stock_remaining",
+        "confidence_score",
+    }
+
+    if field in numeric_fields:
+
+        rows.sort(
+            key=lambda row:
+                _safe_float(
+                    row.get(field)
+                ),
+            reverse=reverse,
+        )
+
+    else:
+
+        rows.sort(
+            key=lambda row:
+                str(
+                    row.get(
+                        field,
+                        "",
+                    )
+                ).lower(),
+            reverse=reverse,
+        )
+
+    return rows
+
+
+def get_bulk_inventory_forecast(
+    db: Session,
+    company_id: int,
+    forecast_days: int = DEFAULT_FORECAST_DAYS,
+) -> list[dict[str, Any]]:
+
+    return get_inventory_forecast(
+        db=db,
+        company_id=company_id,
+        forecast_days=forecast_days,
+        sort_by="product",
+        sort_order="asc",
+    )
+
+
+# ============================================================
 # TOP PREDICTED PRODUCTS
-# ==========================================================
+# ============================================================
 
 def get_top_predicted_products(
     db: Session,
     company_id: int,
+    forecast_period: Optional[str] = None,
     limit: int = 10,
-):
+) -> list[dict[str, Any]]:
 
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
+    rows = get_product_forecasts(
+        db=db,
+        company_id=company_id,
+        forecast_period=(
+            forecast_period
+            or "30"
+        ),
+        sort_by="highest_demand",
     )
 
-    forecasts = [
-        item
-        for item in forecasts
-        if normalize_forecast_period(
-            item.forecast_period
-        ) in VALID_FORECAST_PERIODS
-    ]
-
-    forecasts = (
-        _latest_forecast_per_product(
-            forecasts
-        )
+    safe_limit = max(
+        _safe_int(
+            limit,
+            10,
+        ),
+        1,
     )
 
-    forecasts.sort(
-        key=lambda x:
-            x.predicted_demand or 0,
-        reverse=True,
-    )
-
-    forecasts = forecasts[:limit]
-
-    return [
-        {
-            "product_id":
-                item.product_id,
-
-            "product_name":
-                (
-                    item.product.name
-                    if item.product
-                    else ""
-                ),
-
-            "predicted_demand":
-                int(
-                    item.predicted_demand
-                    or 0
-                ),
-
-            "historical_sales":
-                int(
-                    item.historical_sales
-                    or 0
-                ),
-
-            "confidence_score":
-                float(
-                    item.confidence_score
-                    or 0
-                ),
-
-            "forecast_period":
-                normalize_forecast_period(
-                    item.forecast_period
-                ),
-        }
-        for item in forecasts
-    ]
+    return rows[:safe_limit]
 
 
-# ==========================================================
-# COMPLETE FORECAST ANALYTICS
-# ==========================================================
+# ============================================================
+# FORECAST ANALYTICS
+# ============================================================
 
 def get_forecast_analytics(
     db: Session,
     company_id: int,
-):
+) -> dict[str, Any]:
+
+    rows = get_product_forecasts(
+        db=db,
+        company_id=company_id,
+        forecast_period="30",
+        sort_by="highest_demand",
+    )
+
+    total_products = len(
+        rows
+    )
+
+    total_historical_sales = round(
+        sum(
+            _safe_float(
+                row.get(
+                    "historical_sales"
+                )
+            )
+            for row in rows
+        ),
+        2,
+    )
+
+    total_forecasted_demand = round(
+        sum(
+            _safe_float(
+                row.get(
+                    "forecasted_demand"
+                )
+            )
+            for row in rows
+        ),
+        2,
+    )
+
+    total_current_stock = sum(
+        _safe_int(
+            row.get(
+                "current_stock"
+            )
+        )
+        for row in rows
+    )
+
+    total_recommended_quantity = sum(
+        _safe_int(
+            row.get(
+                "recommended_quantity"
+            )
+        )
+        for row in rows
+    )
+
+    confidence_values = [
+        _safe_float(
+            row.get(
+                "confidence_score"
+            )
+        )
+        for row in rows
+    ]
+
+    average_confidence = (
+        round(
+            sum(
+                confidence_values
+            )
+            / len(
+                confidence_values
+            ),
+            2,
+        )
+        if confidence_values
+        else 0.0
+    )
+
+    risk_counts = {
+        OUT_OF_STOCK: 0,
+        STOCKOUT_RISK: 0,
+        LOW_STOCK: 0,
+        HEALTHY: 0,
+        OVERSTOCK: 0,
+    }
+
+    for row in rows:
+
+        risk = row.get(
+            "stock_risk"
+        )
+
+        if risk in risk_counts:
+
+            risk_counts[
+                risk
+            ] += 1
+
+    # ========================================================
+    # IMPORTANT FIX:
+    #
+    # Historical sales = 90-day value
+    # Forecast = 30-day value
+    #
+    # Normalize historical sales to 30 days
+    # before calculating growth.
+    # ========================================================
+
+    forecast_growth = (
+        calculate_growth_percentage(
+            historical=total_historical_sales,
+            forecasted=total_forecasted_demand,
+            historical_days=HISTORICAL_DAYS,
+            forecast_days=30,
+        )
+    )
+
+    category_rows = (
+        get_category_forecasts(
+            db=db,
+            company_id=company_id,
+            forecast_period="30",
+        )
+    )
+
+    total_forecast_value = round(
+        sum(
+            _safe_float(
+                row.get(
+                    "forecast_value"
+                )
+            )
+            for row in rows
+        ),
+        2,
+    )
 
     return {
-        "dashboard":
-            get_forecast_dashboard(
-                db,
-                company_id,
-            ),
+        "forecast_period": "30",
 
-        "product_forecasts":
-            get_product_forecasts(
-                db,
-                company_id,
-            ),
+        "forecast_days": 30,
 
-        "category_forecasts":
-            get_category_forecasts(
-                db,
-                company_id,
-            ),
+        "total_products": (
+            total_products
+        ),
 
-        "recommendations":
-            get_inventory_recommendations(
-                db,
-                company_id,
-            ),
+        "total_historical_sales": (
+            total_historical_sales
+        ),
 
-        "historical_vs_forecast":
-            get_historical_vs_forecast(
-                db,
-                company_id,
-            ),
+        "total_forecasted_demand": (
+            total_forecasted_demand
+        ),
 
-        "product_trend":
-            get_product_trend(
-                db,
-                company_id,
-            ),
+        "forecast_growth_percentage": (
+            forecast_growth
+        ),
 
-        "category_trend":
-            get_category_trend(
-                db,
-                company_id,
-            ),
+        "total_current_stock": (
+            total_current_stock
+        ),
 
-        "seasonal_pattern":
-            get_seasonal_pattern(
-                db,
-                company_id,
-            ),
+        "total_recommended_quantity": (
+            total_recommended_quantity
+        ),
+
+        "average_confidence_score": (
+            average_confidence
+        ),
+
+        "forecast_value": (
+            total_forecast_value
+        ),
+
+        "out_of_stock_count": (
+            risk_counts[
+                OUT_OF_STOCK
+            ]
+        ),
+
+        "stockout_risk_count": (
+            risk_counts[
+                STOCKOUT_RISK
+            ]
+        ),
+
+        "low_stock_count": (
+            risk_counts[
+                LOW_STOCK
+            ]
+        ),
+
+        "healthy_stock_count": (
+            risk_counts[
+                HEALTHY
+            ]
+        ),
+
+        "overstock_count": (
+            risk_counts[
+                OVERSTOCK
+            ]
+        ),
+
+        "risk_summary": risk_counts,
+
+        "top_products": rows[:10],
+
+        "categories": category_rows,
     }
 
 
-# ==========================================================
-# AUDIT LOG
-# ==========================================================
-
-def create_forecast_audit_log(
-    db: Session,
-    company_id: int,
-    user_id: int,
-    action: str,
-    forecast_period: str | None = None,
-    product_id: int | None = None,
-):
-
-    from app.models.audit_log import AuditLog
-
-    audit = AuditLog(
-        company_id=company_id,
-        user_id=user_id,
-        action=action,
-        created_at=datetime.now(),
-    )
-
-    db.add(audit)
-    db.commit()
-    db.refresh(audit)
-
-    return audit
-
-
-# ==========================================================
-# CSV - PRODUCT
-# ==========================================================
-
-def export_product_forecast_csv(
-    db: Session,
-    company_id: int,
-):
-
-    forecasts = get_product_forecasts(
-        db=db,
-        company_id=company_id,
-    )
-
-    output = io.StringIO()
-
-    writer = csv.writer(
-        output
-    )
-
-    writer.writerow(
-        [
-            "Product",
-            "Category",
-            "Brand",
-            "Current Stock",
-            "Available Stock",
-            "Reorder Level",
-            "Historical Sales",
-            "Predicted Demand",
-            "Forecast Period",
-            "Growth %",
-            "Confidence Score",
-            "Accuracy %",
-            "Recommendation",
-            "Forecast Value",
-        ]
-    )
-
-    for item in forecasts:
-
-        writer.writerow(
-            [
-                item.get(
-                    "product_name",
-                    "",
-                ),
-
-                item.get(
-                    "category_name",
-                    "",
-                ),
-
-                item.get(
-                    "brand",
-                    "",
-                ),
-
-                item.get(
-                    "current_stock",
-                    0,
-                ),
-
-                item.get(
-                    "available_stock",
-                    0,
-                ),
-
-                item.get(
-                    "reorder_level",
-                    0,
-                ),
-
-                item.get(
-                    "historical_sales",
-                    0,
-                ),
-
-                item.get(
-                    "predicted_demand",
-                    0,
-                ),
-
-                item.get(
-                    "forecast_period",
-                    "",
-                ),
-
-                item.get(
-                    "expected_growth_percentage",
-                    0,
-                ),
-
-                item.get(
-                    "confidence_score",
-                    0,
-                ),
-
-                item.get(
-                    "forecast_accuracy",
-                    0,
-                ),
-
-                item.get(
-                    "recommendation",
-                    "",
-                ),
-
-                item.get(
-                    "forecast_value",
-                    0,
-                ),
-            ]
-        )
-
-    return output.getvalue()
-
-
-# ==========================================================
-# CSV - CATEGORY
-# ==========================================================
-
-def export_category_forecast_csv(
-    db: Session,
-    company_id: int,
-):
-
-    categories = get_category_forecasts(
-        db=db,
-        company_id=company_id,
-    )
-
-    output = io.StringIO()
-
-    writer = csv.writer(
-        output
-    )
-
-    writer.writerow(
-        [
-            "Category",
-            "Historical Sales",
-            "Predicted Demand",
-            "Growth %",
-            "Confidence Score",
-            "Accuracy %",
-            "Recommendation",
-            "Forecast Value",
-        ]
-    )
-
-    for item in categories:
-
-        writer.writerow(
-            [
-                item.get(
-                    "category_name",
-                    "",
-                ),
-
-                item.get(
-                    "total_historical_sales",
-                    0,
-                ),
-
-                item.get(
-                    "predicted_demand",
-                    0,
-                ),
-
-                item.get(
-                    "expected_growth_percentage",
-                    0,
-                ),
-
-                item.get(
-                    "confidence_score",
-                    0,
-                ),
-
-                item.get(
-                    "forecast_accuracy",
-                    0,
-                ),
-
-                item.get(
-                    "recommendation",
-                    "",
-                ),
-
-                item.get(
-                    "forecast_value",
-                    0,
-                ),
-            ]
-        )
-
-    return output.getvalue()
-
-
-# ==========================================================
-# PDF - PRODUCT
-# ==========================================================
-
-def export_product_forecast_pdf(
-    db: Session,
-    company_id: int,
-):
-
-    forecasts = get_product_forecasts(
-        db=db,
-        company_id=company_id,
-    )
-
-    buffer = io.BytesIO()
-
-    pdf = SimpleDocTemplate(
-        buffer,
-        rightMargin=25,
-        leftMargin=25,
-        topMargin=30,
-        bottomMargin=30,
-    )
-
-    styles = getSampleStyleSheet()
-
-    elements = []
-
-    elements.append(
-        Paragraph(
-            "Demand Forecast Report",
-            styles["Title"],
-        )
-    )
-
-    elements.append(
-        Spacer(
-            1,
-            12,
-        )
-    )
-
-    data = [
-        [
-            "Product",
-            "Category",
-            "Stock",
-            "Historical",
-            "Predicted",
-            "Growth %",
-            "Confidence",
-            "Recommendation",
-        ]
-    ]
-
-    for item in forecasts:
-
-        data.append(
-            [
-                item.get(
-                    "product_name",
-                    "",
-                ),
-
-                item.get(
-                    "category_name",
-                    "",
-                ),
-
-                item.get(
-                    "current_stock",
-                    0,
-                ),
-
-                item.get(
-                    "historical_sales",
-                    0,
-                ),
-
-                item.get(
-                    "predicted_demand",
-                    0,
-                ),
-
-                f'{item.get("expected_growth_percentage", 0):.2f}%',
-
-                f'{item.get("confidence_score", 0):.2f}%',
-
-                item.get(
-                    "recommendation",
-                    "",
-                ),
-            ]
-        )
-
-    table = Table(
-        data,
-        repeatRows=1,
-    )
-
-    table.setStyle(
-        TableStyle(
-            [
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.grey,
-                ),
-
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, 0),
-                    colors.lightgrey,
-                ),
-
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (-1, 0),
-                    "Helvetica-Bold",
-                ),
-
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "MIDDLE",
-                ),
-
-                (
-                    "ALIGN",
-                    (2, 1),
-                    (-2, -1),
-                    "CENTER",
-                ),
-
-                (
-                    "FONTSIZE",
-                    (0, 0),
-                    (-1, -1),
-                    8,
-                ),
-
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, 0),
-                    8,
-                ),
-            ]
-        )
-    )
-
-    elements.append(table)
-
-    pdf.build(
-        elements
-    )
-
-    buffer.seek(0)
-
-    return buffer
-
-
-# ==========================================================
+# ============================================================
 # FORECAST NOTIFICATIONS
-# ==========================================================
+# ============================================================
 
 def create_forecast_notifications(
     db: Session,
     company_id: int,
-):
+) -> list[Any]:
 
-    forecasts = _get_company_forecasts(
-        db,
-        company_id,
+    rows = get_inventory_recommendations(
+        db=db,
+        company_id=company_id,
+        forecast_days=30,
     )
-
-    forecasts = [
-        item
-        for item in forecasts
-        if normalize_forecast_period(
-            item.forecast_period
-        ) in VALID_FORECAST_PERIODS
-    ]
-
-    forecasts = (
-        _latest_forecast_per_product(
-            forecasts
-        )
-    )
-
-    company_users = (
-        db.query(User)
-        .filter(
-            User.company_id
-            == company_id
-        )
-        .all()
-    )
-
-    if not company_users:
-        return []
 
     notifications = []
 
-    for item in forecasts:
+    try:
 
-        if not item.product:
+        from app.models.notification import (
+            Notification
+        )
+
+    except Exception:
+
+        Notification = None
+
+    for row in rows:
+
+        risk = row.get(
+            "stock_risk"
+        )
+
+        if risk not in {
+            OUT_OF_STOCK,
+            STOCKOUT_RISK,
+            LOW_STOCK,
+        }:
             continue
 
-        # --------------------------------------------------
-        # STOCK OUT / DEMAND EXCEEDS STOCK
-        # --------------------------------------------------
+        product_name = row.get(
+            "product",
+            "Product",
+        )
 
-        if (
-            item.predicted_demand or 0
-        ) > (
-            item.available_stock or 0
-        ):
+        recommended = _safe_int(
+            row.get(
+                "recommended_quantity"
+            )
+        )
+
+        if risk == OUT_OF_STOCK:
 
             title = (
-                "Forecast Stock Alert"
+                "Product Out of Stock"
             )
 
             message = (
-                f"{item.product.name} "
-                f"forecast demand "
-                f"{item.predicted_demand} "
-                f"is higher than available "
-                f"stock "
-                f"{item.available_stock}."
+                f"{product_name} is currently "
+                f"out of stock. Recommended "
+                f"reorder quantity: "
+                f"{recommended}."
             )
 
-        # --------------------------------------------------
-        # LOW STOCK
-        # --------------------------------------------------
+        elif risk == STOCKOUT_RISK:
 
-        elif (
-            item.available_stock or 0
-        ) <= (
-            item.reorder_level or 0
-        ):
-
-            title = (
-                "Reorder Recommendation"
-            )
+            title = "Stockout Risk"
 
             message = (
-                f"{item.product.name} "
-                "needs stock replenishment."
+                f"{product_name} is at risk "
+                f"of stockout. Recommended "
+                f"reorder quantity: "
+                f"{recommended}."
             )
 
         else:
 
-            title = None
-            message = None
+            title = "Low Stock Alert"
 
-        if title:
+            message = (
+                f"{product_name} has low stock. "
+                f"Recommended reorder quantity: "
+                f"{recommended}."
+            )
 
-            for user in company_users:
+        if Notification is None:
 
-                notification = Notification(
-                    company_id=company_id,
-                    user_id=user.id,
-                    title=title,
-                    message=message,
-                    notification_type="FORECAST",
-                    is_read=False,
-                )
-
-                db.add(
-                    notification
-                )
-
-                notifications.append(
-                    notification
-                )
-
-        # --------------------------------------------------
-        # HIGH GROWTH
-        # --------------------------------------------------
-
-        if (
-            item.expected_growth_percentage
-            or 0
-        ) >= 20:
-
-            for user in company_users:
-
-                notification = Notification(
-                    company_id=company_id,
-                    user_id=user.id,
-                    title="High Demand Growth",
-                    message=(
-                        f"{item.product.name} "
-                        "shows significant "
-                        "demand growth."
+            notifications.append(
+                {
+                    "product_id": row.get(
+                        "product_id"
                     ),
-                    notification_type="FORECAST",
-                    is_read=False,
-                )
+                    "title": title,
+                    "message": message,
+                    "type": (
+                        "INVENTORY_FORECAST"
+                    ),
+                    "stock_risk": risk,
+                }
+            )
 
-                db.add(
-                    notification
-                )
+            continue
 
-                notifications.append(
-                    notification
-                )
+        try:
 
-    db.commit()
+            available_fields = {
+                column.name
+                for column
+                in Notification.__table__.columns
+            }
+
+            notification_data = {}
+
+            if "company_id" in available_fields:
+
+                notification_data[
+                    "company_id"
+                ] = company_id
+
+            if "title" in available_fields:
+
+                notification_data[
+                    "title"
+                ] = title
+
+            if "message" in available_fields:
+
+                notification_data[
+                    "message"
+                ] = message
+
+            if "type" in available_fields:
+
+                notification_data[
+                    "type"
+                ] = "INVENTORY_FORECAST"
+
+            if (
+                "notification_type"
+                in available_fields
+            ):
+
+                notification_data[
+                    "notification_type"
+                ] = "INVENTORY_FORECAST"
+
+            if "is_read" in available_fields:
+
+                notification_data[
+                    "is_read"
+                ] = False
+
+            if "read" in available_fields:
+
+                notification_data[
+                    "read"
+                ] = False
+
+            if "created_at" in available_fields:
+
+                notification_data[
+                    "created_at"
+                ] = datetime.utcnow()
+
+            notification = Notification(
+                **notification_data
+            )
+
+            db.add(
+                notification
+            )
+
+            notifications.append(
+                notification
+            )
+
+        except Exception:
+
+            continue
+
+    if Notification is not None:
+
+        try:
+
+            db.commit()
+
+        except Exception:
+
+            db.rollback()
 
     return notifications
+
+
+# ============================================================
+# AUDIT LOG
+# ============================================================
+
+def create_forecast_audit_log(
+    db: Session,
+    company_id: int,
+    user_id: Optional[int] = None,
+    action: str = "Forecast Action",
+    forecast_period: Optional[str] = None,
+):
+
+    try:
+
+        from app.models.audit_log import (
+            AuditLog
+        )
+
+    except Exception:
+
+        return None
+
+    try:
+
+        available_fields = {
+            column.name
+            for column
+            in AuditLog.__table__.columns
+        }
+
+        values = {}
+
+        if "company_id" in available_fields:
+
+            values[
+                "company_id"
+            ] = company_id
+
+        if "user_id" in available_fields:
+
+            values[
+                "user_id"
+            ] = user_id
+
+        if "action" in available_fields:
+
+            values[
+                "action"
+            ] = action
+
+        if "activity" in available_fields:
+
+            values[
+                "activity"
+            ] = action
+
+        if "description" in available_fields:
+
+            if forecast_period:
+
+                values[
+                    "description"
+                ] = (
+                    f"{action} for forecast "
+                    f"period {forecast_period} days"
+                )
+
+            else:
+
+                values[
+                    "description"
+                ] = action
+
+        if "created_at" in available_fields:
+
+            values[
+                "created_at"
+            ] = datetime.utcnow()
+
+        audit = AuditLog(
+            **values
+        )
+
+        db.add(
+            audit
+        )
+
+        db.commit()
+
+        return audit
+
+    except Exception:
+
+        db.rollback()
+
+        return None
+
+
+# ============================================================
+# CSV EXPORT
+# ============================================================
+
+def export_product_forecast_csv(
+    db: Session,
+    company_id: int,
+    forecast_period: Optional[str] = "30",
+) -> str:
+
+    rows = get_product_forecasts(
+        db=db,
+        company_id=company_id,
+        forecast_period=(
+            forecast_period
+            or "30"
+        ),
+    )
+
+    output = StringIO()
+
+    writer = csv.writer(
+        output
+    )
+
+    writer.writerow(
+        [
+            "Product ID",
+            "Product",
+            "SKU",
+            "Category",
+            "Brand",
+            "Supplier",
+            "Forecast Days",
+            "Historical Sales",
+            "Average Daily Sales",
+            "Forecasted Demand",
+            "Forecast Value",
+            "Confidence Score",
+            "Current Stock",
+            "Safety Stock",
+            "Reorder Point",
+            "Days of Stock Remaining",
+            "Recommended Quantity",
+            "Stock Risk",
+            "Reorder Required",
+        ]
+    )
+
+    for row in rows:
+
+        writer.writerow(
+            [
+                row.get(
+                    "product_id"
+                ),
+                row.get(
+                    "product"
+                ),
+                row.get(
+                    "sku"
+                ),
+                row.get(
+                    "category"
+                ),
+                row.get(
+                    "brand"
+                ),
+                row.get(
+                    "supplier"
+                ),
+                row.get(
+                    "forecast_days"
+                ),
+                row.get(
+                    "historical_sales"
+                ),
+                row.get(
+                    "average_daily_sales"
+                ),
+                row.get(
+                    "forecasted_demand"
+                ),
+                row.get(
+                    "forecast_value"
+                ),
+                row.get(
+                    "confidence_score"
+                ),
+                row.get(
+                    "current_stock"
+                ),
+                row.get(
+                    "safety_stock"
+                ),
+                row.get(
+                    "reorder_point"
+                ),
+                row.get(
+                    "days_of_stock_remaining"
+                ),
+                row.get(
+                    "recommended_quantity"
+                ),
+                row.get(
+                    "stock_risk"
+                ),
+                row.get(
+                    "reorder_required"
+                ),
+            ]
+        )
+
+    return output.getvalue()
+
+
+def export_category_forecast_csv(
+    db: Session,
+    company_id: int,
+    forecast_period: Optional[str] = "30",
+) -> str:
+
+    rows = get_category_forecasts(
+        db=db,
+        company_id=company_id,
+        forecast_period=(
+            forecast_period
+            or "30"
+        ),
+    )
+
+    output = StringIO()
+
+    writer = csv.writer(
+        output
+    )
+
+    writer.writerow(
+        [
+            "Category ID",
+            "Category",
+            "Forecast Days",
+            "Product Count",
+            "Historical Sales",
+            "Forecasted Demand",
+            "Current Stock",
+            "Recommended Quantity",
+            "Category Recommendation",
+            "Forecast Value",
+            "Average Confidence",
+        ]
+    )
+
+    for row in rows:
+
+        writer.writerow(
+            [
+                row.get(
+                    "category_id"
+                ),
+                row.get(
+                    "category"
+                ),
+                row.get(
+                    "forecast_days"
+                ),
+                row.get(
+                    "product_count"
+                ),
+                row.get(
+                    "historical_sales"
+                ),
+                row.get(
+                    "forecasted_demand"
+                ),
+                row.get(
+                    "current_stock"
+                ),
+                row.get(
+                    "recommended_quantity"
+                ),
+                row.get(
+                    "category_recommendation"
+                ),
+                row.get(
+                    "forecast_value"
+                ),
+                row.get(
+                    "average_confidence"
+                ),
+            ]
+        )
+
+    return output.getvalue()
+
+
+# ============================================================
+# PDF EXPORT
+# ============================================================
+
+def export_product_forecast_pdf(
+    db: Session,
+    company_id: int,
+    forecast_period: Optional[str] = "30",
+):
+
+    rows = get_product_forecasts(
+        db=db,
+        company_id=company_id,
+        forecast_period=(
+            forecast_period
+            or "30"
+        ),
+    )
+
+    buffer = BytesIO()
+
+    try:
+
+        from reportlab.lib import colors
+
+        from reportlab.lib.pagesizes import (
+            A4,
+            landscape,
+        )
+
+        from reportlab.lib.styles import (
+            getSampleStyleSheet,
+        )
+
+        from reportlab.platypus import (
+            SimpleDocTemplate,
+            Paragraph,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+
+        document = SimpleDocTemplate(
+            buffer,
+            pagesize=landscape(A4),
+            rightMargin=20,
+            leftMargin=20,
+            topMargin=20,
+            bottomMargin=20,
+        )
+
+        styles = (
+            getSampleStyleSheet()
+        )
+
+        elements = []
+
+        elements.append(
+            Paragraph(
+                "RetailPulse Analytics - Product Forecast Report",
+                styles["Title"],
+            )
+        )
+
+        elements.append(
+            Spacer(
+                1,
+                10,
+            )
+        )
+
+        elements.append(
+            Paragraph(
+                f"Forecast Period: "
+                f"{forecast_period or '30'} days",
+                styles["Normal"],
+            )
+        )
+
+        elements.append(
+            Spacer(
+                1,
+                10,
+            )
+        )
+
+        table_data = [
+            [
+                "Product",
+                "SKU",
+                "Category",
+                "Forecast Demand",
+                "Confidence",
+                "Stock",
+                "Reorder Qty",
+                "Risk",
+            ]
+        ]
+
+        for row in rows:
+
+            table_data.append(
+                [
+                    str(
+                        row.get(
+                            "product",
+                            "",
+                        )
+                    ),
+                    str(
+                        row.get(
+                            "sku",
+                            "",
+                        )
+                    ),
+                    str(
+                        row.get(
+                            "category",
+                            "",
+                        )
+                    ),
+                    str(
+                        row.get(
+                            "forecasted_demand",
+                            0,
+                        )
+                    ),
+                    str(
+                        row.get(
+                            "confidence_score",
+                            0,
+                        )
+                    ),
+                    str(
+                        row.get(
+                            "current_stock",
+                            0,
+                        )
+                    ),
+                    str(
+                        row.get(
+                            "recommended_quantity",
+                            0,
+                        )
+                    ),
+                    str(
+                        row.get(
+                            "stock_risk",
+                            "",
+                        )
+                    ),
+                ]
+            )
+
+        table = Table(
+            table_data,
+            repeatRows=1,
+        )
+
+        table.setStyle(
+            TableStyle(
+                [
+                    (
+                        "BACKGROUND",
+                        (0, 0),
+                        (-1, 0),
+                        colors.grey,
+                    ),
+                    (
+                        "TEXTCOLOR",
+                        (0, 0),
+                        (-1, 0),
+                        colors.white,
+                    ),
+                    (
+                        "GRID",
+                        (0, 0),
+                        (-1, -1),
+                        0.5,
+                        colors.grey,
+                    ),
+                    (
+                        "FONTNAME",
+                        (0, 0),
+                        (-1, 0),
+                        "Helvetica-Bold",
+                    ),
+                    (
+                        "FONTSIZE",
+                        (0, 0),
+                        (-1, -1),
+                        7,
+                    ),
+                    (
+                        "VALIGN",
+                        (0, 0),
+                        (-1, -1),
+                        "MIDDLE",
+                    ),
+                ]
+            )
+        )
+
+        elements.append(
+            table
+        )
+
+        document.build(
+            elements
+        )
+
+        buffer.seek(0)
+
+        return buffer
+
+    except ImportError:
+
+        text = (
+            "RetailPulse Analytics Forecast Report\n\n"
+        )
+
+        for row in rows:
+
+            text += (
+                f"Product: "
+                f"{row.get('product', '')}\n"
+
+                f"SKU: "
+                f"{row.get('sku', '')}\n"
+
+                f"Forecast: "
+                f"{row.get('forecasted_demand', 0)}\n"
+
+                f"Confidence: "
+                f"{row.get('confidence_score', 0)}\n"
+
+                f"Stock: "
+                f"{row.get('current_stock', 0)}\n"
+
+                f"Reorder: "
+                f"{row.get('recommended_quantity', 0)}\n"
+
+                f"Risk: "
+                f"{row.get('stock_risk', '')}\n\n"
+            )
+
+        buffer.write(
+            text.encode(
+                "utf-8"
+            )
+        )
+
+        buffer.seek(0)
+
+        return buffer

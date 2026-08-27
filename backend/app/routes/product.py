@@ -1,9 +1,16 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+)
+
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+
 from app.dependencies.auth import get_current_user
 from app.dependencies.roles import require_roles
 
@@ -27,11 +34,16 @@ from app.services.product_service import (
     get_dashboard_summary,
 )
 
+
 router = APIRouter(
     prefix="/products",
     tags=["Products"],
 )
 
+
+# =====================================================
+# CREATE PRODUCT
+# =====================================================
 
 @router.post(
     "/",
@@ -58,6 +70,10 @@ def create_new_product(
         )
 
 
+# =====================================================
+# GET ALL PRODUCTS
+# =====================================================
+
 @router.get(
     "/",
     response_model=list[ProductResponse],
@@ -68,8 +84,12 @@ def list_products(
     brand: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     sort_by: Optional[str] = Query(None),
+
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     if (
         search
@@ -94,14 +114,22 @@ def list_products(
     )
 
 
+# =====================================================
+# GET SINGLE PRODUCT
+# =====================================================
+
 @router.get(
     "/{product_id}",
     response_model=ProductResponse,
 )
 def get_product_by_id(
     product_id: int,
+
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     product = get_product(
         db,
@@ -118,16 +146,23 @@ def get_product_by_id(
     return product
 
 
+# =====================================================
+# UPDATE PRODUCT
+# =====================================================
+
 @router.put(
     "/{product_id}",
     response_model=ProductResponse,
 )
 def edit_product(
     product_id: int,
+
     data: ProductUpdate,
+
     db: Session = Depends(get_db),
+
     current_user: User = Depends(
-       require_roles("COMPANY_ADMIN")
+        require_roles("COMPANY_ADMIN")
     ),
 ):
     try:
@@ -153,31 +188,49 @@ def edit_product(
         )
 
 
+# =====================================================
+# DELETE PRODUCT
+# =====================================================
+
 @router.delete(
     "/{product_id}",
 )
 def remove_product(
     product_id: int,
+
     db: Session = Depends(get_db),
+
     current_user: User = Depends(
         require_roles("COMPANY_ADMIN")
     ),
 ):
-    success = delete_product(
-        db,
-        product_id,
-        current_user,
-    )
-
-    if not success:
-        raise HTTPException(
-            status_code=404,
-            detail="Product not found.",
+    try:
+        success = delete_product(
+            db,
+            product_id,
+            current_user,
         )
 
-    return {
-        "message": "Product deleted successfully."
-    }
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail="Product not found.",
+            )
+
+        return {
+            "message": "Product deleted successfully."
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        )
+
+
+# =====================================================
+# ACTIVATE PRODUCT
+# =====================================================
 
 @router.patch(
     "/{product_id}/activate",
@@ -185,7 +238,9 @@ def remove_product(
 )
 def activate_product_route(
     product_id: int,
+
     db: Session = Depends(get_db),
+
     current_user: User = Depends(
         require_roles("COMPANY_ADMIN")
     ),
@@ -205,13 +260,19 @@ def activate_product_route(
     return product
 
 
+# =====================================================
+# DEACTIVATE PRODUCT
+# =====================================================
+
 @router.patch(
     "/{product_id}/deactivate",
     response_model=ProductResponse,
 )
 def deactivate_product_route(
     product_id: int,
+
     db: Session = Depends(get_db),
+
     current_user: User = Depends(
         require_roles("COMPANY_ADMIN")
     ),
@@ -231,12 +292,19 @@ def deactivate_product_route(
     return product
 
 
+# =====================================================
+# PRODUCT DASHBOARD SUMMARY
+# =====================================================
+
 @router.get(
     "/dashboard/summary",
 )
 def dashboard_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     return get_dashboard_summary(
         db,

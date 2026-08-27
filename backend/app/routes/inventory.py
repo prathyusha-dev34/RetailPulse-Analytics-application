@@ -6,16 +6,13 @@ from fastapi import (
     HTTPException,
     Query,
 )
-
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-
 from app.dependencies.auth import (
     get_current_user,
     require_company_admin,
 )
-
 from app.models.user import User
 
 from app.schemas.inventory import (
@@ -34,6 +31,14 @@ from app.services.inventory_service import (
     remove_stock,
     adjust_stock,
     update_reorder_level,
+)
+
+from app.services.forecast_service import (
+    get_forecast_analytics,
+    get_product_forecasts,
+    get_category_forecasts,
+    get_inventory_recommendations,
+    get_top_predicted_products,
 )
 
 
@@ -57,16 +62,11 @@ def list_inventory(
     brand: Optional[str] = Query(None),
     stock_status: Optional[str] = Query(None),
     sort_by: Optional[str] = Query(None),
-
     skip: int = Query(0),
     limit: int = Query(10),
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     if (
         search
         or category_id
@@ -74,7 +74,6 @@ def list_inventory(
         or stock_status
         or sort_by
     ):
-
         return search_inventory(
             db=db,
             current_user=current_user,
@@ -87,7 +86,6 @@ def list_inventory(
             limit=limit,
         )
 
-
     return get_inventory(
         db,
         current_user,
@@ -96,26 +94,20 @@ def list_inventory(
     )
 
 
-
 # =====================================
 # DASHBOARD SUMMARY
 # =====================================
 
-@router.get(
-    "/dashboard/summary"
-)
+@router.get("/dashboard/summary")
 def dashboard_summary(
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     return get_dashboard_summary(
         db,
         current_user,
     )
+
 
 # =====================================
 # MOVEMENT HISTORY
@@ -126,17 +118,11 @@ def dashboard_summary(
     response_model=list[InventoryMovementResponse],
 )
 def movement_history(
-
     skip: int = Query(0),
-
     limit: int = Query(10),
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user),
-
 ):
-
     return get_movement_history(
         db,
         current_user,
@@ -144,6 +130,165 @@ def movement_history(
         limit,
     )
 
+
+# ============================================================
+# INVENTORY FORECASTING
+# ============================================================
+
+@router.get(
+    "/forecast",
+    tags=["Inventory"],
+)
+def inventory_forecast(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return get_forecast_analytics(
+            db=db,
+            company_id=current_user.company_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
+
+
+# ============================================================
+# INVENTORY PRODUCT FORECAST
+# ============================================================
+
+@router.get(
+    "/forecast/products",
+    tags=["Inventory"],
+)
+def inventory_product_forecast(
+    forecast_period: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    category_id: Optional[int] = Query(None),
+    brand: Optional[str] = Query(None),
+    sort_by: str = Query("highest_demand"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return get_product_forecasts(
+            db=db,
+            company_id=current_user.company_id,
+            forecast_period=forecast_period,
+            search=search,
+            category_id=category_id,
+            brand=brand,
+            sort_by=sort_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
+
+
+# ============================================================
+# INVENTORY CATEGORY FORECAST
+# ============================================================
+
+@router.get(
+    "/forecast/categories",
+    tags=["Inventory"],
+)
+def inventory_category_forecast(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return get_category_forecasts(
+            db=db,
+            company_id=current_user.company_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
+
+
+# ============================================================
+# INVENTORY RECOMMENDATIONS
+# ============================================================
+
+@router.get(
+    "/recommendations",
+    tags=["Inventory"],
+)
+def inventory_recommendations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return get_inventory_recommendations(
+            db=db,
+            company_id=current_user.company_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
+
+
+# ============================================================
+# TOP PREDICTED PRODUCTS
+# ============================================================
+
+@router.get(
+    "/forecast/top-products",
+    tags=["Inventory"],
+)
+def inventory_top_predicted_products(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return get_top_predicted_products(
+            db=db,
+            company_id=current_user.company_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
 
 
 # =====================================
@@ -155,59 +300,33 @@ def movement_history(
     response_model=InventoryResponse,
 )
 def add_stock_route(
-
     data: StockAdjustment,
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(require_company_admin),
-
 ):
-
     try:
-
         inventory = add_stock(
-
             db=db,
-
             inventory_id=data.inventory_id,
-
             quantity=data.quantity,
-
             reason=data.reason,
-
             remarks=data.remarks or "",
-
             current_user=current_user,
-
         )
 
-
         if not inventory:
-
             raise HTTPException(
-
                 status_code=404,
-
                 detail="Inventory not found.",
-
             )
-
 
         return inventory
 
-
-
-    except ValueError as e:
-
+    except ValueError as exc:
         raise HTTPException(
-
             status_code=400,
-
-            detail=str(e),
-
-        )
-
+            detail=str(exc),
+        ) from exc
 
 
 # =====================================
@@ -219,59 +338,33 @@ def add_stock_route(
     response_model=InventoryResponse,
 )
 def remove_stock_route(
-
     data: StockAdjustment,
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(require_company_admin),
-
 ):
-
     try:
-
         inventory = remove_stock(
-
             db=db,
-
             inventory_id=data.inventory_id,
-
             quantity=data.quantity,
-
             reason=data.reason,
-
             remarks=data.remarks or "",
-
             current_user=current_user,
-
         )
 
-
         if not inventory:
-
             raise HTTPException(
-
                 status_code=404,
-
                 detail="Inventory not found.",
-
             )
-
 
         return inventory
 
-
-
-    except ValueError as e:
-
+    except ValueError as exc:
         raise HTTPException(
-
             status_code=400,
-
-            detail=str(e),
-
-        )
-
+            detail=str(exc),
+        ) from exc
 
 
 # =====================================
@@ -283,59 +376,33 @@ def remove_stock_route(
     response_model=InventoryResponse,
 )
 def adjust_stock_route(
-
     data: StockAdjustment,
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(require_company_admin),
-
 ):
-
     try:
-
         inventory = adjust_stock(
-
             db=db,
-
             inventory_id=data.inventory_id,
-
             quantity=data.quantity,
-
             reason=data.reason,
-
             remarks=data.remarks or "",
-
             current_user=current_user,
-
         )
 
-
         if not inventory:
-
             raise HTTPException(
-
                 status_code=404,
-
                 detail="Inventory not found.",
-
             )
-
 
         return inventory
 
-
-
-    except ValueError as e:
-
+    except ValueError as exc:
         raise HTTPException(
-
             status_code=400,
-
-            detail=str(e),
-
-        )
-
+            detail=str(exc),
+        ) from exc
 
 
 # =====================================
@@ -347,55 +414,29 @@ def adjust_stock_route(
     response_model=InventoryResponse,
 )
 def update_reorder_level_route(
-
     inventory_id: int,
-
     data: ReorderLevelUpdate,
-
     db: Session = Depends(get_db),
-
     current_user: User = Depends(require_company_admin),
-
 ):
-
     try:
-
         inventory = update_reorder_level(
-
             db=db,
-
             inventory_id=inventory_id,
-
             reorder_level=data.reorder_level,
-
             current_user=current_user,
-
         )
 
-
         if not inventory:
-
             raise HTTPException(
-
                 status_code=404,
-
                 detail="Inventory not found.",
-
             )
-
 
         return inventory
 
-
-
-    except ValueError as e:
-
+    except ValueError as exc:
         raise HTTPException(
-
             status_code=400,
-
-            detail=str(e),
-
-        )
-
- 
+            detail=str(exc),
+        ) from exc

@@ -24,7 +24,6 @@ def create_product(
     product: ProductCreate,
     current_user: User,
 ):
-
     category = (
         db.query(Category)
         .filter(
@@ -35,63 +34,54 @@ def create_product(
     )
 
     if not category:
-        raise ValueError(
-            "Category not found."
-        )
-
+        raise ValueError("Category not found.")
 
     existing_sku = (
         db.query(Product)
         .filter(
             Product.company_id == current_user.company_id,
-            func.lower(Product.sku)
-            == product.sku.lower(),
+            func.lower(Product.sku) == product.sku.lower(),
         )
         .first()
     )
 
-
     if existing_sku:
-        raise ValueError(
-            "SKU already exists."
-        )
-
+        raise ValueError("SKU already exists.")
 
     duplicate_name = (
         db.query(Product)
         .filter(
             Product.company_id == current_user.company_id,
             Product.category_id == product.category_id,
-            func.lower(Product.name)
-            == product.name.lower(),
+            func.lower(Product.name) == product.name.lower(),
         )
         .first()
     )
-
 
     if duplicate_name:
         raise ValueError(
             "Product already exists in this category."
         )
 
-
     if product.unit_price <= 0:
         raise ValueError(
             "Unit Price must be greater than zero."
         )
-
 
     if product.cost_price > product.unit_price:
         raise ValueError(
             "Cost Price cannot exceed Unit Price."
         )
 
-
     if product.stock_quantity < 0:
         raise ValueError(
             "Stock Quantity cannot be negative."
         )
 
+    if product.reorder_threshold < 0:
+        raise ValueError(
+            "Reorder Threshold cannot be negative."
+        )
 
     new_product = Product(
         company_id=current_user.company_id,
@@ -103,21 +93,22 @@ def create_product(
         unit_price=product.unit_price,
         cost_price=product.cost_price,
         stock_quantity=product.stock_quantity,
+
+        # REORDER THRESHOLD
+        reorder_threshold=product.reorder_threshold,
+
         unit_of_measure=product.unit_of_measure,
         status=product.status,
     )
-
 
     db.add(new_product)
     db.commit()
     db.refresh(new_product)
 
-
     create_inventory(
         db=db,
         product=new_product,
     )
-
 
     create_audit_log(
         db=db,
@@ -127,9 +118,7 @@ def create_product(
         entity_name="Product",
     )
 
-
     return new_product
-
 
 
 # ==========================================
@@ -140,16 +129,13 @@ def get_products(
     db: Session,
     current_user: User,
 ):
-
     return (
         db.query(Product)
         .filter(
-            Product.company_id ==
-            current_user.company_id
+            Product.company_id == current_user.company_id
         )
         .all()
     )
-
 
 
 # ==========================================
@@ -161,16 +147,15 @@ def get_product(
     product_id: int,
     current_user: User,
 ):
-
     return (
         db.query(Product)
         .filter(
             Product.id == product_id,
-            Product.company_id ==
-            current_user.company_id,
+            Product.company_id == current_user.company_id,
         )
         .first()
     )
+
 
 # ==========================================
 # UPDATE PRODUCT
@@ -182,159 +167,154 @@ def update_product(
     data: ProductUpdate,
     current_user: User,
 ):
-
     product = get_product(
         db,
         product_id,
         current_user,
     )
 
-
     if not product:
         return None
-
 
     update_data = data.model_dump(
         exclude_unset=True
     )
 
+    # ------------------------------------------
+    # CATEGORY VALIDATION
+    # ------------------------------------------
 
     if "category_id" in update_data:
-
         category = (
             db.query(Category)
             .filter(
-                Category.id ==
-                update_data["category_id"],
-                Category.company_id ==
-                current_user.company_id,
+                Category.id == update_data["category_id"],
+                Category.company_id == current_user.company_id,
             )
             .first()
         )
-
 
         if not category:
             raise ValueError(
                 "Category not found."
             )
 
-
+    # ------------------------------------------
+    # SKU VALIDATION
+    # ------------------------------------------
 
     if "sku" in update_data:
-
         sku_exists = (
             db.query(Product)
             .filter(
-                Product.company_id ==
-                current_user.company_id,
-
+                Product.company_id == current_user.company_id,
                 func.lower(Product.sku)
-                ==
-                update_data["sku"].lower(),
-
+                == update_data["sku"].lower(),
                 Product.id != product.id,
             )
             .first()
         )
-
 
         if sku_exists:
             raise ValueError(
                 "SKU already exists."
             )
 
-
+    # ------------------------------------------
+    # PRODUCT NAME VALIDATION
+    # ------------------------------------------
 
     new_name = update_data.get(
         "name",
         product.name,
     )
 
-
     new_category = update_data.get(
         "category_id",
         product.category_id,
     )
 
-
-
     duplicate_name = (
         db.query(Product)
         .filter(
-            Product.company_id ==
-            current_user.company_id,
-
-            Product.category_id ==
-            new_category,
-
-            func.lower(Product.name)
-            ==
-            new_name.lower(),
-
+            Product.company_id == current_user.company_id,
+            Product.category_id == new_category,
+            func.lower(Product.name) == new_name.lower(),
             Product.id != product.id,
         )
         .first()
     )
-
 
     if duplicate_name:
         raise ValueError(
             "Product already exists in this category."
         )
 
-
+    # ------------------------------------------
+    # PRICE VALIDATION
+    # ------------------------------------------
 
     unit_price = update_data.get(
         "unit_price",
         product.unit_price,
     )
 
-
     cost_price = update_data.get(
         "cost_price",
         product.cost_price,
     )
-
 
     if unit_price <= 0:
         raise ValueError(
             "Unit Price must be greater than zero."
         )
 
-
     if cost_price > unit_price:
         raise ValueError(
             "Cost Price cannot exceed Unit Price."
         )
 
-
+    # ------------------------------------------
+    # STOCK VALIDATION
+    # ------------------------------------------
 
     stock_quantity = update_data.get(
         "stock_quantity",
         product.stock_quantity,
     )
 
-
     if stock_quantity < 0:
         raise ValueError(
             "Stock Quantity cannot be negative."
         )
 
+    # ------------------------------------------
+    # REORDER THRESHOLD VALIDATION
+    # ------------------------------------------
 
+    reorder_threshold = update_data.get(
+        "reorder_threshold",
+        product.reorder_threshold,
+    )
+
+    if reorder_threshold < 0:
+        raise ValueError(
+            "Reorder Threshold cannot be negative."
+        )
+
+    # ------------------------------------------
+    # UPDATE FIELDS
+    # ------------------------------------------
 
     for key, value in update_data.items():
-
         setattr(
             product,
             key,
-            value
+            value,
         )
-
 
     db.commit()
     db.refresh(product)
-
-
 
     create_audit_log(
         db=db,
@@ -344,9 +324,7 @@ def update_product(
         entity_name="Product",
     )
 
-
     return product
-
 
 
 # ==========================================
@@ -358,43 +336,35 @@ def delete_product(
     product_id: int,
     current_user: User,
 ):
-
     product = get_product(
         db,
         product_id,
         current_user,
     )
 
-
     if not product:
         return False
 
-
-
-    # Check sales history before delete
+    # ------------------------------------------
+    # CHECK SALES HISTORY
+    # ------------------------------------------
 
     sale_history = (
         db.query(SaleItem)
         .filter(
-            SaleItem.product_id ==
-            product.id
+            SaleItem.product_id == product.id
         )
         .first()
     )
 
-
     if sale_history:
-
         raise ValueError(
-            "Cannot delete product. Sales history exists for this product."
+            "Cannot delete product. "
+            "Sales history exists for this product."
         )
-
-
 
     db.delete(product)
     db.commit()
-
-
 
     create_audit_log(
         db=db,
@@ -403,7 +373,6 @@ def delete_product(
         action="Product Deleted",
         entity_name="Product",
     )
-
 
     return True
 
@@ -421,92 +390,80 @@ def search_products(
     status: str | None = None,
     sort_by: str | None = None,
 ):
-
     query = (
         db.query(Product)
         .filter(
-            Product.company_id ==
-            current_user.company_id
+            Product.company_id == current_user.company_id
         )
     )
 
+    # ------------------------------------------
+    # SEARCH
+    # ------------------------------------------
 
     if search:
-
         query = query.filter(
-            (Product.name.ilike(
-                f"%{search}%"
-            ))
+            (Product.name.ilike(f"%{search}%"))
             |
-            (Product.sku.ilike(
-                f"%{search}%"
-            ))
+            (Product.sku.ilike(f"%{search}%"))
             |
-            (Product.brand.ilike(
-                f"%{search}%"
-            ))
+            (Product.brand.ilike(f"%{search}%"))
         )
 
-
+    # ------------------------------------------
+    # CATEGORY FILTER
+    # ------------------------------------------
 
     if category_id:
-
         query = query.filter(
-            Product.category_id ==
-            category_id
+            Product.category_id == category_id
         )
 
-
+    # ------------------------------------------
+    # BRAND FILTER
+    # ------------------------------------------
 
     if brand and brand.strip():
-
         query = query.filter(
             Product.brand.ilike(
                 f"%{brand.strip()}%"
             )
         )
 
-
+    # ------------------------------------------
+    # STATUS FILTER
+    # ------------------------------------------
 
     if status:
-
         query = query.filter(
-            Product.status ==
-            status
+            Product.status == status
         )
 
-
+    # ------------------------------------------
+    # SORTING
+    # ------------------------------------------
 
     if sort_by == "name":
-
         query = query.order_by(
             asc(Product.name)
         )
 
-
     elif sort_by == "price":
-
         query = query.order_by(
             asc(Product.unit_price)
         )
 
-
     elif sort_by == "recent":
-
         query = query.order_by(
             desc(Product.created_at)
         )
-
 
     else:
-
         query = query.order_by(
             desc(Product.created_at)
         )
 
-
     return query.all()
-
 
 
 # ==========================================
@@ -518,25 +475,19 @@ def activate_product(
     product_id: int,
     current_user: User,
 ):
-
     product = get_product(
         db,
         product_id,
         current_user,
     )
 
-
     if not product:
         return None
 
-
     product.status = "ACTIVE"
-
 
     db.commit()
     db.refresh(product)
-
-
 
     create_audit_log(
         db=db,
@@ -546,9 +497,7 @@ def activate_product(
         entity_name="Product",
     )
 
-
     return product
-
 
 
 # ==========================================
@@ -560,26 +509,19 @@ def deactivate_product(
     product_id: int,
     current_user: User,
 ):
-
     product = get_product(
         db,
         product_id,
         current_user,
     )
 
-
     if not product:
         return None
 
-
-
     product.status = "INACTIVE"
-
 
     db.commit()
     db.refresh(product)
-
-
 
     create_audit_log(
         db=db,
@@ -588,7 +530,6 @@ def deactivate_product(
         action="Product Deactivated",
         entity_name="Product",
     )
-
 
     return product
 
@@ -601,94 +542,98 @@ def get_dashboard_summary(
     db: Session,
     current_user: User,
 ):
+    # ------------------------------------------
+    # TOTAL PRODUCTS
+    # ------------------------------------------
 
     total_products = (
         db.query(Product)
         .filter(
-            Product.company_id ==
-            current_user.company_id
+            Product.company_id == current_user.company_id
         )
         .count()
     )
 
-
+    # ------------------------------------------
+    # ACTIVE PRODUCTS
+    # ------------------------------------------
 
     active_products = (
         db.query(Product)
         .filter(
-            Product.company_id ==
-            current_user.company_id,
-
-            Product.status ==
-            "ACTIVE",
+            Product.company_id == current_user.company_id,
+            Product.status == "ACTIVE",
         )
         .count()
     )
 
-
+    # ------------------------------------------
+    # INACTIVE PRODUCTS
+    # ------------------------------------------
 
     inactive_products = (
         db.query(Product)
         .filter(
-            Product.company_id ==
-            current_user.company_id,
-
-            Product.status ==
-            "INACTIVE",
+            Product.company_id == current_user.company_id,
+            Product.status == "INACTIVE",
         )
         .count()
     )
 
-
-
-    # Actual low stock count
-    # No demo / hardcoded values
+    # ------------------------------------------
+    # LOW STOCK
+    #
+    # Product is low stock when:
+    #
+    # current stock <= product reorder threshold
+    #
+    # Example:
+    # stock = 4
+    # threshold = 10
+    # => LOW STOCK
+    #
+    # ------------------------------------------
 
     low_stock = (
         db.query(Product)
         .filter(
-            Product.company_id ==
-            current_user.company_id,
-
-            Product.stock_quantity <= 10,
-
+            Product.company_id == current_user.company_id,
+            Product.stock_quantity <= Product.reorder_threshold,
             Product.stock_quantity > 0,
         )
         .count()
     )
 
+    # ------------------------------------------
+    # OUT OF STOCK
+    # ------------------------------------------
 
-
-    total_categories = (
-        db.query(Category)
+    out_of_stock = (
+        db.query(Product)
         .filter(
-            Category.company_id ==
-            current_user.company_id
+            Product.company_id == current_user.company_id,
+            Product.stock_quantity == 0,
         )
         .count()
     )
 
+    # ------------------------------------------
+    # TOTAL CATEGORIES
+    # ------------------------------------------
 
+    total_categories = (
+        db.query(Category)
+        .filter(
+            Category.company_id == current_user.company_id
+        )
+        .count()
+    )
 
     return {
-
-        "total_products":
-            total_products,
-
-
-        "active_products":
-            active_products,
-
-
-        "inactive_products":
-            inactive_products,
-
-
-        "low_stock":
-            low_stock,
-
-
-        "total_categories":
-            total_categories,
-
+        "total_products": total_products,
+        "active_products": active_products,
+        "inactive_products": inactive_products,
+        "low_stock": low_stock,
+        "out_of_stock": out_of_stock,
+        "total_categories": total_categories,
     }
