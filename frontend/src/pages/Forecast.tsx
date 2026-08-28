@@ -1,49 +1,49 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Grid,
-  Stack,
-  Button,
-  TextField,
-  MenuItem,
-  CircularProgress,
-  Alert,
   Chip,
+  CircularProgress,
+  Grid,
+  MenuItem,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
+  Typography,
 } from "@mui/material";
 
 import {
-  Search,
-  Refresh,
+  Assessment,
   Download,
   Notifications,
-  Assessment,
+  Refresh,
+  Search,
 } from "@mui/icons-material";
 
 import {
-  BarChart,
   Bar,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
+  BarChart,
   CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
 } from "recharts";
 
 import api from "../api/axios";
@@ -74,6 +74,7 @@ interface ProductForecast {
   forecast_accuracy: number;
 
   forecast_period: string;
+
   recommendation: string;
   forecast_value: string;
 
@@ -83,21 +84,28 @@ interface ProductForecast {
 interface CategoryForecast {
   category_id: number;
   category_name: string;
+
   total_historical_sales: number;
   predicted_demand: number;
+
   expected_growth_percentage: number;
   confidence_score: number;
   forecast_accuracy: number;
+
   forecast_value: string;
 }
 
 interface DashboardData {
+  total_forecasts: number;
   total_predicted_demand: number;
   products_expected_to_run_out: number;
   high_growth_products: number;
   slow_moving_products: number;
   forecast_accuracy: number;
-  total_forecasts: number;
+
+  total_products?: number;
+  total_historical_sales?: number;
+  total_current_stock?: number;
 }
 
 interface ForecastNotification {
@@ -132,38 +140,6 @@ const COLORS = [
   "#A855F7",
 ];
 
-const darkFieldStyle = {
-  minWidth: 180,
-
-  "& .MuiInputLabel-root": {
-    color: "#CBD5E1",
-  },
-
-  "& .MuiInputLabel-root.Mui-focused": {
-    color: "#38BDF8",
-  },
-
-  "& .MuiOutlinedInput-root": {
-    color: "#E2E8F0",
-
-    "& fieldset": {
-      borderColor: "#475569",
-    },
-
-    "&:hover fieldset": {
-      borderColor: "#38BDF8",
-    },
-
-    "&.Mui-focused fieldset": {
-      borderColor: "#38BDF8",
-    },
-  },
-
-  "& .MuiSelect-select": {
-    color: "#E2E8F0",
-  },
-};
-
 // =====================================================
 // COMPONENT
 // =====================================================
@@ -196,29 +172,51 @@ export default function Forecast() {
   const [categories, setCategories] =
     useState<CategoryForecast[]>([]);
 
-  const [productChartData, setProductChartData] =
-    useState<any[]>([]);
-
-  const [growthChartData, setGrowthChartData] =
-    useState<any[]>([]);
-
-  const [productTrendData, setProductTrendData] =
-    useState<any[]>([]);
-
-  const [topProductsData, setTopProductsData] =
-    useState<any[]>([]);
-
-  const [seasonalData, setSeasonalData] =
-    useState<any[]>([]);
-
-  const [categoryChartData, setCategoryChartData] =
-    useState<any[]>([]);
+  const [notifications, setNotifications] =
+    useState<ForecastNotification[]>([]);
 
   const [showNotifications, setShowNotifications] =
     useState(false);
 
-  const [notifications, setNotifications] =
-    useState<ForecastNotification[]>([]);
+  // =====================================================
+  // DARK FIELD STYLE
+  // =====================================================
+
+  const darkFieldStyle = {
+    minWidth: 180,
+
+    "& .MuiInputLabel-root": {
+      color: "#CBD5E1",
+    },
+
+    "& .MuiInputLabel-root.Mui-focused": {
+      color: "#38BDF8",
+    },
+
+    "& .MuiOutlinedInput-root": {
+      color: "#E2E8F0",
+
+      "& fieldset": {
+        borderColor: "#475569",
+      },
+
+      "&:hover fieldset": {
+        borderColor: "#38BDF8",
+      },
+
+      "&.Mui-focused fieldset": {
+        borderColor: "#38BDF8",
+      },
+    },
+
+    "& .MuiSelect-select": {
+      color: "#E2E8F0",
+    },
+
+    "& input[type=date]": {
+      color: "#E2E8F0",
+    },
+  };
 
   // =====================================================
   // HELPERS
@@ -230,70 +228,465 @@ export default function Forecast() {
     return Number.isFinite(number) ? number : 0;
   };
 
-  const getRecommendedReorder = (
-    predictedDemand: number,
-    currentStock: number,
-    reorderLevel: number
-  ): number => {
-    const demand = getNumber(predictedDemand);
-    const stock = getNumber(currentStock);
-    const threshold = getNumber(reorderLevel);
-
-    if (stock <= threshold) {
-      return Math.max(
-        0,
-        Math.ceil(demand + threshold - stock)
-      );
+  const firstValue = (
+    obj: any,
+    keys: string[],
+    fallback: any = null
+  ) => {
+    for (const key of keys) {
+      if (
+        obj &&
+        obj[key] !== undefined &&
+        obj[key] !== null &&
+        obj[key] !== ""
+      ) {
+        return obj[key];
+      }
     }
 
-    return Math.max(
-      0,
-      Math.ceil(demand - stock)
+    return fallback;
+  };
+
+  // =====================================================
+  // NORMALIZE PRODUCT
+  // =====================================================
+
+  const normalizeProduct = (
+    item: any,
+    index: number
+  ): ProductForecast => {
+    const productName = firstValue(
+      item,
+      [
+        "product_name",
+        "productName",
+        "name",
+        "product",
+        "product_title",
+        "title",
+      ],
+      `Product ${index + 1}`
     );
+
+    const categoryName = firstValue(
+      item,
+      [
+        "category_name",
+        "categoryName",
+        "category",
+      ],
+      "Uncategorized"
+    );
+
+    return {
+      id: getNumber(
+        firstValue(item, ["id", "forecast_id"], index + 1)
+      ),
+
+      product_id: getNumber(
+        firstValue(item, [
+          "product_id",
+          "productId",
+        ])
+      ),
+
+      category_id: getNumber(
+        firstValue(item, [
+          "category_id",
+          "categoryId",
+        ])
+      ),
+
+      product_name: String(productName),
+
+      sku: String(
+        firstValue(
+          item,
+          ["sku", "product_sku", "SKU"],
+          "-"
+        )
+      ),
+
+      category_name: String(categoryName),
+
+      brand: String(
+        firstValue(
+          item,
+          ["brand", "brand_name", "brandName"],
+          ""
+        )
+      ),
+
+      current_stock: getNumber(
+        firstValue(item, [
+          "current_stock",
+          "currentStock",
+          "stock",
+          "inventory",
+          "available_stock",
+        ])
+      ),
+
+      available_stock: getNumber(
+        firstValue(item, [
+          "available_stock",
+          "availableStock",
+          "current_stock",
+          "stock",
+        ])
+      ),
+
+      reorder_level: getNumber(
+        firstValue(item, [
+          "reorder_level",
+          "reorderLevel",
+          "reorder_point",
+          "reorderPoint",
+        ])
+      ),
+
+      historical_sales: getNumber(
+        firstValue(item, [
+          "historical_sales",
+          "historicalSales",
+          "total_historical_sales",
+          "historical_demand",
+          "sales",
+        ])
+      ),
+
+      predicted_demand: getNumber(
+        firstValue(item, [
+          "predicted_demand",
+          "predictedDemand",
+          "forecasted_demand",
+          "forecastedDemand",
+          "demand",
+          "forecast",
+        ])
+      ),
+
+      expected_growth_percentage: getNumber(
+        firstValue(item, [
+          "expected_growth_percentage",
+          "expectedGrowthPercentage",
+          "forecast_growth_percentage",
+          "forecastGrowthPercentage",
+          "growth_percentage",
+          "growth",
+        ])
+      ),
+
+      confidence_score: getNumber(
+        firstValue(item, [
+          "confidence_score",
+          "confidenceScore",
+          "confidence",
+        ])
+      ),
+
+      forecast_accuracy: getNumber(
+        firstValue(item, [
+          "forecast_accuracy",
+          "forecastAccuracy",
+          "accuracy",
+        ])
+      ),
+
+      forecast_period: String(
+        firstValue(
+          item,
+          ["forecast_period", "forecastPeriod"],
+          forecastPeriod
+        )
+      ),
+
+      recommendation: String(
+        firstValue(
+          item,
+          [
+            "recommendation",
+            "recommended_action",
+            "action",
+          ],
+          ""
+        )
+      ),
+
+      forecast_value: String(
+        firstValue(
+          item,
+          ["forecast_value", "forecastValue"],
+          "₹0"
+        )
+      ),
+
+      generated_at: firstValue(
+        item,
+        ["generated_at", "generatedAt"],
+        undefined
+      ),
+    };
   };
 
-  const getRisk = (
-    currentStock: number,
-    reorderLevel: number,
-    predictedDemand: number
-  ): string => {
-    const stock = getNumber(currentStock);
-    const threshold = getNumber(reorderLevel);
-    const demand = getNumber(predictedDemand);
+  // =====================================================
+  // NORMALIZE CATEGORY
+  // =====================================================
 
-    if (stock <= threshold) {
-      return "LOW STOCK";
-    }
+  const normalizeCategory = (
+    item: any,
+    index: number
+  ): CategoryForecast => {
+    return {
+      category_id: getNumber(
+        firstValue(
+          item,
+          ["category_id", "categoryId", "id"],
+          index + 1
+        )
+      ),
 
-    if (demand <= 0 && stock > 0) {
-      return "OVERSTOCK";
-    }
+      category_name: String(
+        firstValue(
+          item,
+          [
+            "category_name",
+            "categoryName",
+            "name",
+            "category",
+          ],
+          `Category ${index + 1}`
+        )
+      ),
 
-    if (stock < demand) {
-      return "REORDER";
-    }
+      total_historical_sales: getNumber(
+        firstValue(item, [
+          "total_historical_sales",
+          "totalHistoricalSales",
+          "historical_sales",
+          "historicalSales",
+          "sales",
+        ])
+      ),
 
-    if (stock > demand * 2) {
-      return "OVERSTOCK";
-    }
+      predicted_demand: getNumber(
+        firstValue(item, [
+          "predicted_demand",
+          "predictedDemand",
+          "forecasted_demand",
+          "forecastedDemand",
+          "demand",
+          "forecast",
+        ])
+      ),
 
-    return "NORMAL";
+      expected_growth_percentage: getNumber(
+        firstValue(item, [
+          "expected_growth_percentage",
+          "expectedGrowthPercentage",
+          "growth_percentage",
+          "growth",
+        ])
+      ),
+
+      confidence_score: getNumber(
+        firstValue(item, [
+          "confidence_score",
+          "confidenceScore",
+          "confidence",
+        ])
+      ),
+
+      forecast_accuracy: getNumber(
+        firstValue(item, [
+          "forecast_accuracy",
+          "forecastAccuracy",
+          "accuracy",
+        ])
+      ),
+
+      forecast_value: String(
+        firstValue(
+          item,
+          ["forecast_value", "forecastValue"],
+          "₹0"
+        )
+      ),
+    };
   };
 
-  const getRiskColor = (risk: string): string => {
-    switch (risk) {
-      case "LOW STOCK":
-        return "#991B1B";
+  // =====================================================
+  // EXTRACT ARRAY FROM API RESPONSE
+  // =====================================================
 
-      case "REORDER":
-        return "#92400E";
-
-      case "OVERSTOCK":
-        return "#334155";
-
-      default:
-        return "#166534";
+  const extractArray = (
+    responseData: any,
+    possibleKeys: string[]
+  ): any[] => {
+    if (Array.isArray(responseData)) {
+      return responseData;
     }
+
+    if (!responseData) {
+      return [];
+    }
+
+    for (const key of possibleKeys) {
+      if (Array.isArray(responseData[key])) {
+        return responseData[key];
+      }
+    }
+
+    if (
+      responseData.data &&
+      Array.isArray(responseData.data)
+    ) {
+      return responseData.data;
+    }
+
+    if (
+      responseData.result &&
+      Array.isArray(responseData.result)
+    ) {
+      return responseData.result;
+    }
+
+    return [];
+  };
+
+  // =====================================================
+  // GET DASHBOARD FROM ANALYTICS
+  // =====================================================
+
+  const buildDashboard = (
+    analytics: any,
+    productData: ProductForecast[]
+  ): DashboardData => {
+    const dashboardData =
+      analytics?.dashboard ?? analytics ?? {};
+
+    const totalProducts = getNumber(
+      firstValue(dashboardData, [
+        "total_products",
+        "totalProducts",
+        "total_forecasts",
+      ])
+    );
+
+    const totalHistoricalSales = getNumber(
+      firstValue(dashboardData, [
+        "total_historical_sales",
+        "totalHistoricalSales",
+      ])
+    );
+
+    const totalPredictedDemand = getNumber(
+      firstValue(dashboardData, [
+        "total_forecasted_demand",
+        "total_forecasted_demand",
+        "total_predicted_demand",
+        "totalPredictedDemand",
+      ])
+    );
+
+    const currentStock = getNumber(
+      firstValue(dashboardData, [
+        "total_current_stock",
+        "totalCurrentStock",
+      ])
+    );
+
+    const highGrowth = getNumber(
+      firstValue(dashboardData, [
+        "high_growth_products",
+        "highGrowthProducts",
+      ])
+    );
+
+    const slowMoving = getNumber(
+      firstValue(dashboardData, [
+        "slow_moving_products",
+        "slowMovingProducts",
+      ])
+    );
+
+    const runOutRisk = getNumber(
+      firstValue(dashboardData, [
+        "products_expected_to_run_out",
+        "productsExpectedToRunOut",
+        "run_out_risk",
+        "runOutRisk",
+      ])
+    );
+
+    const accuracy = getNumber(
+      firstValue(dashboardData, [
+        "forecast_accuracy",
+        "average_forecast_accuracy",
+        "averageAccuracy",
+      ])
+    );
+
+    return {
+      total_forecasts:
+        totalProducts ||
+        productData.length,
+
+      total_predicted_demand:
+        totalPredictedDemand ||
+        productData.reduce(
+          (sum, item) =>
+            sum + getNumber(item.predicted_demand),
+          0
+        ),
+
+      products_expected_to_run_out:
+        runOutRisk ||
+        productData.filter(
+          (item) =>
+            getNumber(item.current_stock) <=
+            getNumber(item.reorder_level)
+        ).length,
+
+      high_growth_products:
+        highGrowth ||
+        productData.filter(
+          (item) =>
+            getNumber(
+              item.expected_growth_percentage
+            ) > 20
+        ).length,
+
+      slow_moving_products:
+        slowMoving ||
+        productData.filter(
+          (item) =>
+            getNumber(item.historical_sales) <= 1
+        ).length,
+
+      forecast_accuracy:
+        accuracy ||
+        (
+          productData.length > 0
+            ? productData.reduce(
+                (sum, item) =>
+                  sum +
+                  getNumber(
+                    item.forecast_accuracy
+                  ),
+                0
+              ) / productData.length
+            : 0
+        ),
+
+      total_products: totalProducts,
+
+      total_historical_sales:
+        totalHistoricalSales,
+
+      total_current_stock:
+        currentStock,
+    };
   };
 
   // =====================================================
@@ -305,161 +698,173 @@ export default function Forecast() {
       setLoading(true);
       setError("");
 
-      const response = await api.get(
+      // -------------------------------------------------
+      // 1. ANALYTICS
+      // -------------------------------------------------
+
+      const analyticsResponse = await api.get(
         "/forecast/analytics"
       );
 
-      const data = response.data;
+      const analytics = analyticsResponse.data;
 
       console.log(
-        "FORECAST ANALYTICS RESPONSE:",
-        data
+        "FORECAST ANALYTICS:",
+        analytics
       );
 
-      // =================================================
-      // DASHBOARD
-      // =================================================
+      // -------------------------------------------------
+      // 2. PRODUCTS
+      // -------------------------------------------------
 
-      setDashboard(data.dashboard ?? null);
+      let productResponseData: any = null;
 
-      // =================================================
-      // PRODUCT DATA
-      // =================================================
+      try {
+        const response = await api.get(
+          "/forecast/products"
+        );
 
-      const productData: ProductForecast[] =
-        Array.isArray(data.product_forecasts)
-          ? data.product_forecasts
-          : [];
+        productResponseData = response.data;
 
-      // =================================================
-      // CATEGORY DATA
-      // =================================================
+        console.log(
+          "FORECAST PRODUCTS:",
+          productResponseData
+        );
+      } catch (productError) {
+        console.warn(
+          "Products endpoint failed:",
+          productError
+        );
+      }
 
-      const categoryData: CategoryForecast[] =
-        Array.isArray(data.category_forecasts)
-          ? data.category_forecasts
-          : [];
+      // -------------------------------------------------
+      // 3. CATEGORIES
+      // -------------------------------------------------
 
-      setAllProducts(productData);
-      setProducts(productData);
-      setCategories(categoryData);
+      let categoryResponseData: any = null;
 
-      // =================================================
-      // HISTORICAL VS PREDICTED
-      // =================================================
+      try {
+        const response = await api.get(
+          "/forecast/categories"
+        );
 
-      const historicalForecastData =
-        productData.map((item) => ({
-          name:
-            item.product_name ||
-            "Unknown Product",
+        categoryResponseData = response.data;
 
-          historical:
-            getNumber(item.historical_sales),
+        console.log(
+          "FORECAST CATEGORIES:",
+          categoryResponseData
+        );
+      } catch (categoryError) {
+        console.warn(
+          "Categories endpoint failed:",
+          categoryError
+        );
+      }
 
-          predicted:
-            getNumber(item.predicted_demand),
-        }));
+      // -------------------------------------------------
+      // EXTRACT PRODUCT ARRAY
+      // -------------------------------------------------
 
-      setProductChartData(
-        historicalForecastData
+      let rawProducts = extractArray(
+        productResponseData,
+        [
+          "products",
+          "product_forecasts",
+          "forecasts",
+          "data",
+          "items",
+          "results",
+        ]
       );
 
-      // =================================================
-      // PRODUCT GROWTH
-      // =================================================
+      // fallback: analytics itself
+      if (rawProducts.length === 0) {
+        rawProducts = extractArray(
+          analytics,
+          [
+            "products",
+            "product_forecasts",
+            "forecasts",
+            "data",
+            "items",
+          ]
+        );
+      }
 
-      const growthData =
-        productData.map((item) => ({
-          name:
-            item.product_name ||
-            "Unknown Product",
+      const normalizedProducts =
+        rawProducts.map(
+          (item: any, index: number) =>
+            normalizeProduct(item, index)
+        );
 
-          growth:
-            getNumber(
-              item.expected_growth_percentage
-            ),
-        }));
+      // -------------------------------------------------
+      // EXTRACT CATEGORY ARRAY
+      // -------------------------------------------------
 
-      setGrowthChartData(growthData);
+      let rawCategories = extractArray(
+        categoryResponseData,
+        [
+          "categories",
+          "category_forecasts",
+          "forecasts",
+          "data",
+          "items",
+          "results",
+        ]
+      );
 
-      // =================================================
-      // PRODUCT DEMAND TREND
-      // =================================================
+      if (rawCategories.length === 0) {
+        rawCategories = extractArray(
+          analytics,
+          [
+            "categories",
+            "category_forecasts",
+          ]
+        );
+      }
 
-      const trendData =
-        productData.map((item) => ({
-          name:
-            item.product_name ||
-            "Unknown Product",
+      const normalizedCategories =
+        rawCategories.map(
+          (item: any, index: number) =>
+            normalizeCategory(item, index)
+        );
 
-          historical:
-            getNumber(item.historical_sales),
+      // -------------------------------------------------
+      // STATE
+      // -------------------------------------------------
 
-          forecast:
-            getNumber(item.predicted_demand),
-        }));
+      setAllProducts(normalizedProducts);
+      setProducts(normalizedProducts);
 
-      setProductTrendData(trendData);
+      setCategories(normalizedCategories);
 
-      // =================================================
-      // TOP PREDICTED PRODUCTS
-      // =================================================
+      setDashboard(
+        buildDashboard(
+          analytics,
+          normalizedProducts
+        )
+      );
 
-      const topData =
-        [...productData]
-          .sort(
-            (a, b) =>
-              getNumber(b.predicted_demand) -
-              getNumber(a.predicted_demand)
-          )
-          .slice(0, 5)
-          .map((item) => ({
-            name:
-              item.product_name ||
-              "Unknown Product",
+      // -------------------------------------------------
+      // DEBUG
+      // -------------------------------------------------
 
-            demand:
-              getNumber(item.predicted_demand),
-          }));
+      console.log(
+        "NORMALIZED PRODUCTS:",
+        normalizedProducts
+      );
 
-      setTopProductsData(topData);
+      console.log(
+        "NORMALIZED CATEGORIES:",
+        normalizedCategories
+      );
 
-      // =================================================
-      // SEASONAL DATA
-      // =================================================
-
-      const seasonal =
-        productData.map((item) => ({
-          month:
-            item.forecast_period ||
-            "Forecast",
-
-          sales:
-            getNumber(item.historical_sales),
-
-          forecast:
-            getNumber(item.predicted_demand),
-        }));
-
-      setSeasonalData(seasonal);
-
-      // =================================================
-      // CATEGORY CHART
-      // =================================================
-
-      const categoryDataForChart =
-        categoryData.map((item) => ({
-          name:
-            item.category_name ||
-            "Unknown Category",
-
-          demand:
-            getNumber(item.predicted_demand),
-        }));
-
-      setCategoryChartData(
-        categoryDataForChart
+      console.log(
+        "DASHBOARD:",
+        buildDashboard(
+          analytics,
+          normalizedProducts
+        )
       );
     } catch (error: any) {
       console.error(
@@ -467,7 +872,9 @@ export default function Forecast() {
         error
       );
 
-      if (error?.response?.status === 401) {
+      if (
+        error?.response?.status === 401
+      ) {
         setError(
           "Session expired. Please login again."
         );
@@ -482,12 +889,6 @@ export default function Forecast() {
       setProducts([]);
       setAllProducts([]);
       setCategories([]);
-      setProductChartData([]);
-      setGrowthChartData([]);
-      setProductTrendData([]);
-      setTopProductsData([]);
-      setSeasonalData([]);
-      setCategoryChartData([]);
     } finally {
       setLoading(false);
     }
@@ -525,10 +926,8 @@ export default function Forecast() {
         {
           forecast_period:
             forecastPeriod,
-
           start_date:
             startDate || null,
-
           end_date:
             endDate || null,
         }
@@ -557,42 +956,51 @@ export default function Forecast() {
   const handleSearch = () => {
     let filtered = [...allProducts];
 
-    if (searchText.trim()) {
-      filtered =
-        filtered.filter((item) =>
+    const search = searchText
+      .trim()
+      .toLowerCase();
+
+    const selectedBrand = brand
+      .trim()
+      .toLowerCase();
+
+    if (search) {
+      filtered = filtered.filter(
+        (item) =>
           item.product_name
-            ?.toLowerCase()
-            .includes(
-              searchText.toLowerCase()
-            )
-        );
+            .toLowerCase()
+            .includes(search) ||
+          item.sku
+            .toLowerCase()
+            .includes(search)
+      );
     }
 
-    if (brand.trim()) {
-      filtered =
-        filtered.filter((item) =>
+    if (selectedBrand) {
+      filtered = filtered.filter(
+        (item) =>
           item.brand
-            ?.toLowerCase()
-            .includes(
-              brand.toLowerCase()
-            )
-        );
+            .toLowerCase()
+            .includes(selectedBrand)
+      );
     }
 
     if (category) {
-      filtered =
-        filtered.filter(
-          (item) =>
-            item.category_name ===
-            category
-        );
+      filtered = filtered.filter(
+        (item) =>
+          item.category_name === category
+      );
     }
 
     if (sortBy === "demand") {
       filtered.sort(
         (a, b) =>
-          getNumber(b.predicted_demand) -
-          getNumber(a.predicted_demand)
+          getNumber(
+            b.predicted_demand
+          ) -
+          getNumber(
+            a.predicted_demand
+          )
       );
     }
 
@@ -640,7 +1048,9 @@ export default function Forecast() {
     setBrand("");
     setCategory("");
     setSortBy("");
+
     setForecastPeriod("30_days");
+
     setStartDate("");
     setEndDate("");
 
@@ -665,7 +1075,7 @@ export default function Forecast() {
         setNotifications(
           Array.isArray(response.data)
             ? response.data
-            : []
+            : response.data?.data ?? []
         );
       } catch (error) {
         console.error(
@@ -679,169 +1089,238 @@ export default function Forecast() {
   };
 
   // =====================================================
-  // DOWNLOAD FILE
+  // REORDER
   // =====================================================
 
-  const downloadFile = (
-    data: Blob,
-    fileName: string
+  const getRecommendedReorder = (
+    predictedDemand: number,
+    currentStock: number,
+    reorderLevel: number
   ) => {
-    const url =
-      window.URL.createObjectURL(data);
+    const demand =
+      getNumber(predictedDemand);
 
-    const link =
-      document.createElement("a");
+    const stock =
+      getNumber(currentStock);
 
-    link.href = url;
-    link.download = fileName;
+    const threshold =
+      getNumber(reorderLevel);
 
-    document.body.appendChild(link);
-
-    link.click();
-
-    link.remove();
-
-    window.URL.revokeObjectURL(url);
-  };
-
-  // =====================================================
-  // EXPORT PRODUCT CSV
-  // =====================================================
-
-  const exportProductsCSV = async () => {
-    try {
-      const response = await api.get(
-        "/forecast/export/products/csv",
-        {
-          responseType: "blob",
-        }
-      );
-
-      downloadFile(
-        response.data,
-        "product_forecast.csv"
-      );
-    } catch (error) {
-      console.error(
-        "CSV Export Error:",
-        error
-      );
-
-      setError(
-        "Product CSV export failed."
+    if (stock <= threshold) {
+      return Math.max(
+        0,
+        Math.ceil(
+          demand +
+            threshold -
+            stock
+        )
       );
     }
+
+    return Math.max(
+      0,
+      Math.ceil(
+        demand - stock
+      )
+    );
   };
 
   // =====================================================
-  // EXPORT CATEGORY CSV
+  // RISK
   // =====================================================
 
-  const exportCategoriesCSV = async () => {
-    try {
-      const response = await api.get(
-        "/forecast/export/categories/csv",
-        {
-          responseType: "blob",
-        }
-      );
-
-      downloadFile(
-        response.data,
-        "category_forecast.csv"
-      );
-    } catch (error) {
-      console.error(
-        "Category Export Error:",
-        error
-      );
-
-      setError(
-        "Category CSV export failed."
-      );
-    }
-  };
-
-  // =====================================================
-  // EXPORT PRODUCT PDF
-  // =====================================================
-
-  const exportProductsPDF = async () => {
-    try {
-      const response = await api.get(
-        "/forecast/export/products/pdf",
-        {
-          responseType: "blob",
-        }
-      );
-
-      downloadFile(
-        response.data,
-        "product_forecast.pdf"
-      );
-    } catch (error) {
-      console.error(
-        "PDF Export Error:",
-        error
-      );
-
-      setError(
-        "Product PDF export failed."
-      );
-    }
-  };
-
-  // =====================================================
-  // CATEGORY RECOMMENDATION
-  // =====================================================
-
-  const getCategoryRecommendation = (
-    growth: number
+  const getRisk = (
+    currentStock: number,
+    reorderLevel: number,
+    predictedDemand: number
   ) => {
-    if (growth > 20) {
-      return "Increase Stock";
+    const stock =
+      getNumber(currentStock);
+
+    const threshold =
+      getNumber(reorderLevel);
+
+    const demand =
+      getNumber(predictedDemand);
+
+    if (stock <= 0) {
+      return "OUT OF STOCK";
     }
 
-    if (growth > 0) {
-      return "Monitor Growth";
+    if (stock <= threshold) {
+      return "LOW STOCK";
     }
 
-    if (growth < -20) {
-      return "Reduce Stock";
+    if (stock < demand) {
+      return "REORDER";
     }
 
-    if (growth < 0) {
-      return "Decrease Demand";
+    if (
+      demand <= 0 &&
+      stock > 0
+    ) {
+      return "OVERSTOCK";
     }
 
-    return "Stable Demand";
+    if (stock > demand * 2) {
+      return "OVERSTOCK";
+    }
+
+    return "HEALTHY";
   };
 
-  // =====================================================
-  // CATEGORY CHIP COLOR
-  // =====================================================
-
-  const getCategoryRecommendationColor = (
-    growth: number
+  const getRiskColor = (
+    risk: string
   ) => {
-    if (growth > 20) {
-      return "#166534";
-    }
+    switch (risk) {
+      case "OUT OF STOCK":
+        return "#991B1B";
 
-    if (growth > 0) {
-      return "#14532D";
-    }
+      case "LOW STOCK":
+        return "#DC2626";
 
-    if (growth < -20) {
-      return "#991B1B";
-    }
+      case "REORDER":
+        return "#92400E";
 
-    if (growth < 0) {
-      return "#92400E";
-    }
+      case "OVERSTOCK":
+        return "#475569";
 
-    return "#334155";
+      default:
+        return "#166534";
+    }
   };
+
+  // =====================================================
+  // CATEGORY LIST
+  // =====================================================
+
+  const categoryOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        allProducts
+          .map(
+            (item) =>
+              item.category_name
+          )
+          .filter(Boolean)
+      )
+    );
+  }, [allProducts]);
+
+  // =====================================================
+  // CHART DATA
+  // =====================================================
+
+  const productChartData =
+    useMemo(() => {
+      return products.map(
+        (item) => ({
+          name:
+            item.product_name,
+          historical:
+            getNumber(
+              item.historical_sales
+            ),
+          predicted:
+            getNumber(
+              item.predicted_demand
+            ),
+        })
+      );
+    }, [products]);
+
+  const growthChartData =
+    useMemo(() => {
+      return products.map(
+        (item) => ({
+          name:
+            item.product_name,
+          growth:
+            getNumber(
+              item.expected_growth_percentage
+            ),
+        })
+      );
+    }, [products]);
+
+  const productTrendData =
+    useMemo(() => {
+      return products.map(
+        (item) => ({
+          name:
+            item.product_name,
+
+          historical:
+            getNumber(
+              item.historical_sales
+            ),
+
+          forecast:
+            getNumber(
+              item.predicted_demand
+            ),
+        })
+      );
+    }, [products]);
+
+  const topProductsData =
+    useMemo(() => {
+      return [...products]
+        .sort(
+          (a, b) =>
+            getNumber(
+              b.predicted_demand
+            ) -
+            getNumber(
+              a.predicted_demand
+            )
+        )
+        .slice(0, 5)
+        .map((item) => ({
+          name:
+            item.product_name,
+
+          demand:
+            getNumber(
+              item.predicted_demand
+            ),
+        }));
+    }, [products]);
+
+  const seasonalData =
+    useMemo(() => {
+      return products.map(
+        (item) => ({
+          month:
+            item.product_name,
+
+          sales:
+            getNumber(
+              item.historical_sales
+            ),
+
+          forecast:
+            getNumber(
+              item.predicted_demand
+            ),
+        })
+      );
+    }, [products]);
+
+  const categoryChartData =
+    useMemo(() => {
+      return categories.map(
+        (item) => ({
+          name:
+            item.category_name,
+
+          demand:
+            getNumber(
+              item.predicted_demand
+            ),
+        })
+      );
+    }, [categories]);
 
   // =====================================================
   // EMPTY CHART
@@ -869,6 +1348,153 @@ export default function Forecast() {
       </Typography>
     </Box>
   );
+
+  // =====================================================
+  // DOWNLOAD
+  // =====================================================
+
+  const downloadFile = (
+    data: Blob,
+    fileName: string
+  ) => {
+    const url =
+      window.URL.createObjectURL(data);
+
+    const link =
+      document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+
+    document.body.appendChild(link);
+
+    link.click();
+
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+  };
+
+  // =====================================================
+  // EXPORT
+  // =====================================================
+
+  const exportProductsCSV =
+    async () => {
+      try {
+        const response =
+          await api.get(
+            "/forecast/export/products/csv",
+            {
+              responseType: "blob",
+            }
+          );
+
+        downloadFile(
+          response.data,
+          "product_forecast.csv"
+        );
+      } catch (error) {
+        console.error(error);
+        setError(
+          "Product CSV export failed."
+        );
+      }
+    };
+
+  const exportCategoriesCSV =
+    async () => {
+      try {
+        const response =
+          await api.get(
+            "/forecast/export/categories/csv",
+            {
+              responseType: "blob",
+            }
+          );
+
+        downloadFile(
+          response.data,
+          "category_forecast.csv"
+        );
+      } catch (error) {
+        console.error(error);
+        setError(
+          "Category CSV export failed."
+        );
+      }
+    };
+
+  const exportProductsPDF =
+    async () => {
+      try {
+        const response =
+          await api.get(
+            "/forecast/export/products/pdf",
+            {
+              responseType: "blob",
+            }
+          );
+
+        downloadFile(
+          response.data,
+          "product_forecast.pdf"
+        );
+      } catch (error) {
+        console.error(error);
+        setError(
+          "Product PDF export failed."
+        );
+      }
+    };
+
+  // =====================================================
+  // CATEGORY RECOMMENDATION
+  // =====================================================
+
+  const getCategoryRecommendation = (
+    growth: number
+  ) => {
+    if (growth > 20) {
+      return "Increase Stock";
+    }
+
+    if (growth > 0) {
+      return "Monitor Growth";
+    }
+
+    if (growth < -20) {
+      return "Reduce Stock";
+    }
+
+    if (growth < 0) {
+      return "Decrease Demand";
+    }
+
+    return "Stable Demand";
+  };
+
+  const getCategoryRecommendationColor = (
+    growth: number
+  ) => {
+    if (growth > 20) {
+      return "#166534";
+    }
+
+    if (growth > 0) {
+      return "#14532D";
+    }
+
+    if (growth < -20) {
+      return "#991B1B";
+    }
+
+    if (growth < 0) {
+      return "#92400E";
+    }
+
+    return "#334155";
+  };
 
   // =====================================================
   // RETURN
@@ -923,9 +1549,9 @@ export default function Forecast() {
         </Box>
       )}
 
-      {/* =====================================================
+      {/* =================================================
           DASHBOARD CARDS
-      ===================================================== */}
+      ================================================= */}
 
       <Grid
         container
@@ -939,11 +1565,14 @@ export default function Forecast() {
           ],
           [
             "Predicted Demand",
-            dashboard?.total_predicted_demand ?? 0,
+            Number(
+              dashboard?.total_predicted_demand ?? 0
+            ).toFixed(2),
           ],
           [
             "Run Out Risk",
-            dashboard?.products_expected_to_run_out ?? 0,
+            dashboard?.products_expected_to_run_out ??
+              0,
           ],
           [
             "High Growth",
@@ -955,53 +1584,60 @@ export default function Forecast() {
           ],
           [
             "Accuracy",
-            `${dashboard?.forecast_accuracy ?? 0}%`,
+            `${Number(
+              dashboard?.forecast_accuracy ?? 0
+            ).toFixed(1)}%`,
           ],
-        ].map((item, index) => (
-          <Grid
-            key={index}
-            size={{
-              xs: 12,
-              sm: 6,
-              md: 4,
-              lg: 2,
-            }}
-          >
-            <Card
-              sx={{
-                height: "100%",
-                background: "#1E293B",
+        ].map(
+          ([label, value], index) => (
+            <Grid
+              key={index}
+              size={{
+                xs: 12,
+                sm: 6,
+                md: 4,
+                lg: 2,
               }}
             >
-              <CardContent>
-                <Typography
-                  variant="subtitle2"
-                  sx={{
-                    color: "#94A3B8",
-                  }}
-                >
-                  {item[0]}
-                </Typography>
+              <Card
+                sx={{
+                  height: "100%",
+                  background:
+                    "#1E293B",
+                }}
+              >
+                <CardContent>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{
+                      color:
+                        "#94A3B8",
+                    }}
+                  >
+                    {label}
+                  </Typography>
 
-                <Typography
-                  variant="h4"
-                  fontWeight={700}
-                  sx={{
-                    color: "#FFFFFF",
-                    mt: 1,
-                  }}
-                >
-                  {item[1]}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
+                  <Typography
+                    variant="h4"
+                    fontWeight={700}
+                    sx={{
+                      color:
+                        "#FFFFFF",
+                      mt: 1,
+                    }}
+                  >
+                    {value}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          )
+        )}
       </Grid>
 
-      {/* =====================================================
-          FILTER SECTION
-      ===================================================== */}
+      {/* =================================================
+          FILTERS
+      ================================================= */}
 
       <Stack
         spacing={2}
@@ -1026,14 +1662,16 @@ export default function Forecast() {
             }
             sx={darkFieldStyle}
           >
-            {FORECAST_PERIODS.map((item) => (
-              <MenuItem
-                key={item.value}
-                value={item.value}
-              >
-                {item.label}
-              </MenuItem>
-            ))}
+            {FORECAST_PERIODS.map(
+              (item) => (
+                <MenuItem
+                  key={item.value}
+                  value={item.value}
+                >
+                  {item.label}
+                </MenuItem>
+              )
+            )}
           </TextField>
 
           <TextField
@@ -1105,21 +1743,16 @@ export default function Forecast() {
               All Categories
             </MenuItem>
 
-            {[
-              ...new Set(
-                allProducts.map(
-                  (item) =>
-                    item.category_name
-                )
-              ),
-            ].map((cat) => (
-              <MenuItem
-                key={cat}
-                value={cat}
-              >
-                {cat}
-              </MenuItem>
-            ))}
+            {categoryOptions.map(
+              (cat) => (
+                <MenuItem
+                  key={cat}
+                  value={cat}
+                >
+                  {cat}
+                </MenuItem>
+              )
+            )}
           </TextField>
 
           <TextField
@@ -1179,7 +1812,8 @@ export default function Forecast() {
             onClick={handleRefresh}
             sx={{
               color: "#FFFFFF",
-              borderColor: "#64748B",
+              borderColor:
+                "#64748B",
             }}
           >
             Refresh
@@ -1188,7 +1822,9 @@ export default function Forecast() {
           <Button
             variant="contained"
             startIcon={<Assessment />}
-            onClick={generateForecast}
+            onClick={
+              generateForecast
+            }
             disabled={generating}
           >
             {generating
@@ -1198,13 +1834,16 @@ export default function Forecast() {
 
           <Button
             variant="outlined"
-            startIcon={<Notifications />}
+            startIcon={
+              <Notifications />
+            }
             onClick={
               toggleNotifications
             }
             sx={{
               color: "#FFFFFF",
-              borderColor: "#64748B",
+              borderColor:
+                "#64748B",
             }}
           >
             Notifications
@@ -1212,9 +1851,9 @@ export default function Forecast() {
         </Stack>
       </Stack>
 
-      {/* =====================================================
+      {/* =================================================
           HISTORICAL VS FORECAST
-      ===================================================== */}
+      ================================================= */}
 
       <Card
         sx={{
@@ -1234,7 +1873,8 @@ export default function Forecast() {
             Historical Sales vs Forecast
           </Typography>
 
-          {productChartData.length === 0 ? (
+          {productChartData.length ===
+          0 ? (
             <EmptyChart
               message="No historical or forecast data available"
             />
@@ -1250,13 +1890,9 @@ export default function Forecast() {
                 height="100%"
               >
                 <BarChart
-                  data={productChartData}
-                  margin={{
-                    top: 20,
-                    right: 30,
-                    left: 20,
-                    bottom: 20,
-                  }}
+                  data={
+                    productChartData
+                  }
                 >
                   <CartesianGrid
                     strokeDasharray="3 3"
@@ -1276,19 +1912,7 @@ export default function Forecast() {
                     }}
                   />
 
-                  <Tooltip
-                    contentStyle={{
-                      background: "#111827",
-                      border:
-                        "1px solid #334155",
-                    }}
-                    labelStyle={{
-                      color: "#FFFFFF",
-                    }}
-                    itemStyle={{
-                      color: "#FFFFFF",
-                    }}
-                  />
+                  <Tooltip />
 
                   <Legend />
 
@@ -1296,24 +1920,12 @@ export default function Forecast() {
                     dataKey="historical"
                     name="Historical Sales"
                     fill="#38BDF8"
-                    radius={[
-                      5,
-                      5,
-                      0,
-                      0,
-                    ]}
                   />
 
                   <Bar
                     dataKey="predicted"
                     name="Predicted Demand"
                     fill="#22C55E"
-                    radius={[
-                      5,
-                      5,
-                      0,
-                      0,
-                    ]}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -1322,9 +1934,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
-          PRODUCT GROWTH FORECAST
-      ===================================================== */}
+      {/* =================================================
+          PRODUCT GROWTH
+      ================================================= */}
 
       <Card
         sx={{
@@ -1344,7 +1956,8 @@ export default function Forecast() {
             Product Growth Forecast
           </Typography>
 
-          {growthChartData.length === 0 ? (
+          {growthChartData.length ===
+          0 ? (
             <EmptyChart
               message="No growth forecast data available"
             />
@@ -1354,13 +1967,9 @@ export default function Forecast() {
               height={350}
             >
               <BarChart
-                data={growthChartData}
-                margin={{
-                  top: 30,
-                  right: 30,
-                  left: 20,
-                  bottom: 20,
-                }}
+                data={
+                  growthChartData
+                }
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
@@ -1375,45 +1984,20 @@ export default function Forecast() {
                 />
 
                 <YAxis
-                  tick={{
-                    fill: "#E2E8F0",
-                  }}
                   tickFormatter={(value) =>
                     `${value}%`
                   }
+                  tick={{
+                    fill: "#E2E8F0",
+                  }}
                 />
 
-                <Tooltip
-                  formatter={(value: number) => [
-                    `${Number(value).toFixed(
-                      2
-                    )}%`,
-                    "Growth",
-                  ]}
-                  contentStyle={{
-                    background: "#111827",
-                    border:
-                      "1px solid #334155",
-                  }}
-                  labelStyle={{
-                    color: "#FFFFFF",
-                  }}
-                  itemStyle={{
-                    color: "#FFFFFF",
-                  }}
-                />
+                <Tooltip />
 
                 <Bar
                   dataKey="growth"
                   name="Growth %"
                   fill="#F59E0B"
-                  minPointSize={10}
-                  radius={[
-                    6,
-                    6,
-                    0,
-                    0,
-                  ]}
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -1421,9 +2005,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
+      {/* =================================================
           PRODUCT DEMAND TREND
-      ===================================================== */}
+      ================================================= */}
 
       <Card
         sx={{
@@ -1443,7 +2027,8 @@ export default function Forecast() {
             Product Demand Trend
           </Typography>
 
-          {productTrendData.length === 0 ? (
+          {productTrendData.length ===
+          0 ? (
             <EmptyChart
               message="No demand trend data available"
             />
@@ -1453,13 +2038,9 @@ export default function Forecast() {
               height={350}
             >
               <LineChart
-                data={productTrendData}
-                margin={{
-                  top: 30,
-                  right: 30,
-                  left: 20,
-                  bottom: 20,
-                }}
+                data={
+                  productTrendData
+                }
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
@@ -1479,19 +2060,7 @@ export default function Forecast() {
                   }}
                 />
 
-                <Tooltip
-                  contentStyle={{
-                    background: "#111827",
-                    border:
-                      "1px solid #334155",
-                  }}
-                  labelStyle={{
-                    color: "#FFFFFF",
-                  }}
-                  itemStyle={{
-                    color: "#FFFFFF",
-                  }}
-                />
+                <Tooltip />
 
                 <Legend />
 
@@ -1516,9 +2085,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
-          TOP PREDICTED PRODUCTS
-      ===================================================== */}
+      {/* =================================================
+          TOP PRODUCTS
+      ================================================= */}
 
       <Card
         sx={{
@@ -1538,7 +2107,8 @@ export default function Forecast() {
             Top Predicted Products
           </Typography>
 
-          {topProductsData.length === 0 ? (
+          {topProductsData.length ===
+          0 ? (
             <EmptyChart
               message="No predicted product data available"
             />
@@ -1548,13 +2118,9 @@ export default function Forecast() {
               height={350}
             >
               <BarChart
-                data={topProductsData}
-                margin={{
-                  top: 30,
-                  right: 30,
-                  left: 20,
-                  bottom: 20,
-                }}
+                data={
+                  topProductsData
+                }
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
@@ -1574,30 +2140,12 @@ export default function Forecast() {
                   }}
                 />
 
-                <Tooltip
-                  contentStyle={{
-                    background: "#111827",
-                    border:
-                      "1px solid #334155",
-                  }}
-                  labelStyle={{
-                    color: "#FFFFFF",
-                  }}
-                  itemStyle={{
-                    color: "#FFFFFF",
-                  }}
-                />
+                <Tooltip />
 
                 <Bar
                   dataKey="demand"
                   name="Predicted Demand"
                   fill="#A855F7"
-                  radius={[
-                    6,
-                    6,
-                    0,
-                    0,
-                  ]}
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -1605,9 +2153,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
-          SEASONAL SALES PATTERN
-      ===================================================== */}
+      {/* =================================================
+          SEASONAL PATTERN
+      ================================================= */}
 
       <Card
         sx={{
@@ -1627,7 +2175,8 @@ export default function Forecast() {
             Seasonal Sales Pattern
           </Typography>
 
-          {seasonalData.length === 0 ? (
+          {seasonalData.length ===
+          0 ? (
             <EmptyChart
               message="No seasonal sales data available"
             />
@@ -1637,13 +2186,9 @@ export default function Forecast() {
               height={350}
             >
               <LineChart
-                data={seasonalData}
-                margin={{
-                  top: 30,
-                  right: 30,
-                  left: 20,
-                  bottom: 20,
-                }}
+                data={
+                  seasonalData
+                }
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
@@ -1663,19 +2208,7 @@ export default function Forecast() {
                   }}
                 />
 
-                <Tooltip
-                  contentStyle={{
-                    background: "#111827",
-                    border:
-                      "1px solid #334155",
-                  }}
-                  labelStyle={{
-                    color: "#FFFFFF",
-                  }}
-                  itemStyle={{
-                    color: "#FFFFFF",
-                  }}
-                />
+                <Tooltip />
 
                 <Legend />
 
@@ -1700,9 +2233,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
-          CATEGORY DEMAND DISTRIBUTION
-      ===================================================== */}
+      {/* =================================================
+          CATEGORY DISTRIBUTION
+      ================================================= */}
 
       <Card
         sx={{
@@ -1722,7 +2255,8 @@ export default function Forecast() {
             Category Demand Distribution
           </Typography>
 
-          {categoryChartData.length === 0 ? (
+          {categoryChartData.length ===
+          0 ? (
             <EmptyChart
               message="No category demand data available"
             />
@@ -1739,7 +2273,9 @@ export default function Forecast() {
               >
                 <PieChart>
                   <Pie
-                    data={categoryChartData}
+                    data={
+                      categoryChartData
+                    }
                     dataKey="demand"
                     nameKey="name"
                     outerRadius={120}
@@ -1760,19 +2296,7 @@ export default function Forecast() {
                     )}
                   </Pie>
 
-                  <Tooltip
-                    contentStyle={{
-                      background: "#111827",
-                      border:
-                        "1px solid #334155",
-                    }}
-                    labelStyle={{
-                      color: "#FFFFFF",
-                    }}
-                    itemStyle={{
-                      color: "#FFFFFF",
-                    }}
-                  />
+                  <Tooltip />
 
                   <Legend />
                 </PieChart>
@@ -1782,9 +2306,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
+      {/* =================================================
           PRODUCT FORECAST DETAILS
-      ===================================================== */}
+      ================================================= */}
 
       <Card
         sx={{
@@ -1824,170 +2348,192 @@ export default function Forecast() {
                     "Reorder Threshold",
                     "Recommended Reorder",
                     "Risk",
-                  ].map((heading) => (
-                    <TableCell
-                      key={heading}
-                      sx={{
-                        color: "#FFFFFF",
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {heading}
-                    </TableCell>
-                  ))}
+                  ].map(
+                    (heading) => (
+                      <TableCell
+                        key={heading}
+                        sx={{
+                          color:
+                            "#FFFFFF",
+                          fontWeight: 700,
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
+                        {heading}
+                      </TableCell>
+                    )
+                  )}
                 </TableRow>
               </TableHead>
 
               <TableBody>
-                {products.length === 0 ? (
+                {products.length ===
+                0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={9}
                       align="center"
                       sx={{
-                        color: "#CBD5E1",
+                        color:
+                          "#CBD5E1",
                       }}
                     >
-                      No Product Forecast Data
-                      Available
+                      No Product Forecast Data Available
                     </TableCell>
                   </TableRow>
                 ) : (
-                  products.map((row) => {
-                    const currentStock =
-                      getNumber(
-                        row.current_stock
-                      );
+                  products.map(
+                    (row) => {
+                      const currentStock =
+                        getNumber(
+                          row.current_stock
+                        );
 
-                    const reorderLevel =
-                      getNumber(
-                        row.reorder_level
-                      );
+                      const reorderLevel =
+                        getNumber(
+                          row.reorder_level
+                        );
 
-                    const predictedDemand =
-                      getNumber(
-                        row.predicted_demand
-                      );
+                      const predictedDemand =
+                        getNumber(
+                          row.predicted_demand
+                        );
 
-                    const recommendedReorder =
-                      getRecommendedReorder(
-                        predictedDemand,
-                        currentStock,
-                        reorderLevel
-                      );
+                      const recommended =
+                        getRecommendedReorder(
+                          predictedDemand,
+                          currentStock,
+                          reorderLevel
+                        );
 
-                    const risk = getRisk(
-                      currentStock,
-                      reorderLevel,
-                      predictedDemand
-                    );
+                      const risk =
+                        getRisk(
+                          currentStock,
+                          reorderLevel,
+                          predictedDemand
+                        );
 
-                    return (
-                      <TableRow key={row.id}>
-                        <TableCell
-                          sx={{
-                            color: "#E2E8F0",
-                            fontWeight: 600,
-                            whiteSpace:
-                              "nowrap",
-                          }}
+                      return (
+                        <TableRow
+                          key={
+                            row.id
+                          }
                         >
-                          {row.product_name ||
-                            "Unknown Product"}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#CBD5E1",
-                            whiteSpace:
-                              "nowrap",
-                          }}
-                        >
-                          {row.sku || "-"}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#CBD5E1",
-                            whiteSpace:
-                              "nowrap",
-                          }}
-                        >
-                          {row.category_name ||
-                            "-"}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#E2E8F0",
-                          }}
-                        >
-                          {getNumber(
-                            row.historical_sales
-                          ).toFixed(0)}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#38BDF8",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {predictedDemand.toFixed(
-                            2
-                          )}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#E2E8F0",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {currentStock.toFixed(
-                            0
-                          )}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#F59E0B",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {reorderLevel.toFixed(
-                            0
-                          )}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#4ADE80",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {recommendedReorder}
-                        </TableCell>
-
-                        <TableCell>
-                          <Chip
-                            label={risk}
-                            size="small"
+                          <TableCell
                             sx={{
-                              background:
-                                getRiskColor(
-                                  risk
-                                ),
                               color:
-                                "#FFFFFF",
+                                "#E2E8F0",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {
+                              row.product_name
+                            }
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#CBD5E1",
+                            }}
+                          >
+                            {row.sku}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#CBD5E1",
+                            }}
+                          >
+                            {
+                              row.category_name
+                            }
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#E2E8F0",
+                            }}
+                          >
+                            {getNumber(
+                              row.historical_sales
+                            ).toFixed(
+                              0
+                            )}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#38BDF8",
                               fontWeight: 700,
                             }}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
+                          >
+                            {predictedDemand.toFixed(
+                              2
+                            )}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#E2E8F0",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {currentStock.toFixed(
+                              0
+                            )}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#F59E0B",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {reorderLevel.toFixed(
+                              0
+                            )}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#4ADE80",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {
+                              recommended
+                            }
+                          </TableCell>
+
+                          <TableCell>
+                            <Chip
+                              label={
+                                risk
+                              }
+                              size="small"
+                              sx={{
+                                background:
+                                  getRiskColor(
+                                    risk
+                                  ),
+                                color:
+                                  "#FFFFFF",
+                                fontWeight: 700,
+                              }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                  )
                 )}
               </TableBody>
             </Table>
@@ -1995,9 +2541,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
-          CATEGORY FORECAST DETAILS
-      ===================================================== */}
+      {/* =================================================
+          CATEGORY DETAILS
+      ================================================= */}
 
       <Card
         sx={{
@@ -2035,189 +2581,213 @@ export default function Forecast() {
                     "Current Stock",
                     "Recommended",
                     "Forecast Value",
-                  ].map((heading) => (
-                    <TableCell
-                      key={heading}
-                      sx={{
-                        color: "#FFFFFF",
-                        fontWeight: 700,
-                        whiteSpace:
-                          "nowrap",
-                      }}
-                    >
-                      {heading}
-                    </TableCell>
-                  ))}
+                    "Recommendation",
+                  ].map(
+                    (heading) => (
+                      <TableCell
+                        key={heading}
+                        sx={{
+                          color:
+                            "#FFFFFF",
+                          fontWeight: 700,
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
+                        {heading}
+                      </TableCell>
+                    )
+                  )}
                 </TableRow>
               </TableHead>
 
               <TableBody>
-                {categories.length === 0 ? (
+                {categories.length ===
+                0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       align="center"
                       sx={{
-                        color: "#CBD5E1",
+                        color:
+                          "#CBD5E1",
                       }}
                     >
-                      No Category Forecast Data
-                      Available
+                      No Category Forecast Data Available
                     </TableCell>
                   </TableRow>
                 ) : (
-                  categories.map((row) => {
-                    const growth =
-                      getNumber(
-                        row.expected_growth_percentage
-                      );
+                  categories.map(
+                    (row) => {
+                      const categoryProducts =
+                        allProducts.filter(
+                          (product) =>
+                            product.category_id ===
+                            row.category_id
+                        );
 
-                    const categoryProducts =
-                      allProducts.filter(
-                        (product) =>
-                          product.category_id ===
-                          row.category_id
-                      );
+                      const currentStock =
+                        categoryProducts.reduce(
+                          (
+                            total,
+                            product
+                          ) =>
+                            total +
+                            getNumber(
+                              product.current_stock
+                            ),
+                          0
+                        );
 
-                    const currentStock =
-                      categoryProducts.reduce(
-                        (total, product) =>
-                          total +
-                          getNumber(
-                            product.current_stock
-                          ),
-                        0
-                      );
+                      const predictedDemand =
+                        getNumber(
+                          row.predicted_demand
+                        );
 
-                    const predictedDemand =
-                      getNumber(
-                        row.predicted_demand
-                      );
+                      const threshold =
+                        categoryProducts.reduce(
+                          (
+                            total,
+                            product
+                          ) =>
+                            total +
+                            getNumber(
+                              product.reorder_level
+                            ),
+                          0
+                        );
 
-                    const reorderThreshold =
-                      categoryProducts.reduce(
-                        (total, product) =>
-                          total +
-                          getNumber(
-                            product.reorder_level
-                          ),
-                        0
-                      );
+                      const recommended =
+                        getRecommendedReorder(
+                          predictedDemand,
+                          currentStock,
+                          threshold
+                        );
 
-                    const recommended =
-                      getRecommendedReorder(
-                        predictedDemand,
-                        currentStock,
-                        reorderThreshold
-                      );
+                      const growth =
+                        getNumber(
+                          row.expected_growth_percentage
+                        );
 
-                    const recommendation =
-                      getCategoryRecommendation(
-                        growth
-                      );
+                      const recommendation =
+                        getCategoryRecommendation(
+                          growth
+                        );
 
-                    return (
-                      <TableRow
-                        key={
-                          row.category_id
-                        }
-                      >
-                        <TableCell
-                          sx={{
-                            color: "#E2E8F0",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {row.category_name}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#CBD5E1",
-                          }}
-                        >
-                          {
-                            categoryProducts.length
+                      return (
+                        <TableRow
+                          key={
+                            row.category_id
                           }
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#E2E8F0",
-                          }}
                         >
-                          {getNumber(
-                            row.total_historical_sales
-                          ).toFixed(0)}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#38BDF8",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {predictedDemand.toFixed(
-                            2
-                          )}
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#E2E8F0",
-                          }}
-                        >
-                          {currentStock.toFixed(
-                            0
-                          )}
-                        </TableCell>
-
-                        <TableCell>
-                          <Chip
-                            label={
-                              recommended
-                            }
-                            size="small"
+                          <TableCell
                             sx={{
-                              background:
-                                "#166534",
                               color:
-                                "#FFFFFF",
-                              fontWeight: 700,
-                            }}
-                          />
-                        </TableCell>
-
-                        <TableCell
-                          sx={{
-                            color: "#4ADE80",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {row.forecast_value ||
-                            "₹0"}
-                        </TableCell>
-
-                        <TableCell>
-                          <Chip
-                            label={
-                              recommendation
-                            }
-                            size="small"
-                            sx={{
-                              background:
-                                getCategoryRecommendationColor(
-                                  growth
-                                ),
-                              color:
-                                "#FFFFFF",
+                                "#E2E8F0",
                               fontWeight: 600,
                             }}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
+                          >
+                            {
+                              row.category_name
+                            }
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#CBD5E1",
+                            }}
+                          >
+                            {
+                              categoryProducts.length
+                            }
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#E2E8F0",
+                            }}
+                          >
+                            {getNumber(
+                              row.total_historical_sales
+                            ).toFixed(
+                              0
+                            )}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#38BDF8",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {predictedDemand.toFixed(
+                              2
+                            )}
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#E2E8F0",
+                            }}
+                          >
+                            {currentStock.toFixed(
+                              0
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            <Chip
+                              label={
+                                recommended
+                              }
+                              size="small"
+                              sx={{
+                                background:
+                                  "#166534",
+                                color:
+                                  "#FFFFFF",
+                                fontWeight: 700,
+                              }}
+                            />
+                          </TableCell>
+
+                          <TableCell
+                            sx={{
+                              color:
+                                "#4ADE80",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {
+                              row.forecast_value
+                            }
+                          </TableCell>
+
+                          <TableCell>
+                            <Chip
+                              label={
+                                recommendation
+                              }
+                              size="small"
+                              sx={{
+                                background:
+                                  getCategoryRecommendationColor(
+                                    growth
+                                  ),
+                                color:
+                                  "#FFFFFF",
+                                fontWeight: 600,
+                              }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                  )
                 )}
               </TableBody>
             </Table>
@@ -2225,9 +2795,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
-          EXPORT FORECAST REPORTS
-      ===================================================== */}
+      {/* =================================================
+          EXPORT
+      ================================================= */}
 
       <Card
         sx={{
@@ -2257,13 +2827,16 @@ export default function Forecast() {
           >
             <Button
               variant="outlined"
-              startIcon={<Download />}
+              startIcon={
+                <Download />
+              }
               onClick={
                 exportProductsCSV
               }
               sx={{
                 color: "#FFFFFF",
-                borderColor: "#64748B",
+                borderColor:
+                  "#64748B",
               }}
             >
               Product CSV
@@ -2271,13 +2844,16 @@ export default function Forecast() {
 
             <Button
               variant="outlined"
-              startIcon={<Download />}
+              startIcon={
+                <Download />
+              }
               onClick={
                 exportProductsPDF
               }
               sx={{
                 color: "#FFFFFF",
-                borderColor: "#64748B",
+                borderColor:
+                  "#64748B",
               }}
             >
               Product PDF
@@ -2285,13 +2861,16 @@ export default function Forecast() {
 
             <Button
               variant="outlined"
-              startIcon={<Download />}
+              startIcon={
+                <Download />
+              }
               onClick={
                 exportCategoriesCSV
               }
               sx={{
                 color: "#FFFFFF",
-                borderColor: "#64748B",
+                borderColor:
+                  "#64748B",
               }}
             >
               Category CSV
@@ -2300,9 +2879,9 @@ export default function Forecast() {
         </CardContent>
       </Card>
 
-      {/* =====================================================
+      {/* =================================================
           NOTIFICATIONS
-      ===================================================== */}
+      ================================================= */}
 
       {showNotifications && (
         <Card
@@ -2323,10 +2902,12 @@ export default function Forecast() {
               Forecast Notifications
             </Typography>
 
-            {notifications.length === 0 ? (
+            {notifications.length ===
+            0 ? (
               <Typography
                 sx={{
-                  color: "#CBD5E1",
+                  color:
+                    "#CBD5E1",
                 }}
               >
                 No new forecast notifications
@@ -2338,13 +2919,15 @@ export default function Forecast() {
                     key={index}
                     sx={{
                       mb: 1,
-                      background: "#334155",
+                      background:
+                        "#334155",
                     }}
                   >
                     <CardContent>
                       <Typography
                         sx={{
-                          color: "#FFFFFF",
+                          color:
+                            "#FFFFFF",
                           fontWeight: 600,
                         }}
                       >
@@ -2353,7 +2936,8 @@ export default function Forecast() {
 
                       <Typography
                         sx={{
-                          color: "#CBD5E1",
+                          color:
+                            "#CBD5E1",
                         }}
                       >
                         {item.type}

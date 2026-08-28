@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -27,6 +30,125 @@ from app.schemas.forecast import (
 
 
 # ============================================================
+# CONSTANTS
+# ============================================================
+
+VALID_FORECAST_PERIODS = {7, 30, 90}
+
+DEFAULT_FORECAST_DAYS = 30
+DEFAULT_LEAD_TIME_DAYS = 7
+DEFAULT_SAFETY_STOCK_DAYS = 3
+
+MAX_TOP_PRODUCTS_LIMIT = 100
+
+VALID_SORT_ORDERS = {"asc", "desc"}
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def validate_forecast_period(
+    forecast_period: str | None,
+    default: int = DEFAULT_FORECAST_DAYS,
+) -> int:
+    """
+    Convert forecast period to integer and validate it.
+
+    Supported forecast periods:
+        7 days
+        30 days
+        90 days
+    """
+
+    if forecast_period is None or str(forecast_period).strip() == "":
+        return default
+
+    try:
+        days = int(str(forecast_period).strip())
+    except (TypeError, ValueError):
+        raise ValueError(
+            "forecast_period must be one of: 7, 30, or 90 days."
+        )
+
+    if days not in VALID_FORECAST_PERIODS:
+        raise ValueError(
+            "forecast_period must be one of: 7, 30, or 90 days."
+        )
+
+    return days
+
+
+def validate_positive_integer(
+    value: int,
+    field_name: str,
+    maximum: int | None = None,
+) -> int:
+    """
+    Validate positive integer query parameters.
+    """
+
+    if value < 1:
+        raise ValueError(
+            f"{field_name} must be greater than 0."
+        )
+
+    if maximum is not None and value > maximum:
+        raise ValueError(
+            f"{field_name} must not exceed {maximum}."
+        )
+
+    return value
+
+
+def validate_inventory_parameters(
+    forecast_days: int,
+    lead_time_days: int,
+    safety_stock_days: int,
+) -> None:
+    """
+    Validate inventory forecasting parameters.
+    """
+
+    if forecast_days not in VALID_FORECAST_PERIODS:
+        raise ValueError(
+            "forecast_days must be one of: 7, 30, or 90."
+        )
+
+    if lead_time_days < 0:
+        raise ValueError(
+            "lead_time_days cannot be negative."
+        )
+
+    if safety_stock_days < 0:
+        raise ValueError(
+            "safety_stock_days cannot be negative."
+        )
+
+
+def handle_service_exception(
+    db: Session,
+    exc: Exception,
+) -> HTTPException:
+    """
+    Convert service exceptions into HTTP exceptions.
+    """
+
+    db.rollback()
+
+    if isinstance(exc, ValueError):
+        return HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    return HTTPException(
+        status_code=500,
+        detail=str(exc),
+    )
+
+
+# ============================================================
 # DEMAND FORECAST ROUTER
 # ============================================================
 
@@ -46,11 +168,20 @@ def generate_forecast(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Generate demand forecasts for all products
+    belonging to the current user's company.
+    """
+
     try:
+        forecast_days = validate_forecast_period(
+            request.forecast_period
+        )
+
         forecasts = generate_all_forecasts(
             db=db,
             company_id=current_user.company_id,
-            forecast_period=request.forecast_period,
+            forecast_period=str(forecast_days),
         )
 
         create_forecast_audit_log(
@@ -58,28 +189,20 @@ def generate_forecast(
             company_id=current_user.company_id,
             user_id=current_user.id,
             action="Forecast Generated",
-            forecast_period=request.forecast_period,
+            forecast_period=str(forecast_days),
         )
 
+        db.commit()
+
         return {
-            "message": "Forecast generated successfully",
+            "success": True,
+            "message": "Forecast generated successfully.",
             "total": len(forecasts),
-            "forecast_period": request.forecast_period,
+            "forecast_period": forecast_days,
         }
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-
     except Exception as exc:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -94,6 +217,10 @@ def forecast_dashboard(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Return demand forecasting dashboard analytics.
+    """
+
     try:
         return get_forecast_analytics(
             db=db,
@@ -101,10 +228,7 @@ def forecast_dashboard(
         )
 
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -113,36 +237,60 @@ def forecast_dashboard(
 
 @router.get("/products")
 def products_forecast(
-    forecast_period: str | None = None,
-    search: str | None = None,
-    category_id: int | None = None,
-    brand: str | None = None,
-    sort_by: str = "highest_demand",
+    forecast_period: str | None = Query(
+        default=None,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
+    search: str | None = Query(
+        default=None,
+        description="Search by product name or SKU",
+    ),
+    category_id: int | None = Query(
+        default=None,
+        ge=1,
+    ),
+    brand: str | None = Query(
+        default=None,
+    ),
+    sort_by: str = Query(
+        default="highest_demand",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Return product-level demand forecasts.
+    """
+
     try:
+        forecast_days = validate_forecast_period(
+            forecast_period
+        )
+
+        clean_search = (
+            search.strip()
+            if search and search.strip()
+            else None
+        )
+
+        clean_brand = (
+            brand.strip()
+            if brand and brand.strip()
+            else None
+        )
+
         return get_product_forecasts(
             db=db,
             company_id=current_user.company_id,
-            forecast_period=forecast_period,
-            search=search,
+            forecast_period=str(forecast_days),
+            search=clean_search,
             category_id=category_id,
-            brand=brand,
+            brand=clean_brand,
             sort_by=sort_by,
         )
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -151,28 +299,30 @@ def products_forecast(
 
 @router.get("/categories")
 def categories_forecast(
-    forecast_period: str | None = None,
+    forecast_period: str | None = Query(
+        default=None,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Return category-level demand forecasts.
+    """
+
     try:
+        forecast_days = validate_forecast_period(
+            forecast_period
+        )
+
         return get_category_forecasts(
             db=db,
             company_id=current_user.company_id,
-            forecast_period=forecast_period,
+            forecast_period=str(forecast_days),
         )
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -181,15 +331,21 @@ def categories_forecast(
 
 @router.get("/recommendations")
 def forecast_recommendations(
-    forecast_period: str | None = None,
+    forecast_period: str | None = Query(
+        default=None,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Return inventory recommendations generated from
+    demand forecasts.
+    """
+
     try:
-        forecast_days = (
-            int(forecast_period)
-            if forecast_period
-            else 30
+        forecast_days = validate_forecast_period(
+            forecast_period
         )
 
         return get_inventory_recommendations(
@@ -198,17 +354,8 @@ def forecast_recommendations(
             forecast_days=forecast_days,
         )
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -217,30 +364,36 @@ def forecast_recommendations(
 
 @router.get("/top-products")
 def top_predicted_products(
-    forecast_period: str | None = None,
-    limit: int = 10,
+    forecast_period: str | None = Query(
+        default=None,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=MAX_TOP_PRODUCTS_LIMIT,
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Return products with the highest predicted demand.
+    """
+
     try:
+        forecast_days = validate_forecast_period(
+            forecast_period
+        )
+
         return get_top_predicted_products(
             db=db,
             company_id=current_user.company_id,
-            forecast_period=forecast_period,
+            forecast_period=str(forecast_days),
             limit=limit,
         )
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -252,11 +405,18 @@ def generate_notifications(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Generate notifications for forecast-related
+    inventory risks.
+    """
+
     try:
         notifications = create_forecast_notifications(
             db=db,
             company_id=current_user.company_id,
         )
+
+        db.commit()
 
         return {
             "success": True,
@@ -267,12 +427,7 @@ def generate_notifications(
         }
 
     except Exception as exc:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -281,15 +436,26 @@ def generate_notifications(
 
 @router.get("/export/products/csv")
 def export_products_csv(
-    forecast_period: str | None = None,
+    forecast_period: str | None = Query(
+        default=None,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Export product forecasts as CSV.
+    """
+
     try:
+        forecast_days = validate_forecast_period(
+            forecast_period
+        )
+
         csv_data = export_product_forecast_csv(
             db=db,
             company_id=current_user.company_id,
-            forecast_period=forecast_period or "30",
+            forecast_period=str(forecast_days),
         )
 
         create_forecast_audit_log(
@@ -297,8 +463,10 @@ def export_products_csv(
             company_id=current_user.company_id,
             user_id=current_user.id,
             action="Forecast Product CSV Exported",
-            forecast_period=forecast_period or "30",
+            forecast_period=str(forecast_days),
         )
+
+        db.commit()
 
         return Response(
             content=csv_data,
@@ -312,12 +480,7 @@ def export_products_csv(
         )
 
     except Exception as exc:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -326,15 +489,26 @@ def export_products_csv(
 
 @router.get("/export/categories/csv")
 def export_categories_csv(
-    forecast_period: str | None = None,
+    forecast_period: str | None = Query(
+        default=None,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Export category forecasts as CSV.
+    """
+
     try:
+        forecast_days = validate_forecast_period(
+            forecast_period
+        )
+
         csv_data = export_category_forecast_csv(
             db=db,
             company_id=current_user.company_id,
-            forecast_period=forecast_period or "30",
+            forecast_period=str(forecast_days),
         )
 
         create_forecast_audit_log(
@@ -342,8 +516,10 @@ def export_categories_csv(
             company_id=current_user.company_id,
             user_id=current_user.id,
             action="Forecast Category CSV Exported",
-            forecast_period=forecast_period or "30",
+            forecast_period=str(forecast_days),
         )
+
+        db.commit()
 
         return Response(
             content=csv_data,
@@ -357,12 +533,7 @@ def export_categories_csv(
         )
 
     except Exception as exc:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -371,15 +542,26 @@ def export_categories_csv(
 
 @router.get("/export/products/pdf")
 def export_products_pdf(
-    forecast_period: str | None = None,
+    forecast_period: str | None = Query(
+        default=None,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Export product forecast report as PDF.
+    """
+
     try:
+        forecast_days = validate_forecast_period(
+            forecast_period
+        )
+
         pdf_file = export_product_forecast_pdf(
             db=db,
             company_id=current_user.company_id,
-            forecast_period=forecast_period or "30",
+            forecast_period=str(forecast_days),
         )
 
         create_forecast_audit_log(
@@ -387,8 +569,10 @@ def export_products_pdf(
             company_id=current_user.company_id,
             user_id=current_user.id,
             action="Forecast Product PDF Exported",
-            forecast_period=forecast_period or "30",
+            forecast_period=str(forecast_days),
         )
+
+        db.commit()
 
         return StreamingResponse(
             pdf_file,
@@ -402,12 +586,7 @@ def export_products_pdf(
         )
 
     except Exception as exc:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -426,17 +605,77 @@ inventory_forecast_router = APIRouter(
 
 @inventory_forecast_router.get("/forecast")
 def inventory_forecast(
-    forecast_days: int = 30,
-    lead_time_days: int = 7,
-    safety_stock_days: int = 3,
-    stock_risk: str | None = None,
-    sort_by: str = "product",
-    sort_order: str = "asc",
-    search: str = "",
+    forecast_days: int = Query(
+        default=DEFAULT_FORECAST_DAYS,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
+    lead_time_days: int = Query(
+        default=DEFAULT_LEAD_TIME_DAYS,
+        ge=0,
+        description="Supplier lead time in days",
+    ),
+    safety_stock_days: int = Query(
+        default=DEFAULT_SAFETY_STOCK_DAYS,
+        ge=0,
+        description="Safety stock coverage in days",
+    ),
+    stock_risk: str | None = Query(
+        default=None,
+        description=(
+            "Filter by stock risk: "
+            "OUT_OF_STOCK, STOCKOUT_RISK, "
+            "LOW_STOCK, HEALTHY, OVERSTOCK"
+        ),
+    ),
+    sort_by: str = Query(
+        default="product",
+    ),
+    sort_order: str = Query(
+        default="asc",
+    ),
+    search: str = Query(
+        default="",
+        description="Search by product name or SKU",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Inventory Forecasting & Smart Replenishment.
+
+    Calculates:
+        - Current stock
+        - Average daily sales
+        - Forecasted demand
+        - Days of stock remaining
+        - Safety stock
+        - Reorder point
+        - Recommended reorder quantity
+        - Stock risk
+        - Reorder requirement
+        - Confidence score
+    """
+
     try:
+        validate_inventory_parameters(
+            forecast_days=forecast_days,
+            lead_time_days=lead_time_days,
+            safety_stock_days=safety_stock_days,
+        )
+
+        clean_search = (
+            search.strip()
+            if search and search.strip()
+            else ""
+        )
+
+        clean_sort_order = sort_order.lower().strip()
+
+        if clean_sort_order not in VALID_SORT_ORDERS:
+            raise ValueError(
+                "sort_order must be either 'asc' or 'desc'."
+            )
+
         return get_inventory_forecast(
             db=db,
             company_id=current_user.company_id,
@@ -445,23 +684,12 @@ def inventory_forecast(
             safety_stock_days=safety_stock_days,
             stock_risk=stock_risk,
             sort_by=sort_by,
-            sort_order=sort_order,
-            search=search,
+            sort_order=clean_sort_order,
+            search=clean_search,
         )
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-
     except Exception as exc:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
 
 
 # ============================================================
@@ -470,13 +698,34 @@ def inventory_forecast(
 
 @inventory_forecast_router.get("/recommendations")
 def inventory_recommendations(
-    forecast_days: int = 30,
-    lead_time_days: int = 7,
-    safety_stock_days: int = 3,
+    forecast_days: int = Query(
+        default=DEFAULT_FORECAST_DAYS,
+        description="Forecast period: 7, 30, or 90 days",
+    ),
+    lead_time_days: int = Query(
+        default=DEFAULT_LEAD_TIME_DAYS,
+        ge=0,
+        description="Supplier lead time in days",
+    ),
+    safety_stock_days: int = Query(
+        default=DEFAULT_SAFETY_STOCK_DAYS,
+        ge=0,
+        description="Safety stock coverage in days",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """
+    Return smart inventory replenishment recommendations.
+    """
+
     try:
+        validate_inventory_parameters(
+            forecast_days=forecast_days,
+            lead_time_days=lead_time_days,
+            safety_stock_days=safety_stock_days,
+        )
+
         return get_inventory_recommendations(
             db=db,
             company_id=current_user.company_id,
@@ -485,16 +734,5 @@ def inventory_recommendations(
             safety_stock_days=safety_stock_days,
         )
 
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-
     except Exception as exc:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc),
-        ) from exc
+        raise handle_service_exception(db, exc) from exc
