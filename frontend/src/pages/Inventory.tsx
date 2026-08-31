@@ -54,7 +54,6 @@ import {
   updateReorderLevel,
   getInventoryForecast,
   type ForecastAnalytics,
-  type ForecastProduct,
 } from "../api/inventoryApi";
 
 // =========================
@@ -333,7 +332,10 @@ export default function Inventory() {
 
       return Object.keys(map).map(
         (key) => ({
-          name: key.replaceAll("_", " "),
+          name: key.replaceAll(
+            "_",
+            " "
+          ),
           value: map[key],
         })
       );
@@ -423,7 +425,8 @@ export default function Inventory() {
       if (brand) {
         data = data.filter(
           (item) =>
-            item.product.brand === brand
+            item.product.brand ===
+            brand
         );
       }
 
@@ -623,7 +626,12 @@ export default function Inventory() {
           maxWidth="xl"
           sx={{
             mt: 12,
-            pb: 6,
+            pb: 8,
+            px: {
+              xs: 2,
+              sm: 3,
+              md: 4,
+            },
           }}
         >
           {/* =========================
@@ -632,8 +640,11 @@ export default function Inventory() {
 
           <Box
             sx={{
-              mb: 4,
-              p: 3,
+              mb: 5,
+              p: {
+                xs: 2.5,
+                md: 3.5,
+              },
               borderRadius: 3,
               background:
                 "linear-gradient(90deg,#1E3A8A,#2563EB)",
@@ -671,7 +682,21 @@ export default function Inventory() {
           <Grid
             container
             spacing={3}
-            mb={4}
+            mb={5}
+            sx={{
+              "& > .MuiGrid-item": {
+                width: {
+                  xs: "100%",
+                  sm: "calc(50% - 12px)",
+                  lg: "calc(25% - 18px)",
+                },
+                maxWidth: {
+                  xs: "100%",
+                  sm: "calc(50% - 12px)",
+                  lg: "calc(25% - 18px)",
+                },
+              },
+            }}
           >
             {[
               {
@@ -737,7 +762,8 @@ export default function Inventory() {
                       sx={{
                         mt: 1,
                         fontWeight: 700,
-                        color: card.color,
+                        color:
+                          card.color,
                       }}
                     >
                       {card.value}
@@ -750,13 +776,22 @@ export default function Inventory() {
 
           {/* =====================================================
               INVENTORY FORECASTING
+              EXTRA TOP SPACE ADDED HERE
           ===================================================== */}
 
-          <Box sx={{ mb: 5 }}>
+          <Box
+            sx={{
+              mt: 8,
+              mb: 6,
+            }}
+          >
             <Box
               sx={{
-                mb: 3,
-                p: 3,
+                mb: 4,
+                p: {
+                  xs: 2.5,
+                  md: 3.5,
+                },
                 borderRadius: 3,
                 background:
                   "linear-gradient(90deg,#312E81,#4F46E5)",
@@ -830,7 +865,21 @@ export default function Inventory() {
                 <Grid
                   container
                   spacing={3}
-                  mb={3}
+                  mb={5}
+                  sx={{
+                    "& > .MuiGrid-item": {
+                      width: {
+                        xs: "100%",
+                        sm: "calc(50% - 12px)",
+                        md: "calc(25% - 18px)",
+                      },
+                      maxWidth: {
+                        xs: "100%",
+                        sm: "calc(50% - 12px)",
+                        md: "calc(25% - 18px)",
+                      },
+                    },
+                  }}
                 >
                   {[
                     {
@@ -908,13 +957,19 @@ export default function Inventory() {
                       <Card
                         sx={{
                           height: "100%",
-                          bgcolor: "#1E293B",
+                          bgcolor:
+                            "#1E293B",
                           border:
                             "1px solid #334155",
                           borderRadius: 3,
+                          minHeight: 118,
                         }}
                       >
-                        <CardContent>
+                        <CardContent
+                          sx={{
+                            p: 2.5,
+                          }}
+                        >
                           <Typography
                             sx={{
                               color:
@@ -946,8 +1001,9 @@ export default function Inventory() {
 
                 <Grid
                   container
-                  spacing={3}
-                  mb={3}
+                  spacing={3.5}
+                  mb={5}
+                  alignItems="stretch"
                 >
                   <Grid
                     item
@@ -956,14 +1012,18 @@ export default function Inventory() {
                   >
                     <Card
                       sx={{
-                        bgcolor: "#1E293B",
+                        bgcolor:
+                          "#1E293B",
                         borderRadius: 3,
                         border:
                           "1px solid #334155",
                         height: "100%",
+                        minHeight: 360,
                       }}
                     >
-                      <CardContent>
+                      <CardContent
+                        sx={{ p: 3 }}
+                      >
                         <Typography
                           variant="h6"
                           sx={{
@@ -1077,20 +1137,25 @@ export default function Inventory() {
                   >
                     <Card
                       sx={{
-                        bgcolor: "#1E293B",
+                        bgcolor:
+                          "#1E293B",
                         borderRadius: 3,
                         border:
                           "1px solid #334155",
+                        height: "100%",
+                        minHeight: 360,
                       }}
                     >
-                      <CardContent>
+                      <CardContent
+                        sx={{ p: 3 }}
+                      >
                         <Typography
                           variant="h6"
                           sx={{
                             color:
                               "#FFFFFF",
                             fontWeight: 700,
-                            mb: 1,
+                            mb: 2,
                           }}
                         >
                           Forecast Risk
@@ -1099,7 +1164,7 @@ export default function Inventory() {
 
                         <Box
                           sx={{
-                            height: 280,
+                            height: 290,
                           }}
                         >
                           <ResponsiveContainer
@@ -1161,20 +1226,25 @@ export default function Inventory() {
                   >
                     <Card
                       sx={{
-                        bgcolor: "#1E293B",
+                        bgcolor:
+                          "#1E293B",
                         borderRadius: 3,
                         border:
                           "1px solid #334155",
+                        height: "100%",
+                        minHeight: 360,
                       }}
                     >
-                      <CardContent>
+                      <CardContent
+                        sx={{ p: 3 }}
+                      >
                         <Typography
                           variant="h6"
                           sx={{
                             color:
                               "#FFFFFF",
                             fontWeight: 700,
-                            mb: 1,
+                            mb: 2,
                           }}
                         >
                           Category Demand
@@ -1182,7 +1252,7 @@ export default function Inventory() {
 
                         <Box
                           sx={{
-                            height: 280,
+                            height: 290,
                           }}
                         >
                           <ResponsiveContainer
@@ -1248,18 +1318,22 @@ export default function Inventory() {
 
                 <Card
                   sx={{
-                    bgcolor: "#1E293B",
+                    bgcolor:
+                      "#1E293B",
                     borderRadius: 3,
                     border:
                       "1px solid #334155",
-                    mb: 3,
+                    mb: 4,
                   }}
                 >
-                  <CardContent>
+                  <CardContent
+                    sx={{ p: 3 }}
+                  >
                     <Typography
                       variant="h6"
                       sx={{
-                        color: "#FFFFFF",
+                        color:
+                          "#FFFFFF",
                         fontWeight: 700,
                         mb: 2,
                       }}
@@ -1271,101 +1345,41 @@ export default function Inventory() {
                       <Table>
                         <TableHead>
                           <TableRow>
-                            <TableCell
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Product
-                            </TableCell>
-
-                            <TableCell
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              SKU
-                            </TableCell>
-
-                            <TableCell
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Category
-                            </TableCell>
-
-                            <TableCell
-                              align="center"
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Historical
-                            </TableCell>
-
-                            <TableCell
-                              align="center"
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Forecast
-                            </TableCell>
-
-                            <TableCell
-                              align="center"
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Current Stock
-                            </TableCell>
-
-                            <TableCell
-                              align="center"
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Recommended
-                            </TableCell>
-
-                            <TableCell
-                              align="center"
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Risk
-                            </TableCell>
-
-                            <TableCell
-                              align="center"
-                              sx={{
-                                color:
-                                  "#FFFFFF",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Reorder
-                            </TableCell>
+                            {[
+                              "Product",
+                              "SKU",
+                              "Category",
+                              "Historical",
+                              "Forecast",
+                              "Current Stock",
+                              "Recommended",
+                              "Risk",
+                              "Reorder",
+                            ].map(
+                              (
+                                header,
+                                index
+                              ) => (
+                                <TableCell
+                                  key={
+                                    header
+                                  }
+                                  align={
+                                    index >=
+                                    3
+                                      ? "center"
+                                      : "left"
+                                  }
+                                  sx={{
+                                    color:
+                                      "#FFFFFF",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {header}
+                                </TableCell>
+                              )
+                            )}
                           </TableRow>
                         </TableHead>
 
@@ -1561,18 +1575,22 @@ export default function Inventory() {
 
                 <Card
                   sx={{
-                    bgcolor: "#1E293B",
+                    bgcolor:
+                      "#1E293B",
                     borderRadius: 3,
                     border:
                       "1px solid #334155",
-                    mb: 3,
+                    mb: 4,
                   }}
                 >
-                  <CardContent>
+                  <CardContent
+                    sx={{ p: 3 }}
+                  >
                     <Typography
                       variant="h6"
                       sx={{
-                        color: "#FFFFFF",
+                        color:
+                          "#FFFFFF",
                         fontWeight: 700,
                         mb: 2,
                       }}
@@ -1791,8 +1809,20 @@ export default function Inventory() {
 
           <Grid
             container
-            spacing={3}
-            mb={4}
+            spacing={4}
+            mb={5}
+            sx={{
+              "& > .MuiGrid-item": {
+                width: {
+                  xs: "100%",
+                  lg: "calc(50% - 16px)",
+                },
+                maxWidth: {
+                  xs: "100%",
+                  lg: "calc(50% - 16px)",
+                },
+              },
+            }}
           >
             <Grid
               item
@@ -1801,9 +1831,11 @@ export default function Inventory() {
             >
               <Card
                 sx={{
-                  bgcolor: "#1E293B",
+                  bgcolor:
+                    "#1E293B",
                   borderRadius: 3,
-                  p: 2,
+                  p: 3,
+                  minHeight: 390,
                   border:
                     "1px solid #334155",
                 }}
@@ -1811,7 +1843,8 @@ export default function Inventory() {
                 <Typography
                   variant="h6"
                   sx={{
-                    color: "#FFFFFF",
+                    color:
+                      "#FFFFFF",
                     fontWeight: 700,
                     mb: 2,
                   }}
@@ -1819,24 +1852,30 @@ export default function Inventory() {
                   Inventory By Category
                 </Typography>
 
-                <Box sx={{ height: 320 }}>
+                <Box
+                  sx={{ height: 320 }}
+                >
                   <ResponsiveContainer
                     width="100%"
                     height="100%"
                   >
                     <BarChart
-                      data={categoryData}
+                      data={
+                        categoryData
+                      }
                     >
                       <XAxis
                         dataKey="name"
                         tick={{
-                          fill: "#CBD5E1",
+                          fill:
+                            "#CBD5E1",
                         }}
                       />
 
                       <YAxis
                         tick={{
-                          fill: "#CBD5E1",
+                          fill:
+                            "#CBD5E1",
                         }}
                       />
 
@@ -1865,9 +1904,11 @@ export default function Inventory() {
             >
               <Card
                 sx={{
-                  bgcolor: "#1E293B",
+                  bgcolor:
+                    "#1E293B",
                   borderRadius: 3,
-                  p: 2,
+                  p: 3,
+                  minHeight: 390,
                   border:
                     "1px solid #334155",
                 }}
@@ -1875,7 +1916,8 @@ export default function Inventory() {
                 <Typography
                   variant="h6"
                   sx={{
-                    color: "#FFFFFF",
+                    color:
+                      "#FFFFFF",
                     fontWeight: 700,
                     mb: 2,
                   }}
@@ -1883,7 +1925,9 @@ export default function Inventory() {
                   Stock Status Distribution
                 </Typography>
 
-                <Box sx={{ height: 320 }}>
+                <Box
+                  sx={{ height: 320 }}
+                >
                   <ResponsiveContainer
                     width="100%"
                     height="100%"
@@ -1911,7 +1955,8 @@ export default function Inventory() {
                                   "#FACC15",
                                   "#EF4444",
                                 ][
-                                  index % 3
+                                  index %
+                                    3
                                 ]
                               }
                             />
@@ -1935,9 +1980,13 @@ export default function Inventory() {
 
           <Paper
             sx={{
-              p: 3,
-              mb: 4,
-              bgcolor: "#1E293B",
+              p: {
+                xs: 2,
+                md: 3,
+              },
+              mb: 5,
+              bgcolor:
+                "#1E293B",
               borderRadius: 3,
               border:
                 "1px solid #334155",
@@ -2266,23 +2315,29 @@ export default function Inventory() {
           <TableContainer
             component={Paper}
             sx={{
-              bgcolor: "#1E293B",
+              bgcolor:
+                "#1E293B",
               borderRadius: 3,
               border:
                 "1px solid #334155",
-              mb: 4,
+              mb: 5,
+              overflowX:
+                "auto",
             }}
           >
             <Table
               sx={{
-                "& .MuiTableCell-root": {
-                  color: "#FFFFFF",
-                  borderColor:
-                    "#334155",
-                },
+                "& .MuiTableCell-root":
+                  {
+                    color:
+                      "#FFFFFF",
+                    borderColor:
+                      "#334155",
+                  },
                 "& .MuiTableHead .MuiTableCell-root":
                   {
-                    color: "#FFFFFF",
+                    color:
+                      "#FFFFFF",
                     fontWeight: 700,
                     backgroundColor:
                       "#1E293B",
@@ -2427,17 +2482,21 @@ export default function Inventory() {
                                 setSelectedItem(
                                   item
                                 );
+
                                 setActionType(
                                   "add"
                                 );
+
                                 setForm({
                                   inventory_id:
                                     item.id,
                                   quantity: 0,
-                                  reason: "",
+                                  reason:
+                                    "",
                                   remarks:
                                     "",
                                 });
+
                                 setOpen(
                                   true
                                 );
@@ -2454,17 +2513,21 @@ export default function Inventory() {
                                 setSelectedItem(
                                   item
                                 );
+
                                 setActionType(
                                   "remove"
                                 );
+
                                 setForm({
                                   inventory_id:
                                     item.id,
                                   quantity: 0,
-                                  reason: "",
+                                  reason:
+                                    "",
                                   remarks:
                                     "",
                                 });
+
                                 setOpen(
                                   true
                                 );
@@ -2481,18 +2544,22 @@ export default function Inventory() {
                                 setSelectedItem(
                                   item
                                 );
+
                                 setActionType(
                                   "adjust"
                                 );
+
                                 setForm({
                                   inventory_id:
                                     item.id,
                                   quantity:
                                     item.current_stock,
-                                  reason: "",
+                                  reason:
+                                    "",
                                   remarks:
                                     "",
                                 });
+
                                 setOpen(
                                   true
                                 );
@@ -2519,9 +2586,11 @@ export default function Inventory() {
                                 setSelectedItem(
                                   item
                                 );
+
                                 setReorderValue(
                                   item.reorder_level
                                 );
+
                                 setReorderOpen(
                                   true
                                 );
@@ -2563,12 +2632,15 @@ export default function Inventory() {
               display: "flex",
               justifyContent:
                 "flex-end",
-              mb: 3,
+              mt: 1,
+              mb: 5,
             }}
           >
             <Button
               variant="contained"
-              onClick={loadMovements}
+              onClick={
+                loadMovements
+              }
             >
               View Movement History
             </Button>
@@ -2601,13 +2673,16 @@ export default function Inventory() {
                 type="number"
                 label="Quantity"
                 margin="normal"
-                value={form.quantity}
+                value={
+                  form.quantity
+                }
                 onChange={(e) =>
                   setForm({
                     ...form,
                     quantity:
                       Number(
-                        e.target.value
+                        e.target
+                          .value
                       ),
                   })
                 }
@@ -2617,12 +2692,15 @@ export default function Inventory() {
                 fullWidth
                 label="Reason"
                 margin="normal"
-                value={form.reason}
+                value={
+                  form.reason
+                }
                 onChange={(e) =>
                   setForm({
                     ...form,
                     reason:
-                      e.target.value,
+                      e.target
+                        .value,
                   })
                 }
               />
@@ -2633,12 +2711,15 @@ export default function Inventory() {
                 rows={3}
                 label="Remarks"
                 margin="normal"
-                value={form.remarks}
+                value={
+                  form.remarks
+                }
                 onChange={(e) =>
                   setForm({
                     ...form,
                     remarks:
-                      e.target.value,
+                      e.target
+                        .value,
                   })
                 }
               />
@@ -2671,7 +2752,9 @@ export default function Inventory() {
           <Dialog
             open={reorderOpen}
             onClose={() =>
-              setReorderOpen(false)
+              setReorderOpen(
+                false
+              )
             }
           >
             <DialogTitle>
@@ -2684,11 +2767,14 @@ export default function Inventory() {
                 type="number"
                 margin="normal"
                 label="Reorder Level"
-                value={reorderValue}
+                value={
+                  reorderValue
+                }
                 onChange={(e) =>
                   setReorderValue(
                     Number(
-                      e.target.value
+                      e.target
+                        .value
                     )
                   )
                 }
@@ -2698,7 +2784,9 @@ export default function Inventory() {
             <DialogActions>
               <Button
                 onClick={() =>
-                  setReorderOpen(false)
+                  setReorderOpen(
+                    false
+                  )
                 }
               >
                 Cancel
@@ -2715,7 +2803,9 @@ export default function Inventory() {
                   },
                 }}
                 onClick={async () => {
-                  if (!selectedItem) {
+                  if (
+                    !selectedItem
+                  ) {
                     return;
                   }
 
@@ -2736,7 +2826,8 @@ export default function Inventory() {
                     error: any
                   ) {
                     alert(
-                      error.response
+                      error
+                        .response
                         ?.data
                         ?.detail ||
                         "Failed to update reorder level"
@@ -2756,7 +2847,9 @@ export default function Inventory() {
           <Dialog
             open={movementOpen}
             onClose={() =>
-              setMovementOpen(false)
+              setMovementOpen(
+                false
+              )
             }
             fullWidth
             maxWidth="lg"
@@ -2833,12 +2926,16 @@ export default function Inventory() {
                           </TableCell>
 
                           <TableCell>
-                            {move.reason}
+                            {
+                              move.reason
+                            }
                           </TableCell>
 
                           <TableCell>
-                            {move.performed_by_name ||
-                              "-"}
+                            {
+                              move.performed_by_name ||
+                              "-"
+                            }
                           </TableCell>
 
                           <TableCell>

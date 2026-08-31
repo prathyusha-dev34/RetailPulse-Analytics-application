@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# SQLite / local databases
+*.sqlite3
+*.db
+
+# Environment files
+.env
+.env.*
+
+# Python generated files
+*.log
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Frontend build
+frontend/dist/
+frontend/build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated exports
+*.csv
+*.pdf
+
+# Temporary files
+*.tmp
+*.temp
+
+# Stray files
+backend/python
