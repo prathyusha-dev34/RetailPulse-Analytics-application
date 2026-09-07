@@ -21,6 +21,8 @@ from app.models.customer import Customer
 from app.models.customer_purchase_summary import CustomerPurchaseSummary
 from app.models.demand_forecast import DemandForecast
 from app.models.forecast_history import ForecastHistory
+from app.models.import_history import ImportHistory
+from app.models.import_error import ImportError
 
 from app.routes.auth import router as auth_router
 from app.routes.profile import router as profile_router
@@ -38,6 +40,7 @@ from app.routes import inventory_seed
 from app.routes.customer import router as customer_router
 from app.routes.analytics import router as analytics_router
 from app.routes.forecast import router as forecast_router
+from app.routes.data_import import router as data_import_router
 
 
 Base.metadata.create_all(bind=engine)
@@ -144,6 +147,11 @@ app.include_router(
     prefix=API_PREFIX,
 )
 
+app.include_router(
+    data_import_router,
+    prefix=API_PREFIX,
+)
+
 
 @app.get("/")
 def root():
@@ -175,5 +183,6 @@ def health_check():
             "customers",
             "analytics",
             "forecast",
+            "data_import",
         ],
     }

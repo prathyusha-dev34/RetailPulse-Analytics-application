@@ -33,6 +33,7 @@ import TopCustomers from "../pages/customers/TopCustomers";
 import Notifications from "../pages/Notifications";
 import AuditLogs from "../pages/AuditLogs";
 import Forecast from "../pages/Forecast";
+import DataImport from "../pages/DataImport";
 
 import ProtectedRoute from "../components/ProtectedRoute";
 
@@ -379,6 +380,22 @@ export default function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <Forecast />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+
+      {/* =====================================================
+          DATA IMPORT - COMPANY ADMIN ONLY
+      ===================================================== */}
+
+      <Route
+        path="/data-import"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <DataImport />
             </Layout>
           </ProtectedRoute>
         }

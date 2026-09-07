@@ -11,6 +11,7 @@ import {
   People,
   Insights,
   TrendingUp,
+  CloudUpload,
 } from "@mui/icons-material";
 
 import {
@@ -25,6 +26,7 @@ import {
 } from "@mui/material";
 
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const SIDEBAR_WIDTH = 280;
 
@@ -48,6 +50,11 @@ export { SIDEBAR_WIDTH };
 
 export default function Sidebar() {
   const location = useLocation();
+  const { user } = useAuth();
+
+  const visibleMenus = user?.role === "COMPANY_ADMIN"
+    ? [...menus, { text: "Data Import", icon: <CloudUpload />, path: "/data-import" }]
+    : menus;
 
   const isSelected = (path: string) => {
     if (path === "/") {
@@ -168,7 +175,7 @@ export default function Sidebar() {
         </Typography>
 
         <List disablePadding>
-          {menus.map((item) => {
+          {visibleMenus.map((item) => {
             const selected = isSelected(item.path);
 
             return (
