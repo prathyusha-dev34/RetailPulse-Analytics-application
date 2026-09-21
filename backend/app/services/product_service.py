@@ -1,3 +1,4 @@
+
 from sqlalchemy import func, asc, desc
 from sqlalchemy.orm import Session
 
@@ -93,10 +94,7 @@ def create_product(
         unit_price=product.unit_price,
         cost_price=product.cost_price,
         stock_quantity=product.stock_quantity,
-
-        # REORDER THRESHOLD
         reorder_threshold=product.reorder_threshold,
-
         unit_of_measure=product.unit_of_measure,
         status=product.status,
     )
@@ -116,6 +114,31 @@ def create_product(
         user_id=current_user.id,
         action="Product Created",
         entity_name="Product",
+        resource_type="Product",
+        resource_id=str(new_product.id),
+        description=(
+            f"Product '{new_product.name}' "
+            f"(SKU: {new_product.sku}) was created"
+        ),
+        status="SUCCESS",
+        before_values=None,
+        after_values={
+            "id": new_product.id,
+            "name": new_product.name,
+            "sku": new_product.sku,
+            "category_id": new_product.category_id,
+            "brand": new_product.brand,
+            "unit_price": float(new_product.unit_price)
+            if new_product.unit_price is not None
+            else None,
+            "cost_price": float(new_product.cost_price)
+            if new_product.cost_price is not None
+            else None,
+            "stock_quantity": new_product.stock_quantity,
+            "reorder_threshold": new_product.reorder_threshold,
+            "unit_of_measure": new_product.unit_of_measure,
+            "status": new_product.status,
+        },
     )
 
     return new_product
@@ -179,6 +202,29 @@ def update_product(
     update_data = data.model_dump(
         exclude_unset=True
     )
+
+    # ------------------------------------------
+    # Capture BEFORE values
+    # ------------------------------------------
+
+    before_values = {
+        "id": product.id,
+        "name": product.name,
+        "sku": product.sku,
+        "category_id": product.category_id,
+        "brand": product.brand,
+        "description": product.description,
+        "unit_price": float(product.unit_price)
+        if product.unit_price is not None
+        else None,
+        "cost_price": float(product.cost_price)
+        if product.cost_price is not None
+        else None,
+        "stock_quantity": product.stock_quantity,
+        "reorder_threshold": product.reorder_threshold,
+        "unit_of_measure": product.unit_of_measure,
+        "status": product.status,
+    }
 
     # ------------------------------------------
     # CATEGORY VALIDATION
@@ -316,12 +362,44 @@ def update_product(
     db.commit()
     db.refresh(product)
 
+    # ------------------------------------------
+    # Capture AFTER values
+    # ------------------------------------------
+
+    after_values = {
+        "id": product.id,
+        "name": product.name,
+        "sku": product.sku,
+        "category_id": product.category_id,
+        "brand": product.brand,
+        "description": product.description,
+        "unit_price": float(product.unit_price)
+        if product.unit_price is not None
+        else None,
+        "cost_price": float(product.cost_price)
+        if product.cost_price is not None
+        else None,
+        "stock_quantity": product.stock_quantity,
+        "reorder_threshold": product.reorder_threshold,
+        "unit_of_measure": product.unit_of_measure,
+        "status": product.status,
+    }
+
     create_audit_log(
         db=db,
         company_id=current_user.company_id,
         user_id=current_user.id,
         action="Product Updated",
         entity_name="Product",
+        resource_type="Product",
+        resource_id=str(product.id),
+        description=(
+            f"Product '{product.name}' "
+            f"(SKU: {product.sku}) was updated"
+        ),
+        status="SUCCESS",
+        before_values=before_values,
+        after_values=after_values,
     )
 
     return product
@@ -346,6 +424,29 @@ def delete_product(
         return False
 
     # ------------------------------------------
+    # Capture values BEFORE deletion
+    # ------------------------------------------
+
+    before_values = {
+        "id": product.id,
+        "name": product.name,
+        "sku": product.sku,
+        "category_id": product.category_id,
+        "brand": product.brand,
+        "description": product.description,
+        "unit_price": float(product.unit_price)
+        if product.unit_price is not None
+        else None,
+        "cost_price": float(product.cost_price)
+        if product.cost_price is not None
+        else None,
+        "stock_quantity": product.stock_quantity,
+        "reorder_threshold": product.reorder_threshold,
+        "unit_of_measure": product.unit_of_measure,
+        "status": product.status,
+    }
+
+    # ------------------------------------------
     # CHECK SALES HISTORY
     # ------------------------------------------
 
@@ -363,6 +464,10 @@ def delete_product(
             "Sales history exists for this product."
         )
 
+    product_name = product.name
+    product_sku = product.sku
+    product_id_value = product.id
+
     db.delete(product)
     db.commit()
 
@@ -372,6 +477,15 @@ def delete_product(
         user_id=current_user.id,
         action="Product Deleted",
         entity_name="Product",
+        resource_type="Product",
+        resource_id=str(product_id_value),
+        description=(
+            f"Product '{product_name}' "
+            f"(SKU: {product_sku}) was deleted"
+        ),
+        status="SUCCESS",
+        before_values=before_values,
+        after_values=None,
     )
 
     return True
@@ -484,10 +598,18 @@ def activate_product(
     if not product:
         return None
 
+    before_values = {
+        "status": product.status
+    }
+
     product.status = "ACTIVE"
 
     db.commit()
     db.refresh(product)
+
+    after_values = {
+        "status": product.status
+    }
 
     create_audit_log(
         db=db,
@@ -495,6 +617,15 @@ def activate_product(
         user_id=current_user.id,
         action="Product Activated",
         entity_name="Product",
+        resource_type="Product",
+        resource_id=str(product.id),
+        description=(
+            f"Product '{product.name}' "
+            f"(SKU: {product.sku}) was activated"
+        ),
+        status="SUCCESS",
+        before_values=before_values,
+        after_values=after_values,
     )
 
     return product
@@ -518,10 +649,18 @@ def deactivate_product(
     if not product:
         return None
 
+    before_values = {
+        "status": product.status
+    }
+
     product.status = "INACTIVE"
 
     db.commit()
     db.refresh(product)
+
+    after_values = {
+        "status": product.status
+    }
 
     create_audit_log(
         db=db,
@@ -529,6 +668,15 @@ def deactivate_product(
         user_id=current_user.id,
         action="Product Deactivated",
         entity_name="Product",
+        resource_type="Product",
+        resource_id=str(product.id),
+        description=(
+            f"Product '{product.name}' "
+            f"(SKU: {product.sku}) was deactivated"
+        ),
+        status="SUCCESS",
+        before_values=before_values,
+        after_values=after_values,
     )
 
     return product

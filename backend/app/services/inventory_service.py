@@ -1,3 +1,4 @@
+
 from sqlalchemy import func, asc, desc, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -9,8 +10,9 @@ from app.models.notification import Notification
 
 from app.services.audit_service import create_audit_log
 
-# ===================================== 
-# Stock Status Calculation 
+
+# =====================================
+# Stock Status Calculation
 # =====================================
 
 def calculate_stock_status(
@@ -25,6 +27,7 @@ def calculate_stock_status(
 
     return "In Stock"
 
+
 # =====================================
 # Notification Helper
 # =====================================
@@ -37,7 +40,6 @@ def create_inventory_notification(
     message: str,
     notification_type: str,
 ):
-
     notification = Notification(
         company_id=current_user.company_id,
         user_id=current_user.id,
@@ -50,7 +52,6 @@ def create_inventory_notification(
     db.add(notification)
 
 
-
 # =====================================
 # Create Inventory
 # =====================================
@@ -59,37 +60,24 @@ def create_inventory(
     db: Session,
     product: Product,
 ):
-
     inventory = Inventory(
-
         company_id=product.company_id,
-
         product_id=product.id,
-
         current_stock=product.stock_quantity,
-
         reserved_stock=0,
-
         available_stock=product.stock_quantity,
-
         reorder_level=10,
-
         stock_status=calculate_stock_status(
             product.stock_quantity,
             10,
         ),
     )
 
-
     db.add(inventory)
-
     db.commit()
-
     db.refresh(inventory)
 
-
     return inventory
-
 
 
 # =====================================
@@ -102,7 +90,6 @@ def get_inventory(
     skip: int = 0,
     limit: int = 10,
 ):
-
     return (
         db.query(Inventory)
         .options(
@@ -119,6 +106,7 @@ def get_inventory(
         .all()
     )
 
+
 # =====================================
 # Get Single Inventory
 # =====================================
@@ -128,7 +116,6 @@ def get_inventory_item(
     inventory_id: int,
     current_user: User,
 ):
-
     return (
         db.query(Inventory)
         .options(
@@ -137,11 +124,11 @@ def get_inventory_item(
         )
         .filter(
             Inventory.id == inventory_id,
-            Inventory.company_id == current_user.company_id,
+            Inventory.company_id
+            == current_user.company_id,
         )
         .first()
     )
-
 
 
 # =====================================
@@ -152,7 +139,6 @@ def get_dashboard_summary(
     db: Session,
     current_user: User,
 ):
-
     total_products = (
         db.query(Product)
         .filter(
@@ -161,7 +147,6 @@ def get_dashboard_summary(
         )
         .count()
     )
-
 
     total_inventory = (
         db.query(
@@ -177,56 +162,44 @@ def get_dashboard_summary(
         or 0
     )
 
-
     low_stock = (
         db.query(Inventory)
         .filter(
             Inventory.company_id
             == current_user.company_id,
-
             Inventory.stock_status.in_(
                 [
                     "LOW_STOCK",
-                    "Low Stock"
+                    "Low Stock",
                 ]
-            )
+            ),
         )
         .count()
     )
-
 
     out_of_stock = (
         db.query(Inventory)
         .filter(
             Inventory.company_id
             == current_user.company_id,
-
             Inventory.stock_status.in_(
                 [
                     "OUT_OF_STOCK",
-                    "Out of Stock"
+                    "Out of Stock",
                 ]
-            )
+            ),
         )
         .count()
     )
 
-
     return {
-
-        "total_products":
-            total_products,
-
-        "total_inventory_quantity":
-            total_inventory,
-
-        "low_stock_products":
-            low_stock,
-
-        "out_of_stock_products":
-            out_of_stock,
-
+        "total_products": total_products,
+        "total_inventory_quantity": total_inventory,
+        "low_stock_products": low_stock,
+        "out_of_stock_products": out_of_stock,
     }
+
+
 # =====================================
 # Add Stock
 # =====================================
@@ -239,171 +212,142 @@ def add_stock(
     remarks: str,
     current_user: User,
 ):
-
     inventory = get_inventory_item(
         db,
         inventory_id,
         current_user,
     )
 
-
     if not inventory:
         return None
-
 
     if quantity <= 0:
         raise ValueError(
             "Quantity must be greater than zero."
         )
 
-
     if not reason.strip():
         raise ValueError(
             "Reason is required."
         )
 
-
     previous_quantity = inventory.current_stock
-
+    previous_available_stock = inventory.available_stock
+    previous_status = inventory.stock_status
 
     inventory.current_stock += quantity
 
-
     inventory.available_stock = (
         inventory.current_stock
-        -
-        inventory.reserved_stock
+        - inventory.reserved_stock
     )
-
-
-    old_status = inventory.stock_status
-
 
     inventory.stock_status = calculate_stock_status(
         inventory.available_stock,
         inventory.reorder_level,
     )
 
-
-
     # ===============================
     # Movement Record
     # ===============================
 
     movement = InventoryMovement(
-
         inventory_id=inventory.id,
-
         movement_type="Stock Addition",
-
         quantity_changed=quantity,
-
         previous_quantity=previous_quantity,
-
         updated_quantity=inventory.current_stock,
-
         reason=reason,
-
         remarks=remarks,
-
         performed_by=current_user.id,
     )
 
-
     db.add(movement)
 
-
-
     # ===============================
-    # Audit Log
+    # Audit Log - Task 13
     # ===============================
 
     create_audit_log(
-
         db=db,
-
         company_id=current_user.company_id,
-
         user_id=current_user.id,
-
         action="Stock Added",
-
+        entity_name="Inventory",
+        resource_type="Inventory",
+        resource_id=str(inventory.id),
+        description=(
+            f"{quantity} units added to "
+            f"inventory for product "
+            f"'{inventory.product.name}'"
+        ),
+        status="SUCCESS",
+        before_values={
+            "current_stock": previous_quantity,
+            "available_stock": previous_available_stock,
+            "stock_status": previous_status,
+        },
+        after_values={
+            "current_stock": inventory.current_stock,
+            "available_stock": inventory.available_stock,
+            "stock_status": inventory.stock_status,
+            "quantity_added": quantity,
+            "reason": reason,
+            "remarks": remarks,
+        },
     )
 
     # ===============================
     # Notification
     # ===============================
 
-    if old_status != inventory.stock_status:
-
+    if previous_status != inventory.stock_status:
 
         if inventory.stock_status == "LOW_STOCK":
-
             create_inventory_notification(
-
                 db=db,
-
                 inventory=inventory,
-
                 current_user=current_user,
-
                 title="Low Stock Alert",
-
-                message=
-                f"{inventory.product.name} reached low stock level.",
-
+                message=(
+                    f"{inventory.product.name} "
+                    f"reached low stock level."
+                ),
                 notification_type="LOW_STOCK",
-
             )
-
 
         elif inventory.stock_status == "OUT_OF_STOCK":
-
-
             create_inventory_notification(
-
                 db=db,
-
                 inventory=inventory,
-
                 current_user=current_user,
-
                 title="Out of Stock Alert",
-
-                message=
-                f"{inventory.product.name} is out of stock.",
-
+                message=(
+                    f"{inventory.product.name} "
+                    f"is out of stock."
+                ),
                 notification_type="OUT_OF_STOCK",
-
             )
-
 
     # Manual stock adjustment notification
 
     create_inventory_notification(
-
         db=db,
-
         inventory=inventory,
-
         current_user=current_user,
-
         title="Stock Added",
-
-        message=
-        f"{quantity} units added for {inventory.product.name}.",
-
+        message=(
+            f"{quantity} units added for "
+            f"{inventory.product.name}."
+        ),
         notification_type="STOCK_ADDITION",
-
     )
 
-
     db.commit()
-
     db.refresh(inventory)
 
-
     return inventory
+
 
 # =====================================
 # Remove Stock
@@ -417,184 +361,148 @@ def remove_stock(
     remarks: str,
     current_user: User,
 ):
-
     inventory = get_inventory_item(
         db,
         inventory_id,
         current_user,
     )
 
-
     if not inventory:
         return None
-
-
 
     if quantity <= 0:
         raise ValueError(
             "Quantity must be greater than zero."
         )
 
-
     if quantity > inventory.available_stock:
         raise ValueError(
             "Stock Out quantity cannot exceed available stock."
         )
-
 
     if not reason.strip():
         raise ValueError(
             "Reason is required."
         )
 
-
     previous_quantity = inventory.current_stock
-
-
+    previous_available_stock = inventory.available_stock
+    previous_status = inventory.stock_status
 
     inventory.current_stock -= quantity
 
-
-
     inventory.available_stock = (
         inventory.current_stock
-        -
-        inventory.reserved_stock
+        - inventory.reserved_stock
     )
-
-
-    old_status = inventory.stock_status
-
-
 
     inventory.stock_status = calculate_stock_status(
         inventory.available_stock,
         inventory.reorder_level,
     )
 
-
-
+    # ===============================
     # Movement History
+    # ===============================
 
     movement = InventoryMovement(
-
         inventory_id=inventory.id,
-
         movement_type="Stock Removal",
-
         quantity_changed=quantity,
-
         previous_quantity=previous_quantity,
-
         updated_quantity=inventory.current_stock,
-
         reason=reason,
-
         remarks=remarks,
-
         performed_by=current_user.id,
-
     )
-
 
     db.add(movement)
 
-
-
-    # Audit
+    # ===============================
+    # Audit Log - Task 13
+    # ===============================
 
     create_audit_log(
-
         db=db,
-
         company_id=current_user.company_id,
-
         user_id=current_user.id,
-
         action="Stock Removed",
-
+        entity_name="Inventory",
+        resource_type="Inventory",
+        resource_id=str(inventory.id),
+        description=(
+            f"{quantity} units removed from "
+            f"inventory for product "
+            f"'{inventory.product.name}'"
+        ),
+        status="SUCCESS",
+        before_values={
+            "current_stock": previous_quantity,
+            "available_stock": previous_available_stock,
+            "stock_status": previous_status,
+        },
+        after_values={
+            "current_stock": inventory.current_stock,
+            "available_stock": inventory.available_stock,
+            "stock_status": inventory.stock_status,
+            "quantity_removed": quantity,
+            "reason": reason,
+            "remarks": remarks,
+        },
     )
 
-
-
+    # ===============================
     # Status Notifications
+    # ===============================
 
-    if old_status != inventory.stock_status:
-
+    if previous_status != inventory.stock_status:
 
         if inventory.stock_status == "LOW_STOCK":
-
-
             create_inventory_notification(
-
                 db=db,
-
                 inventory=inventory,
-
                 current_user=current_user,
-
                 title="Low Stock Alert",
-
-                message=
-                f"{inventory.product.name} stock is low.",
-
+                message=(
+                    f"{inventory.product.name} "
+                    f"stock is low."
+                ),
                 notification_type="LOW_STOCK",
-
             )
-
-
 
         elif inventory.stock_status == "OUT_OF_STOCK":
-
             create_inventory_notification(
-
                 db=db,
-
                 inventory=inventory,
-
                 current_user=current_user,
-
                 title="Out of Stock Alert",
-
-                message=
-                f"{inventory.product.name} is out of stock.",
-
+                message=(
+                    f"{inventory.product.name} "
+                    f"is out of stock."
+                ),
                 notification_type="OUT_OF_STOCK",
-
             )
 
-
-
+    # ===============================
     # Stock Removal Notification
+    # ===============================
 
     create_inventory_notification(
-
         db=db,
-
         inventory=inventory,
-
         current_user=current_user,
-
         title="Stock Removed",
-
-        message=
-        f"{quantity} units removed from {inventory.product.name}.",
-
+        message=(
+            f"{quantity} units removed from "
+            f"{inventory.product.name}."
+        ),
         notification_type="STOCK_REMOVAL",
-
     )
 
-
-
     db.commit()
-
     db.refresh(inventory)
 
-
     return inventory
-
-
-
 
 
 # =====================================
@@ -609,160 +517,135 @@ def adjust_stock(
     remarks: str,
     current_user: User,
 ):
-
-
     inventory = get_inventory_item(
         db,
         inventory_id,
         current_user,
     )
 
-
-
     if not inventory:
         return None
 
-
     if quantity <= 0:
-
-      raise ValueError(
-          "Adjustment quantity must be greater than zero."
-    )
+        raise ValueError(
+            "Adjustment quantity must be greater than zero."
+        )
 
     if not reason.strip():
-
         raise ValueError(
             "Reason is required."
         )
 
-
-
     previous_quantity = inventory.current_stock
+    previous_available_stock = inventory.available_stock
+    previous_status = inventory.stock_status
 
-
+    quantity_difference = (
+        quantity - previous_quantity
+    )
 
     inventory.current_stock = quantity
 
-
-
     inventory.available_stock = (
         inventory.current_stock
-        -
-        inventory.reserved_stock
+        - inventory.reserved_stock
     )
-
-
-
-    old_status = inventory.stock_status
-
-
 
     inventory.stock_status = calculate_stock_status(
-
         inventory.available_stock,
-
         inventory.reorder_level,
-
     )
 
-
-
+    # ===============================
     # Movement
+    # ===============================
 
     movement = InventoryMovement(
-
         inventory_id=inventory.id,
-
         movement_type="Manual Adjustment",
-
-        quantity_changed=
-            quantity - previous_quantity,
-
+        quantity_changed=quantity_difference,
         previous_quantity=previous_quantity,
-
         updated_quantity=quantity,
-
         reason=reason,
-
         remarks=remarks,
-
         performed_by=current_user.id,
-
     )
-
 
     db.add(movement)
 
-
-
-    # Audit
+    # ===============================
+    # Audit Log - Task 13
+    # ===============================
 
     create_audit_log(
-
         db=db,
-
         company_id=current_user.company_id,
-
         user_id=current_user.id,
-
         action="Stock Adjusted",
-
+        entity_name="Inventory",
+        resource_type="Inventory",
+        resource_id=str(inventory.id),
+        description=(
+            f"Inventory stock manually adjusted "
+            f"for product "
+            f"'{inventory.product.name}'"
+        ),
+        status="SUCCESS",
+        before_values={
+            "current_stock": previous_quantity,
+            "available_stock": previous_available_stock,
+            "stock_status": previous_status,
+        },
+        after_values={
+            "current_stock": inventory.current_stock,
+            "available_stock": inventory.available_stock,
+            "stock_status": inventory.stock_status,
+            "quantity_difference": quantity_difference,
+            "reason": reason,
+            "remarks": remarks,
+        },
     )
 
-
-
+    # ===============================
     # Adjustment Notification
+    # ===============================
 
     create_inventory_notification(
-
         db=db,
-
         inventory=inventory,
-
         current_user=current_user,
-
         title="Stock Adjusted",
-
-        message=
-        f"Inventory adjusted manually for {inventory.product.name}.",
-
+        message=(
+            f"Inventory adjusted manually for "
+            f"{inventory.product.name}."
+        ),
         notification_type="STOCK_ADJUSTMENT",
-
     )
 
-
-
+    # ===============================
     # Status Change Notification
+    # ===============================
 
-    if old_status != inventory.stock_status:
-
+    if previous_status != inventory.stock_status:
 
         create_inventory_notification(
-
             db=db,
-
             inventory=inventory,
-
             current_user=current_user,
-
             title=inventory.stock_status,
-
-            message=
-            f"{inventory.product.name} status changed to {inventory.stock_status}.",
-
+            message=(
+                f"{inventory.product.name} "
+                f"status changed to "
+                f"{inventory.stock_status}."
+            ),
             notification_type="STOCK_STATUS",
-
         )
 
-
-
     db.commit()
-
     db.refresh(inventory)
 
-
-
     return inventory
+
 
 # =====================================
 # Search & Filter Inventory
@@ -779,7 +662,6 @@ def search_inventory(
     skip: int = 0,
     limit: int = 10,
 ):
-
     query = (
         db.query(Inventory)
         .options(
@@ -788,15 +670,14 @@ def search_inventory(
         )
         .join(Product)
         .filter(
-            Inventory.company_id == current_user.company_id
+            Inventory.company_id
+            == current_user.company_id
         )
     )
-
 
     # Search Product Name / SKU
 
     if search:
-
         query = query.filter(
             or_(
                 Product.name.ilike(
@@ -804,69 +685,55 @@ def search_inventory(
                 ),
                 Product.sku.ilike(
                     f"%{search}%"
-                )
+                ),
             )
         )
-
 
     # Category Filter
 
     if category_id:
-
         query = query.filter(
             Product.category_id == category_id
         )
 
-
     # Brand Filter
 
     if brand:
-
         query = query.filter(
             Product.brand.ilike(
                 f"%{brand}%"
             )
         )
 
-
     # Stock Status Filter
 
     if stock_status:
-
         query = query.filter(
-            Inventory.stock_status == stock_status
+            Inventory.stock_status
+            == stock_status
         )
-
 
     # Sorting
 
     if sort_by == "name":
-
         query = query.order_by(
             asc(Product.name)
         )
 
-
     elif sort_by == "stock":
-
         query = query.order_by(
             desc(Inventory.current_stock)
         )
 
-
     elif sort_by == "recent":
-
         query = query.order_by(
             desc(Inventory.updated_at)
         )
 
-
     else:
-
         query = query.order_by(
             asc(Product.name)
         )
-
 
     return (
         query
@@ -874,6 +741,8 @@ def search_inventory(
         .limit(limit)
         .all()
     )
+
+
 # =====================================
 # Movement History
 # =====================================
@@ -884,7 +753,6 @@ def get_movement_history(
     skip: int = 0,
     limit: int = 10,
 ):
-
     movements = (
         db.query(InventoryMovement)
         .options(
@@ -896,7 +764,7 @@ def get_movement_history(
             ),
             joinedload(
                 InventoryMovement.user
-            )
+            ),
         )
         .join(Inventory)
         .filter(
@@ -913,44 +781,31 @@ def get_movement_history(
         .all()
     )
 
-
     result = []
 
-
     for movement in movements:
-
         result.append(
             {
                 "id": movement.id,
-
                 "inventory_id": movement.inventory_id,
-
                 "movement_type": movement.movement_type,
-
                 "quantity_changed": movement.quantity_changed,
-
                 "previous_quantity": movement.previous_quantity,
-
                 "updated_quantity": movement.updated_quantity,
-
                 "reason": movement.reason,
-
                 "remarks": movement.remarks,
-
                 "performed_by": movement.performed_by,
-
                 "performed_by_name": (
                     movement.user.name
                     if movement.user
                     else "-"
                 ),
-
                 "created_at": movement.created_at,
             }
         )
 
-
     return result
+
 
 # =====================================
 # Get Inventory By Product
@@ -961,29 +816,16 @@ def get_inventory_by_product(
     product_id: int,
     current_user: User,
 ):
-
     return (
-
         db.query(Inventory)
-
         .filter(
-
             Inventory.product_id
-            ==
-            product_id,
-
+            == product_id,
             Inventory.company_id
-            ==
-            current_user.company_id,
-
+            == current_user.company_id,
         )
-
         .first()
-
     )
-
-
-
 
 
 # =====================================
@@ -996,87 +838,78 @@ def update_reorder_level(
     reorder_level: int,
     current_user: User,
 ):
-
-
     inventory = get_inventory_item(
-
         db,
-
         inventory_id,
-
         current_user,
-
     )
 
-
-
     if not inventory:
-
         return None
 
-
-
     if reorder_level < 0:
-
         raise ValueError(
-
             "Reorder level cannot be negative."
-
         )
 
+    previous_reorder_level = (
+        inventory.reorder_level
+    )
 
+    previous_status = inventory.stock_status
 
     inventory.reorder_level = reorder_level
 
-
-
     inventory.stock_status = calculate_stock_status(
-
         inventory.available_stock,
-
         reorder_level,
-
     )
 
-
+    # ===============================
+    # Audit Log - Task 13
+    # ===============================
 
     create_audit_log(
-
         db=db,
-
         company_id=current_user.company_id,
-
         user_id=current_user.id,
-
         action="Reorder Level Updated",
-
+        entity_name="Inventory",
+        resource_type="Inventory",
+        resource_id=str(inventory.id),
+        description=(
+            f"Reorder level updated for "
+            f"product '{inventory.product.name}'"
+        ),
+        status="SUCCESS",
+        before_values={
+            "reorder_level": previous_reorder_level,
+            "stock_status": previous_status,
+        },
+        after_values={
+            "reorder_level": inventory.reorder_level,
+            "stock_status": inventory.stock_status,
+        },
     )
 
-
+    # ===============================
+    # Notification
+    # ===============================
 
     create_inventory_notification(
-
         db=db,
-
         inventory=inventory,
-
         current_user=current_user,
-
         title="Reorder Level Updated",
-
-        message=
-        f"Reorder level updated for {inventory.product.name}.",
-
+        message=(
+            f"Reorder level updated for "
+            f"{inventory.product.name}."
+        ),
         notification_type="REORDER_UPDATE",
-
     )
 
-
-
     db.commit()
-
     db.refresh(inventory)
 
-
-
     return inventory
+

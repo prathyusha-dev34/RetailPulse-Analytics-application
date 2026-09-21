@@ -798,27 +798,22 @@ export default function DataImport() {
               <Step key={step}>
                 <StepLabel
                   sx={{
-                    "& .MuiStepLabel-label":
-                      {
-                        color: "#64748b",
-                      },
-                    "& .MuiStepLabel-label.Mui-active":
-                      {
-                        color: "#22c55e",
-                        fontWeight: 700,
-                      },
-                    "& .MuiStepLabel-label.Mui-completed":
-                      {
-                        color: "#86efac",
-                      },
-                    "& .MuiStepIcon-root.Mui-active":
-                      {
-                        color: "#22c55e",
-                      },
-                    "& .MuiStepIcon-root.Mui-completed":
-                      {
-                        color: "#16a34a",
-                      },
+                    "& .MuiStepLabel-label": {
+                      color: "#64748b",
+                    },
+                    "& .MuiStepLabel-label.Mui-active": {
+                      color: "#22c55e",
+                      fontWeight: 700,
+                    },
+                    "& .MuiStepLabel-label.Mui-completed": {
+                      color: "#86efac",
+                    },
+                    "& .MuiStepIcon-root.Mui-active": {
+                      color: "#22c55e",
+                    },
+                    "& .MuiStepIcon-root.Mui-completed": {
+                      color: "#16a34a",
+                    },
                   }}
                 >
                   {step}
@@ -900,23 +895,20 @@ export default function DataImport() {
                 sx={{
                   color: "#f8fafc",
 
-                  ".MuiOutlinedInput-notchedOutline":
-                    {
-                      borderColor:
-                        "#334155",
-                    },
+                  ".MuiOutlinedInput-notchedOutline": {
+                    borderColor:
+                      "#334155",
+                  },
 
-                  "&:hover .MuiOutlinedInput-notchedOutline":
-                    {
-                      borderColor:
-                        "#22c55e",
-                    },
+                  "&:hover .MuiOutlinedInput-notchedOutline": {
+                    borderColor:
+                      "#22c55e",
+                  },
 
-                  "&.Mui-focused .MuiOutlinedInput-notchedOutline":
-                    {
-                      borderColor:
-                        "#22c55e",
-                    },
+                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                    borderColor:
+                      "#22c55e",
+                  },
 
                   ".MuiSvgIcon-root": {
                     color: "#94a3b8",
