@@ -34,17 +34,40 @@ const menus = [
   { text: "Dashboard", icon: <Dashboard />, path: "/" },
   { text: "Categories", icon: <Category />, path: "/categories" },
   { text: "Products", icon: <Inventory2 />, path: "/products" },
-  { text: "Product Dashboard", icon: <Assessment />, path: "/product-dashboard" },
+  {
+    text: "Product Dashboard",
+    icon: <Assessment />,
+    path: "/product-dashboard",
+  },
   { text: "Inventory", icon: <Warehouse />, path: "/inventory" },
   { text: "Sales", icon: <PointOfSale />, path: "/sales" },
   { text: "Customers", icon: <People />, path: "/customers" },
-  { text: "Customer Analytics", icon: <Insights />, path: "/customers/analytics" },
+  {
+    text: "Customer Analytics",
+    icon: <Insights />,
+    path: "/customers/analytics",
+  },
   { text: "Reports", icon: <Assessment />, path: "/reports" },
   { text: "Analytics", icon: <Analytics />, path: "/analytics" },
-  { text: "Demand Forecast", icon: <TrendingUp />, path: "/forecast" },
-  { text: "Audit Logs", icon: <History />, path: "/audit-logs" },
+  {
+    text: "Demand Forecast",
+    icon: <TrendingUp />,
+    path: "/forecast",
+  },
   { text: "Profile", icon: <Person />, path: "/profile" },
 ];
+
+const auditMenu = {
+  text: "Audit Logs",
+  icon: <History />,
+  path: "/audit-logs",
+};
+
+const dataImportMenu = {
+  text: "Data Import",
+  icon: <CloudUpload />,
+  path: "/data-import",
+};
 
 export { SIDEBAR_WIDTH };
 
@@ -52,9 +75,14 @@ export default function Sidebar() {
   const location = useLocation();
   const { user } = useAuth();
 
-  const visibleMenus = user?.role === "COMPANY_ADMIN"
-    ? [...menus, { text: "Data Import", icon: <CloudUpload />, path: "/data-import" }]
-    : menus;
+  const isAdmin =
+    user?.role === "COMPANY_ADMIN" || user?.role === "SUPER_ADMIN";
+
+  const visibleMenus = [
+    ...menus,
+    ...(isAdmin ? [auditMenu] : []),
+    ...(user?.role === "COMPANY_ADMIN" ? [dataImportMenu] : []),
+  ];
 
   const isSelected = (path: string) => {
     if (path === "/") {
@@ -248,7 +276,6 @@ export default function Sidebar() {
                 }}
               >
                 <ListItemIcon>{item.icon}</ListItemIcon>
-
                 <ListItemText primary={item.text} />
               </ListItemButton>
             );

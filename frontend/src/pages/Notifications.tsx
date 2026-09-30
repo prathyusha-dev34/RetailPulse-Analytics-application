@@ -1,200 +1,584 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
+  CircularProgress,
   Container,
-  Typography,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
+  Tab,
+  Tabs,
+  Typography,
 } from "@mui/material";
+
+import type { SelectChangeEvent } from "@mui/material";
+
+import DoneAllIcon from "@mui/icons-material/DoneAll";
+import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 
 import {
   getNotifications,
+  markAllNotificationsRead,
   markNotificationRead,
 } from "../api/notificationApi";
 
+import type { NotificationItem } from "../api/notificationApi";
 
-interface Notification {
-  id: number;
-  title: string;
-  message: string;
-  is_read: boolean;
-  created_at: string;
-}
+type NotificationTab = "all" | "unread" | "read";
 
+const getPriorityColor = (
+  priority: string
+): "default" | "error" | "warning" | "info" => {
+  if (priority === "CRITICAL") {
+    return "error";
+  }
 
-const Notifications = () => {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  if (priority === "HIGH") {
+    return "warning";
+  }
 
+  if (priority === "MEDIUM") {
+    return "info";
+  }
 
-  const fetchNotifications = async () => {
+  return "default";
+};
+
+const getPriorityBorder = (priority: string): string => {
+  if (priority === "CRITICAL") {
+    return "5px solid #d32f2f";
+  }
+
+  if (priority === "HIGH") {
+    return "5px solid #ed6c02";
+  }
+
+  if (priority === "MEDIUM") {
+    return "5px solid #0288d1";
+  }
+
+  return "5px solid #64748b";
+};
+
+const formatType = (value: string): string => {
+  return value
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+export default function Notifications() {
+  const [notifications, setNotifications] = useState<
+    NotificationItem[]
+  >([]);
+
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>("");
+  const [tab, setTab] = useState<NotificationTab>("all");
+  const [type, setType] = useState<string>("");
+  const [priority, setPriority] = useState<string>("");
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  const readFilter = useMemo(() => {
+    if (tab === "unread") {
+      return false;
+    }
+
+    if (tab === "read") {
+      return true;
+    }
+
+    return undefined;
+  }, [tab]);
+
+  const loadNotifications = async () => {
     try {
-      const data = await getNotifications();
+      setLoading(true);
+      setError("");
 
-      setNotifications(
-        Array.isArray(data)
-          ? data
-          : data.notifications || data.data || []
+      const result = await getNotifications({
+        page: 1,
+        page_size: 100,
+        is_read: readFilter,
+        notification_type: type || undefined,
+        priority: priority || undefined,
+      });
+
+      setNotifications(result.items || []);
+      setUnreadCount(result.unread_count || 0);
+    } catch (err) {
+      console.error(
+        "Failed to load notifications:",
+        err
       );
 
-    } catch (error) {
-      console.error("Failed to fetch notifications", error);
+      setError(
+        "Unable to load notifications. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
-
   useEffect(() => {
-    fetchNotifications();
-  }, []);
+    void loadNotifications();
 
+    const intervalId = window.setInterval(() => {
+      void loadNotifications();
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [readFilter, type, priority]);
+
+  const handleTabChange = (
+    _event: React.SyntheticEvent,
+    value: NotificationTab
+  ) => {
+    setTab(value);
+  };
+
+  const handleTypeChange = (
+    event: SelectChangeEvent<string>
+  ) => {
+    setType(event.target.value);
+  };
+
+  const handlePriorityChange = (
+    event: SelectChangeEvent<string>
+  ) => {
+    setPriority(event.target.value);
+  };
 
   const handleRead = async (id: number) => {
     try {
       await markNotificationRead(id);
 
-      setNotifications((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? { ...item, is_read: true }
-            : item
-        )
+      setNotifications((current) => {
+        return current.map((notification) => {
+          if (notification.id !== id) {
+            return notification;
+          }
+
+          return {
+            ...notification,
+            is_read: true,
+            read_at: new Date().toISOString(),
+          };
+        });
+      });
+
+      setUnreadCount((count) => Math.max(0, count - 1));
+    } catch (err) {
+      console.error(
+        "Failed to mark notification as read:",
+        err
       );
 
-    } catch (error) {
-      console.error("Failed to mark notification read", error);
+      setError(
+        "Unable to mark the notification as read."
+      );
     }
   };
 
+  const handleReadAll = async () => {
+    if (unreadCount === 0) {
+      return;
+    }
+
+    try {
+      await markAllNotificationsRead();
+
+      setNotifications((current) => {
+        return current.map((notification) => {
+          return {
+            ...notification,
+            is_read: true,
+            read_at:
+              notification.read_at ||
+              new Date().toISOString(),
+          };
+        });
+      });
+
+      setUnreadCount(0);
+    } catch (err) {
+      console.error(
+        "Failed to mark all notifications as read:",
+        err
+      );
+
+      setError(
+        "Unable to mark all notifications as read."
+      );
+    }
+  };
 
   return (
-    <Container maxWidth="lg">
-
-      <Typography
-        variant="h4"
+    <Container maxWidth="lg" sx={{ py: 3 }}>
+      {/* Header */}
+      <Box
         sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: {
+            xs: "flex-start",
+            sm: "center",
+          },
+          gap: 2,
           mb: 3,
-          fontWeight: 700,
+          flexDirection: {
+            xs: "column",
+            sm: "row",
+          },
         }}
       >
-        Notifications
-      </Typography>
+        <Box>
+          <Typography
+            variant="h4"
+            fontWeight={700}
+          >
+            Notification Center
+          </Typography>
 
+          <Typography color="text.secondary">
+            {unreadCount} unread notification
+            {unreadCount === 1 ? "" : "s"}
+          </Typography>
+        </Box>
 
-      {notifications.length === 0 ? (
+        <Button
+          variant="outlined"
+          startIcon={<DoneAllIcon />}
+          disabled={unreadCount === 0}
+          onClick={() => void handleReadAll()}
+        >
+          Mark All as Read
+        </Button>
+      </Box>
 
-        <Card>
-          <CardContent>
-            <Typography>
-              No notifications available
-            </Typography>
-          </CardContent>
-        </Card>
-
-      ) : (
-
-        <Stack spacing={2}>
-
-          {notifications.map((notification) => (
-
-            <Card
-              key={notification.id}
-              sx={{
-                backgroundColor: notification.is_read
-                  ? "#ffffff"
-                  : "#1e3a5f",
-
-                color: notification.is_read
-                  ? "#111827"
-                  : "#ffffff",
-
-                borderLeft: notification.is_read
-                  ? "none"
-                  : "4px solid #2196f3",
-
-                transition: "0.3s",
-
-                "&:hover": {
-                  transform: "translateY(-2px)",
-                },
-              }}
-            >
-
-              <CardContent>
-
-                <Typography
-                  variant="h6"
-                  fontWeight={600}
-                  sx={{
-                    color: notification.is_read
-                      ? "#111827"
-                      : "#ffffff",
-                  }}
-                >
-                  {notification.title}
-                </Typography>
-
-
-                <Typography
-                  sx={{
-                    mt: 1,
-                    color: notification.is_read
-                      ? "#334155"
-                      : "#e2e8f0",
-                  }}
-                >
-                  {notification.message}
-                </Typography>
-
-
-                <Typography
-                  variant="caption"
-                  sx={{
-                    display: "block",
-                    mt: 1,
-                    color: notification.is_read
-                      ? "#64748b"
-                      : "#cbd5e1",
-                  }}
-                >
-                  {new Date(
-                    notification.created_at
-                  ).toLocaleString()}
-                </Typography>
-
-
-                {!notification.is_read && (
-
-                  <Box mt={2}>
-
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={() =>
-                        handleRead(notification.id)
-                      }
-                    >
-                      Mark as Read
-                    </Button>
-
-                  </Box>
-
-                )}
-
-              </CardContent>
-
-            </Card>
-
-          ))}
-
-        </Stack>
-
+      {/* Error */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
       )}
 
+      {/* Filters */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Stack
+            direction={{
+              xs: "column",
+              md: "row",
+            }}
+            spacing={2}
+          >
+            <Tabs
+              value={tab}
+              onChange={handleTabChange}
+            >
+              <Tab
+                value="all"
+                label="All"
+              />
+
+              <Tab
+                value="unread"
+                label={`Unread (${unreadCount})`}
+              />
+
+              <Tab
+                value="read"
+                label="Read"
+              />
+            </Tabs>
+
+            <FormControl
+              size="small"
+              sx={{ minWidth: 180 }}
+            >
+              <InputLabel id="notification-type-label">
+                Type
+              </InputLabel>
+
+              <Select
+                labelId="notification-type-label"
+                value={type}
+                label="Type"
+                onChange={handleTypeChange}
+              >
+                <MenuItem value="">
+                  All Types
+                </MenuItem>
+
+                <MenuItem value="STOCKOUT">
+                  Stockout
+                </MenuItem>
+
+                <MenuItem value="LOW_STOCK">
+                  Low Stock
+                </MenuItem>
+
+                <MenuItem value="STOCKOUT_RISK">
+                  Stockout Risk
+                </MenuItem>
+
+                <MenuItem value="OVERSTOCK">
+                  Overstock
+                </MenuItem>
+
+                <MenuItem value="IMPORT_COMPLETED">
+                  Import Completed
+                </MenuItem>
+
+                <MenuItem value="IMPORT_COMPLETED_WITH_ERRORS">
+                  Import With Errors
+                </MenuItem>
+
+                <MenuItem value="IMPORT_FAILED">
+                  Import Failed
+                </MenuItem>
+
+                <MenuItem value="SALES_ALERT">
+                  Sales Alert
+                </MenuItem>
+
+                <MenuItem value="SYSTEM_ALERT">
+                  System Alert
+                </MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl
+              size="small"
+              sx={{ minWidth: 140 }}
+            >
+              <InputLabel id="notification-priority-label">
+                Priority
+              </InputLabel>
+
+              <Select
+                labelId="notification-priority-label"
+                value={priority}
+                label="Priority"
+                onChange={handlePriorityChange}
+              >
+                <MenuItem value="">
+                  All Priorities
+                </MenuItem>
+
+                <MenuItem value="CRITICAL">
+                  Critical
+                </MenuItem>
+
+                <MenuItem value="HIGH">
+                  High
+                </MenuItem>
+
+                <MenuItem value="MEDIUM">
+                  Medium
+                </MenuItem>
+
+                <MenuItem value="LOW">
+                  Low
+                </MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Loading */}
+      {loading && (
+        <Box
+          sx={{
+            textAlign: "center",
+            py: 8,
+          }}
+        >
+          <CircularProgress />
+
+          <Typography
+            sx={{ mt: 2 }}
+            color="text.secondary"
+          >
+            Loading notifications...
+          </Typography>
+        </Box>
+      )}
+
+      {/* Empty State */}
+      {!loading &&
+        notifications.length === 0 && (
+          <Card>
+            <CardContent
+              sx={{
+                textAlign: "center",
+                py: 8,
+              }}
+            >
+              <NotificationsNoneIcon
+                sx={{
+                  fontSize: 52,
+                  color: "text.secondary",
+                }}
+              />
+
+              <Typography
+                variant="h6"
+                sx={{ mt: 1 }}
+              >
+                You're all caught up.
+              </Typography>
+
+              <Typography color="text.secondary">
+                No notifications match the selected filters.
+              </Typography>
+            </CardContent>
+          </Card>
+        )}
+
+      {/* Notification List */}
+      {!loading &&
+        notifications.length > 0 && (
+          <Stack spacing={2}>
+            {notifications.map((notification) => (
+              <Card
+                key={notification.id}
+                sx={{
+                  borderLeft: getPriorityBorder(
+                    notification.priority
+                  ),
+                  opacity: notification.is_read
+                    ? 0.82
+                    : 1,
+                  transition: "0.2s",
+                  "&:hover": {
+                    transform: "translateY(-2px)",
+                  },
+                }}
+              >
+                <CardContent>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 2,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <Box sx={{ flex: 1 }}>
+                      {/* Title */}
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        flexWrap="wrap"
+                      >
+                        <Typography
+                          variant="h6"
+                          fontWeight={700}
+                        >
+                          {notification.title}
+                        </Typography>
+
+                        {!notification.is_read && (
+                          <Chip
+                            label="Unread"
+                            size="small"
+                            color="primary"
+                          />
+                        )}
+                      </Stack>
+
+                      {/* Message */}
+                      <Typography
+                        sx={{ mt: 1 }}
+                        color="text.secondary"
+                      >
+                        {notification.message}
+                      </Typography>
+
+                      {/* Type / Priority / Resource */}
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ mt: 2 }}
+                        flexWrap="wrap"
+                      >
+                        <Chip
+                          size="small"
+                          label={formatType(
+                            notification.notification_type
+                          )}
+                        />
+
+                        <Chip
+                          size="small"
+                          label={notification.priority}
+                          color={getPriorityColor(
+                            notification.priority
+                          )}
+                        />
+
+                        {notification.resource_type && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={
+                              notification.resource_id !=
+                              null
+                                ? notification.resource_type +
+                                  " " +
+                                  notification.resource_id
+                                : notification.resource_type
+                            }
+                          />
+                        )}
+                      </Stack>
+
+                      {/* Created Time */}
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ mt: 1.5 }}
+                        color="text.secondary"
+                      >
+                        {new Date(
+                          notification.created_at
+                        ).toLocaleString()}
+                      </Typography>
+                    </Box>
+
+                    {/* Mark Read */}
+                    {!notification.is_read && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() =>
+                          void handleRead(
+                            notification.id
+                          )
+                        }
+                      >
+                        Mark as Read
+                      </Button>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            ))}
+          </Stack>
+        )}
     </Container>
   );
-};
-
-
-export default Notifications;
+}

@@ -26,8 +26,8 @@ from app.services.customer_service import (
     sync_customer_sales_analytics,
     update_customer_purchase_summary,
 )
-
 from app.services.sales_service import generate_invoice_number
+from app.services.audit_service import create_audit_log
 
 
 # ============================================================
@@ -210,7 +210,6 @@ def get_import_file_path(import_id: int) -> str:
 def read_csv_file(
     path: str,
 ) -> tuple[list[str], list[dict]]:
-
     if not os.path.exists(path):
         raise ImportValidationException(
             "CSV file not found."
@@ -292,7 +291,6 @@ def parse_decimal(
     value: str,
     field_name: str,
 ) -> Decimal:
-
     value = (value or "").strip()
 
     if not value:
@@ -319,7 +317,6 @@ def parse_int(
     value: str,
     field_name: str,
 ) -> int:
-
     value = (value or "").strip()
 
     if not value:
@@ -342,7 +339,6 @@ def parse_int(
 
 
 def parse_date(value: str) -> datetime:
-
     value = (value or "").strip()
 
     if not value:
@@ -411,7 +407,6 @@ def validate_columns(
     import_type: str,
     columns: list[str],
 ) -> None:
-
     import_type = normalize_type(import_type)
 
     required = REQUIRED_COLUMNS[import_type]
@@ -438,15 +433,9 @@ def db_duplicate_sets(
     import_type: str,
     company_id: int,
 ):
-
     import_type = normalize_type(import_type)
 
-    # --------------------------------------------------------
-    # PRODUCTS
-    # --------------------------------------------------------
-
     if import_type == "products":
-
         existing = (
             db.query(Product.sku)
             .filter(
@@ -461,12 +450,7 @@ def db_duplicate_sets(
             if row[0]
         }
 
-    # --------------------------------------------------------
-    # CUSTOMERS
-    # --------------------------------------------------------
-
     if import_type == "customers":
-
         emails = (
             db.query(Customer.email)
             .filter(
@@ -496,12 +480,7 @@ def db_duplicate_sets(
             },
         )
 
-    # --------------------------------------------------------
-    # SALES
-    # --------------------------------------------------------
-
     if import_type == "sales":
-
         invoices = (
             db.query(Sale.invoice_number)
             .filter(
@@ -529,7 +508,6 @@ def validate_rows(
     company_id: int,
     rows: list[dict],
 ):
-
     import_type = normalize_type(import_type)
 
     errors = []
@@ -544,26 +522,19 @@ def validate_rows(
 
     seen = set()
 
-    # ========================================================
-    # PROCESS EACH ROW
-    # ========================================================
-
     for row_number, row in enumerate(
         rows,
         start=2,
     ):
-
         row_errors = []
         duplicate_row = False
 
         try:
-
             # ==================================================
             # PRODUCTS
             # ==================================================
 
             if import_type == "products":
-
                 name = row.get(
                     "product name",
                     "",
@@ -578,10 +549,6 @@ def validate_rows(
                     "category",
                     "",
                 ).strip()
-
-                # ----------------------------------------------
-                # Required fields
-                # ----------------------------------------------
 
                 if not name:
                     row_errors.append(
@@ -607,12 +574,7 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Unit price
-                # ----------------------------------------------
-
                 try:
-
                     price = parse_decimal(
                         row.get(
                             "unit price",
@@ -630,7 +592,6 @@ def validate_rows(
                         )
 
                 except ValueError as exc:
-
                     row_errors.append(
                         (
                             "Unit Price",
@@ -638,12 +599,7 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Stock
-                # ----------------------------------------------
-
                 try:
-
                     stock = parse_int(
                         row.get(
                             "stock quantity",
@@ -661,7 +617,6 @@ def validate_rows(
                         )
 
                 except ValueError as exc:
-
                     row_errors.append(
                         (
                             "Stock Quantity",
@@ -669,19 +624,13 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Optional Cost Price
-                # ----------------------------------------------
-
                 cost_price = row.get(
                     "cost price",
                     "",
                 ).strip()
 
                 if cost_price:
-
                     try:
-
                         cost = parse_decimal(
                             cost_price,
                             "Cost Price",
@@ -696,7 +645,6 @@ def validate_rows(
                             )
 
                     except ValueError as exc:
-
                         row_errors.append(
                             (
                                 "Cost Price",
@@ -704,19 +652,13 @@ def validate_rows(
                             )
                         )
 
-                # ----------------------------------------------
-                # Optional Reorder Threshold
-                # ----------------------------------------------
-
                 reorder_threshold = row.get(
                     "reorder threshold",
                     "",
                 ).strip()
 
                 if reorder_threshold:
-
                     try:
-
                         threshold = parse_int(
                             reorder_threshold,
                             "Reorder Threshold",
@@ -731,7 +673,6 @@ def validate_rows(
                             )
 
                     except ValueError as exc:
-
                         row_errors.append(
                             (
                                 "Reorder Threshold",
@@ -739,17 +680,12 @@ def validate_rows(
                             )
                         )
 
-                # ----------------------------------------------
-                # Duplicate SKU
-                # ----------------------------------------------
-
                 normalized_sku = sku.lower()
 
                 if sku and (
                     normalized_sku in existing_duplicates
                     or normalized_sku in seen
                 ):
-
                     duplicate_row = True
 
                     row_errors.append(
@@ -767,7 +703,6 @@ def validate_rows(
             # ==================================================
 
             elif import_type == "customers":
-
                 name = row.get(
                     "name",
                     "",
@@ -787,10 +722,6 @@ def validate_rows(
                     existing_duplicates
                 )
 
-                # ----------------------------------------------
-                # Name
-                # ----------------------------------------------
-
                 if not name:
                     row_errors.append(
                         (
@@ -799,21 +730,14 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Email
-                # ----------------------------------------------
-
                 if not email:
-
                     row_errors.append(
                         (
                             "Email",
                             "Email is required.",
                         )
                     )
-
                 elif not valid_email(email):
-
                     row_errors.append(
                         (
                             "Email",
@@ -821,21 +745,14 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Phone
-                # ----------------------------------------------
-
                 if not phone:
-
                     row_errors.append(
                         (
                             "Phone",
                             "Phone is required.",
                         )
                     )
-
                 elif not valid_phone(phone):
-
                     row_errors.append(
                         (
                             "Phone",
@@ -843,17 +760,12 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Duplicate email
-                # ----------------------------------------------
-
                 normalized_email = email.lower()
 
                 if email and (
                     normalized_email in existing_emails
                     or ("email", normalized_email) in seen
                 ):
-
                     duplicate_row = True
 
                     row_errors.append(
@@ -863,15 +775,10 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Duplicate phone
-                # ----------------------------------------------
-
                 if phone and (
                     phone in existing_phones
                     or ("phone", phone) in seen
                 ):
-
                     duplicate_row = True
 
                     row_errors.append(
@@ -902,7 +809,6 @@ def validate_rows(
             # ==================================================
 
             elif import_type == "sales":
-
                 customer_name = row.get(
                     "customer",
                     "",
@@ -933,10 +839,6 @@ def validate_rows(
                     "",
                 ).strip()
 
-                # ----------------------------------------------
-                # Customer
-                # ----------------------------------------------
-
                 if not customer_name:
                     row_errors.append(
                         (
@@ -944,10 +846,6 @@ def validate_rows(
                             "Customer is required.",
                         )
                     )
-
-                # ----------------------------------------------
-                # Product
-                # ----------------------------------------------
 
                 if not product_name:
                     row_errors.append(
@@ -957,14 +855,9 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Quantity
-                # ----------------------------------------------
-
                 quantity = None
 
                 try:
-
                     quantity = parse_int(
                         quantity_value,
                         "Quantity",
@@ -979,7 +872,6 @@ def validate_rows(
                         )
 
                 except ValueError as exc:
-
                     row_errors.append(
                         (
                             "Quantity",
@@ -987,12 +879,7 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Unit price
-                # ----------------------------------------------
-
                 try:
-
                     unit_price = parse_decimal(
                         unit_price_value,
                         "Unit Price",
@@ -1007,7 +894,6 @@ def validate_rows(
                         )
 
                 except ValueError as exc:
-
                     row_errors.append(
                         (
                             "Unit Price",
@@ -1015,18 +901,11 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Sale date
-                # ----------------------------------------------
-
                 try:
-
                     parse_date(
                         sale_date_value
                     )
-
                 except ValueError as exc:
-
                     row_errors.append(
                         (
                             "Sale Date",
@@ -1034,19 +913,13 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Customer existence
-                # ----------------------------------------------
-
                 customer = None
 
                 if customer_name:
-
                     customer = (
                         db.query(Customer)
                         .filter(
-                            Customer.company_id
-                            == company_id,
+                            Customer.company_id == company_id,
                             Customer.full_name.ilike(
                                 customer_name
                             ),
@@ -1056,28 +929,20 @@ def validate_rows(
                     )
 
                     if not customer:
-
                         row_errors.append(
                             (
                                 "Customer",
-                                f"Customer not found: "
-                                f"{customer_name}",
+                                f"Customer not found: {customer_name}",
                             )
                         )
-
-                # ----------------------------------------------
-                # Product existence
-                # ----------------------------------------------
 
                 product = None
 
                 if product_name:
-
                     product = (
                         db.query(Product)
                         .filter(
-                            Product.company_id
-                            == company_id,
+                            Product.company_id == company_id,
                             Product.name.ilike(
                                 product_name
                             ),
@@ -1086,25 +951,18 @@ def validate_rows(
                     )
 
                     if not product:
-
                         row_errors.append(
                             (
                                 "Product",
-                                f"Product not found: "
-                                f"{product_name}",
+                                f"Product not found: {product_name}",
                             )
                         )
-
-                # ----------------------------------------------
-                # Stock validation
-                # ----------------------------------------------
 
                 if (
                     product is not None
                     and quantity is not None
                     and quantity > product.stock_quantity
                 ):
-
                     row_errors.append(
                         (
                             "Quantity",
@@ -1116,12 +974,7 @@ def validate_rows(
                         )
                     )
 
-                # ----------------------------------------------
-                # Invoice duplicate
-                # ----------------------------------------------
-
                 if invoice_number:
-
                     normalized_invoice = (
                         invoice_number.lower()
                     )
@@ -1131,7 +984,6 @@ def validate_rows(
                         in existing_duplicates
                         or normalized_invoice in seen
                     ):
-
                         duplicate_row = True
 
                         row_errors.append(
@@ -1149,7 +1001,6 @@ def validate_rows(
                     )
 
         except Exception as exc:
-
             row_errors.append(
                 (
                     None,
@@ -1157,17 +1008,11 @@ def validate_rows(
                 )
             )
 
-        # ======================================================
-        # STORE RESULT
-        # ======================================================
-
         if row_errors:
-
             if duplicate_row:
                 duplicate_count += 1
 
             for field, message in row_errors:
-
                 errors.append(
                     {
                         "row_number": row_number,
@@ -1181,9 +1026,7 @@ def validate_rows(
                         "raw_data": row,
                     }
                 )
-
         else:
-
             valid_count += 1
 
     invalid_count = len(rows) - valid_count
@@ -1238,62 +1081,35 @@ def upload_csv(
     import_type: str,
     file: UploadFile,
 ):
-
     import_type = normalize_type(import_type)
 
     filename = file.filename or ""
-
-    # --------------------------------------------------------
-    # File extension
-    # --------------------------------------------------------
 
     if not filename.lower().endswith(".csv"):
         raise ImportValidationException(
             "Only CSV files are allowed."
         )
 
-    # --------------------------------------------------------
-    # Read file
-    # --------------------------------------------------------
-
     try:
-
         content = file.file.read()
-
     except Exception as exc:
-
         raise ImportValidationException(
             f"Unable to read uploaded file: {exc}"
         ) from exc
-
-    # --------------------------------------------------------
-    # Empty file
-    # --------------------------------------------------------
 
     if not content:
         raise ImportValidationException(
             "Uploaded file is empty."
         )
 
-    # --------------------------------------------------------
-    # Size
-    # --------------------------------------------------------
-
     if len(content) > MAX_FILE_SIZE:
         raise ImportValidationException(
             "CSV file size must not exceed 10 MB."
         )
 
-    # --------------------------------------------------------
-    # Encoding
-    # --------------------------------------------------------
-
     try:
-
         text = content.decode("utf-8-sig")
-
     except UnicodeDecodeError as exc:
-
         raise ImportValidationException(
             "CSV file must use UTF-8 encoding."
         ) from exc
@@ -1303,16 +1119,11 @@ def upload_csv(
             "CSV file is empty."
         )
 
-    # --------------------------------------------------------
-    # Reader
-    # --------------------------------------------------------
-
     reader = csv.DictReader(
         io.StringIO(text)
     )
 
     if not reader.fieldnames:
-
         raise ImportValidationException(
             "CSV file must contain a header row."
         )
@@ -1322,43 +1133,24 @@ def upload_csv(
         for column in reader.fieldnames
     ]
 
-    # --------------------------------------------------------
-    # Duplicate columns
-    # --------------------------------------------------------
-
     if len(columns) != len(set(columns)):
-
         raise ImportValidationException(
             "CSV contains duplicate column names."
         )
 
-    # --------------------------------------------------------
-    # Empty columns
-    # --------------------------------------------------------
-
     if any(not column for column in columns):
-
         raise ImportValidationException(
             "CSV contains an empty column name."
         )
-
-    # --------------------------------------------------------
-    # Required columns
-    # --------------------------------------------------------
 
     validate_columns(
         import_type,
         columns,
     )
 
-    # --------------------------------------------------------
-    # Rows
-    # --------------------------------------------------------
-
     rows = []
 
     for row in reader:
-
         cleaned = clean_row(row)
 
         if not any(
@@ -1370,19 +1162,13 @@ def upload_csv(
         rows.append(cleaned)
 
     if not rows:
-
         raise ImportValidationException(
             "CSV file does not contain any data rows."
         )
 
-    # --------------------------------------------------------
-    # Create history
-    # --------------------------------------------------------
-
     item = None
 
     try:
-
         item = create_import(
             db=db,
             company_id=company_id,
@@ -1392,17 +1178,12 @@ def upload_csv(
             total_records=len(rows),
         )
 
-        # ----------------------------------------------------
-        # Store file
-        # ----------------------------------------------------
-
         path = save_path(
             item.id,
             content,
         )
 
         if not os.path.exists(path):
-
             raise ImportValidationException(
                 "Failed to store uploaded CSV file."
             )
@@ -1417,15 +1198,12 @@ def upload_csv(
         )
 
     except Exception:
-
         db.rollback()
 
         if item is not None:
-
             path = storage_path(item.id)
 
             if os.path.exists(path):
-
                 try:
                     os.remove(path)
                 except OSError:
@@ -1443,7 +1221,6 @@ def _save_import_errors(
     import_id: int,
     errors: list[dict],
 ):
-
     db.query(
         ImportErrorModel
     ).filter(
@@ -1453,7 +1230,6 @@ def _save_import_errors(
     )
 
     for error in errors:
-
         raw_data = error.get(
             "raw_data",
             {},
@@ -1470,9 +1246,7 @@ def _save_import_errors(
                     "error_type",
                     "Validation",
                 ),
-                field=error.get(
-                    "field"
-                ),
+                field=error.get("field"),
                 message=error.get(
                     "message",
                     "Validation error.",
@@ -1494,21 +1268,17 @@ def validate_import(
     item: ImportHistory,
     company_id: int,
 ):
-
     if item.company_id != company_id:
-
         raise ImportValidationException(
             "You are not authorized to access this import."
         )
 
     if item.status == "Processing":
-
         raise ImportValidationException(
             "This import is currently being processed."
         )
 
     if item.status == "Completed":
-
         raise ImportValidationException(
             "This import has already been completed."
         )
@@ -1539,7 +1309,6 @@ def validate_import(
     )
 
     try:
-
         _save_import_errors(
             db,
             item.id,
@@ -1547,25 +1316,17 @@ def validate_import(
         )
 
         item.total_records = len(rows)
-
         item.successful_records = valid
-
         item.failed_records = invalid
-
         item.duplicate_records = duplicates
-
-        # Validation does not complete the import.
         item.status = "Pending"
-
         item.completed_at = None
 
         db.commit()
         db.refresh(item)
 
     except Exception:
-
         db.rollback()
-
         raise
 
     preview = rows[:PREVIEW_ROWS]
@@ -1590,7 +1351,6 @@ def _category(
     company_id: int,
     category_name: str,
 ):
-
     category_name = (
         category_name or ""
     ).strip()
@@ -1631,9 +1391,7 @@ def _next_customer_id(
     db: Session,
     company_id: int,
 ):
-
     year = datetime.now().year
-
     prefix = f"CUS-{year}-"
 
     latest = (
@@ -1651,13 +1409,9 @@ def _next_customer_id(
     )
 
     if not latest or not latest.customer_id:
-
         number = 1
-
     else:
-
         try:
-
             number = (
                 int(
                     latest.customer_id[
@@ -1666,9 +1420,7 @@ def _next_customer_id(
                 )
                 + 1
             )
-
         except ValueError:
-
             number = 1
 
     return f"{prefix}{number:06d}"
@@ -1684,7 +1436,6 @@ def _create_customer(
     company_id: int,
     created_by: int,
 ):
-
     name = row.get(
         "name",
         "",
@@ -1700,11 +1451,6 @@ def _create_customer(
         "",
     ).strip()
 
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # Customer model uses phone_number.
-    # --------------------------------------------------------
-
     customer_kwargs = {
         "company_id": company_id,
         "customer_id": _next_customer_id(
@@ -1717,16 +1463,12 @@ def _create_customer(
         "status": "ACTIVE",
     }
 
-    # --------------------------------------------------------
-    # created_by if supported
-    # --------------------------------------------------------
-
     if hasattr(Customer, "created_by"):
         customer_kwargs["created_by"] = created_by
 
-    # --------------------------------------------------------
-    # Optional fields
-    # --------------------------------------------------------
+    # ========================================================
+    # OPTIONAL CUSTOMER FIELDS
+    # ========================================================
 
     optional_mapping = {
         "date of birth": "date_of_birth",
@@ -1739,7 +1481,6 @@ def _create_customer(
     }
 
     for csv_field, model_field in optional_mapping.items():
-
         value = row.get(
             csv_field,
             "",
@@ -1749,12 +1490,10 @@ def _create_customer(
             value
             and hasattr(Customer, model_field)
         ):
-
-            setattr(
-                customer_kwargs,
-                model_field,
-                value,
-            )
+            # FIX:
+            # customer_kwargs is a dictionary.
+            # Do NOT use setattr(customer_kwargs, ...).
+            customer_kwargs[model_field] = value
 
     customer = Customer(
         **customer_kwargs
@@ -1763,12 +1502,7 @@ def _create_customer(
     db.add(customer)
     db.flush()
 
-    # --------------------------------------------------------
-    # Customer purchase summary
-    # --------------------------------------------------------
-
     try:
-
         summary = CustomerPurchaseSummary(
             customer_id=customer.id,
             company_id=company_id,
@@ -1778,7 +1512,6 @@ def _create_customer(
         db.flush()
 
     except TypeError:
-
         raise
 
     return customer
@@ -1794,11 +1527,6 @@ def _create_product(
     company_id: int,
     created_by: int,
 ):
-
-    # --------------------------------------------------------
-    # Required values
-    # --------------------------------------------------------
-
     name = row.get(
         "product name",
         "",
@@ -1830,10 +1558,6 @@ def _create_product(
         "Stock Quantity",
     )
 
-    # --------------------------------------------------------
-    # Category
-    # --------------------------------------------------------
-
     category = _category(
         db,
         company_id,
@@ -1841,39 +1565,19 @@ def _create_product(
     )
 
     if not category:
-
         raise ImportValidationException(
             f"Category is required for SKU {sku}."
         )
-
-    # --------------------------------------------------------
-    # Brand
-    # --------------------------------------------------------
 
     brand = row.get(
         "brand",
         "",
     ).strip()
 
-    # --------------------------------------------------------
-    # Description
-    # --------------------------------------------------------
-
     description = row.get(
         "description",
         "",
     ).strip()
-
-    # --------------------------------------------------------
-    # Cost Price
-    #
-    # Product model has:
-    #
-    # cost_price = nullable=False
-    #
-    # Therefore when CSV does not provide cost price,
-    # use unit price as a safe fallback.
-    # --------------------------------------------------------
 
     cost_price_value = row.get(
         "cost price",
@@ -1881,25 +1585,17 @@ def _create_product(
     ).strip()
 
     if cost_price_value:
-
         cost_price = parse_decimal(
             cost_price_value,
             "Cost Price",
         )
-
     else:
-
         cost_price = unit_price
 
     if cost_price < 0:
-
         raise ImportValidationException(
             f"Cost Price cannot be negative for SKU {sku}."
         )
-
-    # --------------------------------------------------------
-    # Reorder threshold
-    # --------------------------------------------------------
 
     reorder_threshold_value = row.get(
         "reorder threshold",
@@ -1907,18 +1603,14 @@ def _create_product(
     ).strip()
 
     if reorder_threshold_value:
-
         reorder_threshold = parse_int(
             reorder_threshold_value,
             "Reorder Threshold",
         )
-
     else:
-
         reorder_threshold = DEFAULT_REORDER_THRESHOLD
 
     if reorder_threshold < 0:
-
         raise ImportValidationException(
             (
                 "Reorder Threshold cannot be negative "
@@ -1926,28 +1618,13 @@ def _create_product(
             )
         )
 
-    # --------------------------------------------------------
-    # Unit of measure
-    #
-    # Product model has:
-    #
-    # unit_of_measure = nullable=False
-    #
-    # CSV treats it as optional.
-    # --------------------------------------------------------
-
     unit_of_measure = row.get(
         "unit of measure",
         "",
     ).strip()
 
     if not unit_of_measure:
-
         unit_of_measure = DEFAULT_UNIT_OF_MEASURE
-
-    # --------------------------------------------------------
-    # Product kwargs
-    # --------------------------------------------------------
 
     product_kwargs = {
         "company_id": company_id,
@@ -1962,36 +1639,20 @@ def _create_product(
         "status": DEFAULT_PRODUCT_STATUS,
     }
 
-    # --------------------------------------------------------
-    # Optional fields
-    # --------------------------------------------------------
-
     if brand:
         product_kwargs["brand"] = brand
 
     if description:
         product_kwargs["description"] = description
 
-    # --------------------------------------------------------
-    # Product created_by
-    #
-    # Add only if model supports it.
-    # --------------------------------------------------------
-
     if hasattr(Product, "created_by"):
-
         product_kwargs["created_by"] = created_by
-
-    # --------------------------------------------------------
-    # Create
-    # --------------------------------------------------------
 
     product = Product(
         **product_kwargs
     )
 
     db.add(product)
-
     db.flush()
 
     return product
@@ -2007,11 +1668,6 @@ def _create_sale(
     company_id: int,
     user_id: int,
 ):
-
-    # --------------------------------------------------------
-    # CSV values
-    # --------------------------------------------------------
-
     customer_name = row.get(
         "customer",
         "",
@@ -2045,10 +1701,6 @@ def _create_sale(
         )
     )
 
-    # --------------------------------------------------------
-    # Customer
-    # --------------------------------------------------------
-
     customer = (
         db.query(Customer)
         .filter(
@@ -2062,14 +1714,9 @@ def _create_sale(
     )
 
     if not customer:
-
         raise ImportValidationException(
             f"Customer not found: {customer_name}"
         )
-
-    # --------------------------------------------------------
-    # Product
-    # --------------------------------------------------------
 
     product = (
         db.query(Product)
@@ -2083,17 +1730,11 @@ def _create_sale(
     )
 
     if not product:
-
         raise ImportValidationException(
             f"Product not found: {product_name}"
         )
 
-    # --------------------------------------------------------
-    # Stock
-    # --------------------------------------------------------
-
     if quantity > product.stock_quantity:
-
         raise ImportValidationException(
             (
                 f"Quantity {quantity} exceeds "
@@ -2103,33 +1744,21 @@ def _create_sale(
             )
         )
 
-    # --------------------------------------------------------
-    # Invoice
-    # --------------------------------------------------------
-
     invoice_number = row.get(
         "invoice number",
         "",
     ).strip()
 
     if not invoice_number:
-
         try:
-
             invoice_number = generate_invoice_number(
                 db=db,
                 company_id=company_id,
             )
-
         except TypeError:
-
             invoice_number = generate_invoice_number(
                 db
             )
-
-    # --------------------------------------------------------
-    # Sale kwargs
-    # --------------------------------------------------------
 
     total_amount = (
         unit_price * quantity
@@ -2142,18 +1771,12 @@ def _create_sale(
         "sale_date": sale_date,
     }
 
-    # --------------------------------------------------------
-    # Optional / common Sale fields
-    # --------------------------------------------------------
-
     if hasattr(Sale, "customer_name"):
-
         sale_kwargs["customer_name"] = (
             customer.full_name
         )
 
     if hasattr(Sale, "sales_channel"):
-
         sales_channel = row.get(
             "sales channel",
             "",
@@ -2166,7 +1789,6 @@ def _create_sale(
         )
 
     if hasattr(Sale, "payment_method"):
-
         payment_method = row.get(
             "payment method",
             "",
@@ -2178,7 +1800,6 @@ def _create_sale(
             )
 
     if hasattr(Sale, "payment_status"):
-
         payment_status = row.get(
             "payment status",
             "",
@@ -2191,22 +1812,15 @@ def _create_sale(
         )
 
     if hasattr(Sale, "total_amount"):
-
         sale_kwargs["total_amount"] = (
             total_amount
         )
 
     if hasattr(Sale, "created_by"):
-
         sale_kwargs["created_by"] = user_id
 
     if hasattr(Sale, "is_deleted"):
-
         sale_kwargs["is_deleted"] = False
-
-    # --------------------------------------------------------
-    # Create Sale
-    # --------------------------------------------------------
 
     sale = Sale(
         **sale_kwargs
@@ -2214,10 +1828,6 @@ def _create_sale(
 
     db.add(sale)
     db.flush()
-
-    # --------------------------------------------------------
-    # Sale item
-    # --------------------------------------------------------
 
     sale_item_kwargs = {
         "sale_id": sale.id,
@@ -2233,10 +1843,6 @@ def _create_sale(
 
     db.add(sale_item)
 
-    # --------------------------------------------------------
-    # Inventory update
-    # --------------------------------------------------------
-
     product.stock_quantity -= quantity
 
     return (
@@ -2244,6 +1850,99 @@ def _create_sale(
         sale_item,
         product,
         customer,
+    )
+
+
+# ============================================================
+# IMPORT AUDIT HELPER
+# ============================================================
+
+def _build_import_audit_values(
+    item: ImportHistory,
+) -> dict:
+    return {
+        "status": item.status,
+        "total_records": item.total_records,
+        "successful_records": item.successful_records,
+        "failed_records": item.failed_records,
+        "duplicate_records": item.duplicate_records,
+        "filename": item.filename,
+        "import_type": item.import_type,
+        "completed_at": (
+            item.completed_at.isoformat()
+            if item.completed_at
+            else None
+        ),
+    }
+
+
+def _create_import_audit(
+    db: Session,
+    item: ImportHistory,
+    company_id: int,
+    user_id: int,
+    before_values: dict,
+    status: str,
+    error_message: str | None = None,
+    commit: bool = False,
+):
+    """
+    Create Task 13 audit entry for an import operation.
+
+    commit=False:
+        Audit remains in the current SQLAlchemy transaction.
+        This is used for successful/partial imports so the
+        business operation and audit are committed together.
+
+    commit=True:
+        Used after a failed transaction has been rolled back,
+        so the failure status and failure audit can be persisted
+        in a fresh transaction.
+    """
+
+    after_values = _build_import_audit_values(
+        item
+    )
+
+    if error_message:
+        after_values["error"] = str(
+            error_message
+        )[:1000]
+
+    if status == "SUCCESS":
+        outcome = "completed successfully"
+    elif status == "FAILED":
+        outcome = "failed"
+    else:
+        outcome = "completed with validation errors"
+
+    description = (
+        f"Import {item.import_type} file "
+        f"'{item.filename}' {outcome}. "
+        f"Import ID: {item.id}. "
+        f"Successful: {item.successful_records}, "
+        f"Failed: {item.failed_records}, "
+        f"Duplicates: {item.duplicate_records}."
+    )
+
+    if error_message:
+        description += (
+            f" Error: {str(error_message)[:500]}"
+        )
+
+    return create_audit_log(
+        db=db,
+        company_id=company_id,
+        user_id=user_id,
+        action="Import",
+        entity_name="Import",
+        resource_type="Import",
+        resource_id=item.id,
+        description=description,
+        status=status,
+        before_values=before_values,
+        after_values=after_values,
+        commit=commit,
     )
 
 
@@ -2257,13 +1956,11 @@ def process_import(
     company_id: int,
     user_id: int,
 ):
-
     # ========================================================
     # AUTHORIZATION
     # ========================================================
 
     if item.company_id != company_id:
-
         raise ImportValidationException(
             "You are not authorized to process this import."
         )
@@ -2273,16 +1970,22 @@ def process_import(
     # ========================================================
 
     if item.status == "Processing":
-
         raise ImportValidationException(
             "This import is already being processed."
         )
 
     if item.status == "Completed":
-
         raise ImportValidationException(
             "This import has already been completed."
         )
+
+    # ========================================================
+    # CAPTURE BEFORE STATE
+    # ========================================================
+
+    before_values = _build_import_audit_values(
+        item
+    )
 
     # ========================================================
     # FILE
@@ -2302,7 +2005,7 @@ def process_import(
     )
 
     # ========================================================
-    # VALIDATE AGAIN BEFORE PROCESSING
+    # VALIDATE AGAIN
     # ========================================================
 
     (
@@ -2322,7 +2025,6 @@ def process_import(
     # ========================================================
 
     try:
-
         _save_import_errors(
             db,
             item.id,
@@ -2330,23 +2032,35 @@ def process_import(
         )
 
         item.total_records = len(rows)
-
         item.successful_records = valid
-
         item.failed_records = invalid
-
         item.duplicate_records = duplicates
 
-        # ----------------------------------------------------
-        # Do not touch business data if validation failed.
-        # ----------------------------------------------------
+        # ====================================================
+        # VALIDATION FAILED
+        # ====================================================
 
         if invalid > 0:
-
             item.status = "Completed with Errors"
-
             item.completed_at = datetime.now()
 
+            # IMPORTANT:
+            # Add audit to SAME transaction.
+            _create_import_audit(
+                db=db,
+                item=item,
+                company_id=company_id,
+                user_id=user_id,
+                before_values=before_values,
+                status="FAILED",
+                error_message=(
+                    f"{invalid} validation record(s) failed."
+                ),
+                commit=False,
+            )
+
+            # Import history + errors + audit
+            # are committed together.
             db.commit()
             db.refresh(item)
 
@@ -2361,16 +2075,13 @@ def process_import(
         # ====================================================
 
         item.status = "Processing"
-
         item.completed_at = None
 
         db.commit()
         db.refresh(item)
 
     except Exception:
-
         db.rollback()
-
         raise
 
     # ========================================================
@@ -2378,19 +2089,15 @@ def process_import(
     # ========================================================
 
     success = 0
-
     affected_customers = set()
 
     try:
-
         # ====================================================
         # PRODUCTS
         # ====================================================
 
         if item.import_type == "products":
-
             for row in rows:
-
                 _create_product(
                     db=db,
                     row=row,
@@ -2405,10 +2112,8 @@ def process_import(
         # ====================================================
 
         elif item.import_type == "customers":
-
             for row in rows:
-
-                customer = _create_customer(
+                _create_customer(
                     db=db,
                     row=row,
                     company_id=company_id,
@@ -2422,9 +2127,7 @@ def process_import(
         # ====================================================
 
         elif item.import_type == "sales":
-
             for row in rows:
-
                 (
                     sale,
                     sale_item,
@@ -2443,25 +2146,14 @@ def process_import(
 
                 success += 1
 
-            # ------------------------------------------------
-            # Make sure SaleItems are flushed.
-            # ------------------------------------------------
-
             db.flush()
 
-            # ------------------------------------------------
-            # Customer analytics
-            # ------------------------------------------------
-
             for customer_id in affected_customers:
-
                 customer = (
                     db.query(Customer)
                     .filter(
-                        Customer.id
-                        == customer_id,
-                        Customer.company_id
-                        == company_id,
+                        Customer.id == customer_id,
+                        Customer.company_id == company_id,
                     )
                     .first()
                 )
@@ -2469,37 +2161,23 @@ def process_import(
                 if not customer:
                     continue
 
-                # --------------------------------------------
-                # Sales analytics
-                # --------------------------------------------
-
                 try:
-
                     sync_customer_sales_analytics(
                         db,
                         customer,
                     )
-
                 except TypeError:
-
                     sync_customer_sales_analytics(
                         db=db,
                         customer=customer,
                     )
 
-                # --------------------------------------------
-                # Purchase summary
-                # --------------------------------------------
-
                 try:
-
                     update_customer_purchase_summary(
                         db,
                         customer,
                     )
-
                 except TypeError:
-
                     update_customer_purchase_summary(
                         db=db,
                         customer=customer,
@@ -2510,7 +2188,6 @@ def process_import(
         # ====================================================
 
         else:
-
             raise ImportValidationException(
                 "Unsupported import type."
             )
@@ -2522,35 +2199,60 @@ def process_import(
         failed = len(rows) - success
 
         item.total_records = len(rows)
-
         item.successful_records = success
-
         item.failed_records = failed
-
         item.duplicate_records = duplicates
 
         if failed == 0:
-
             item.status = "Completed"
-
         else:
-
             item.status = "Completed with Errors"
 
         item.completed_at = datetime.now()
 
-        # ----------------------------------------------------
+        # ====================================================
+        # TASK 13 - IMPORT AUDIT
+        # ====================================================
+        #
         # IMPORTANT:
-        # This commits BOTH:
+        # Audit is added BEFORE commit.
         #
-        # 1. Business records
-        # 2. Import history
+        # Therefore:
+        # Business data
+        # +
+        # ImportHistory
+        # +
+        # AuditLog
         #
-        # as one transaction.
-        # ----------------------------------------------------
+        # are committed as ONE transaction.
+        # ====================================================
+
+        audit_status = (
+            "SUCCESS"
+            if failed == 0
+            else "FAILED"
+        )
+
+        _create_import_audit(
+            db=db,
+            item=item,
+            company_id=company_id,
+            user_id=user_id,
+            before_values=before_values,
+            status=audit_status,
+            error_message=(
+                f"{failed} record(s) failed."
+                if failed > 0
+                else None
+            ),
+            commit=False,
+        )
+
+        # ====================================================
+        # BUSINESS DATA + IMPORT HISTORY + AUDIT
+        # ====================================================
 
         db.commit()
-
         db.refresh(item)
 
         return (
@@ -2564,39 +2266,16 @@ def process_import(
     # ========================================================
 
     except IntegrityError as exc:
-
         db.rollback()
 
         fresh_item = (
             db.query(ImportHistory)
             .filter(
                 ImportHistory.id == item.id,
-                ImportHistory.company_id
-                == company_id,
+                ImportHistory.company_id == company_id,
             )
             .first()
         )
-
-        if fresh_item:
-
-            fresh_item.status = "Failed"
-
-            fresh_item.completed_at = datetime.now()
-
-            fresh_item.successful_records = 0
-
-            fresh_item.failed_records = len(rows)
-
-            db.commit()
-
-            db.refresh(fresh_item)
-
-            item = fresh_item
-
-        # ----------------------------------------------------
-        # Show actual database error.
-        # This makes future debugging much easier.
-        # ----------------------------------------------------
 
         database_message = str(
             getattr(
@@ -2605,6 +2284,35 @@ def process_import(
                 exc,
             )
         )
+
+        if fresh_item:
+            fresh_item.status = "Failed"
+            fresh_item.completed_at = datetime.now()
+            fresh_item.successful_records = 0
+            fresh_item.failed_records = len(rows)
+
+            try:
+                _create_import_audit(
+                    db=db,
+                    item=fresh_item,
+                    company_id=company_id,
+                    user_id=user_id,
+                    before_values=before_values,
+                    status="FAILED",
+                    error_message=(
+                        "Database constraint: "
+                        f"{database_message}"
+                    ),
+                    commit=False,
+                )
+
+                db.commit()
+                db.refresh(fresh_item)
+
+                item = fresh_item
+
+            except Exception:
+                db.rollback()
 
         raise ImportValidationException(
             (
@@ -2618,35 +2326,43 @@ def process_import(
     # IMPORT VALIDATION ERROR
     # ========================================================
 
-    except ImportValidationException:
-
+    except ImportValidationException as exc:
         db.rollback()
 
         fresh_item = (
             db.query(ImportHistory)
             .filter(
                 ImportHistory.id == item.id,
-                ImportHistory.company_id
-                == company_id,
+                ImportHistory.company_id == company_id,
             )
             .first()
         )
 
         if fresh_item:
-
             fresh_item.status = "Failed"
-
             fresh_item.completed_at = datetime.now()
-
             fresh_item.successful_records = 0
-
             fresh_item.failed_records = len(rows)
 
-            db.commit()
+            try:
+                _create_import_audit(
+                    db=db,
+                    item=fresh_item,
+                    company_id=company_id,
+                    user_id=user_id,
+                    before_values=before_values,
+                    status="FAILED",
+                    error_message=str(exc),
+                    commit=False,
+                )
 
-            db.refresh(fresh_item)
+                db.commit()
+                db.refresh(fresh_item)
 
-            item = fresh_item
+                item = fresh_item
+
+            except Exception:
+                db.rollback()
 
         raise
 
@@ -2655,34 +2371,42 @@ def process_import(
     # ========================================================
 
     except Exception as exc:
-
         db.rollback()
 
         fresh_item = (
             db.query(ImportHistory)
             .filter(
                 ImportHistory.id == item.id,
-                ImportHistory.company_id
-                == company_id,
+                ImportHistory.company_id == company_id,
             )
             .first()
         )
 
         if fresh_item:
-
             fresh_item.status = "Failed"
-
             fresh_item.completed_at = datetime.now()
-
             fresh_item.successful_records = 0
-
             fresh_item.failed_records = len(rows)
 
-            db.commit()
+            try:
+                _create_import_audit(
+                    db=db,
+                    item=fresh_item,
+                    company_id=company_id,
+                    user_id=user_id,
+                    before_values=before_values,
+                    status="FAILED",
+                    error_message=str(exc),
+                    commit=False,
+                )
 
-            db.refresh(fresh_item)
+                db.commit()
+                db.refresh(fresh_item)
 
-            item = fresh_item
+                item = fresh_item
+
+            except Exception:
+                db.rollback()
 
         raise ImportValidationException(
             (

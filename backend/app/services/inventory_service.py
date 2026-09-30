@@ -1,4 +1,3 @@
-
 from sqlalchemy import func, asc, desc, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -74,6 +73,7 @@ def create_inventory(
     )
 
     db.add(inventory)
+
     db.commit()
     db.refresh(inventory)
 
@@ -98,8 +98,7 @@ def get_inventory(
         )
         .join(Product)
         .filter(
-            Inventory.company_id
-            == current_user.company_id
+            Inventory.company_id == current_user.company_id
         )
         .offset(skip)
         .limit(limit)
@@ -124,8 +123,7 @@ def get_inventory_item(
         )
         .filter(
             Inventory.id == inventory_id,
-            Inventory.company_id
-            == current_user.company_id,
+            Inventory.company_id == current_user.company_id,
         )
         .first()
     )
@@ -142,21 +140,17 @@ def get_dashboard_summary(
     total_products = (
         db.query(Product)
         .filter(
-            Product.company_id
-            == current_user.company_id
+            Product.company_id == current_user.company_id
         )
         .count()
     )
 
     total_inventory = (
         db.query(
-            func.sum(
-                Inventory.current_stock
-            )
+            func.sum(Inventory.current_stock)
         )
         .filter(
-            Inventory.company_id
-            == current_user.company_id
+            Inventory.company_id == current_user.company_id
         )
         .scalar()
         or 0
@@ -165,8 +159,7 @@ def get_dashboard_summary(
     low_stock = (
         db.query(Inventory)
         .filter(
-            Inventory.company_id
-            == current_user.company_id,
+            Inventory.company_id == current_user.company_id,
             Inventory.stock_status.in_(
                 [
                     "LOW_STOCK",
@@ -180,8 +173,7 @@ def get_dashboard_summary(
     out_of_stock = (
         db.query(Inventory)
         .filter(
-            Inventory.company_id
-            == current_user.company_id,
+            Inventory.company_id == current_user.company_id,
             Inventory.stock_status.in_(
                 [
                     "OUT_OF_STOCK",
@@ -226,14 +218,22 @@ def add_stock(
             "Quantity must be greater than zero."
         )
 
-    if not reason.strip():
+    if not reason or not reason.strip():
         raise ValueError(
             "Reason is required."
         )
 
+    # ---------------------------------
+    # Capture previous state
+    # ---------------------------------
+
     previous_quantity = inventory.current_stock
     previous_available_stock = inventory.available_stock
-    previous_status = inventory.stock_status
+    old_status = inventory.stock_status
+
+    # ---------------------------------
+    # Update inventory
+    # ---------------------------------
 
     inventory.current_stock += quantity
 
@@ -247,9 +247,9 @@ def add_stock(
         inventory.reorder_level,
     )
 
-    # ===============================
+    # ---------------------------------
     # Movement Record
-    # ===============================
+    # ---------------------------------
 
     movement = InventoryMovement(
         inventory_id=inventory.id,
@@ -264,9 +264,9 @@ def add_stock(
 
     db.add(movement)
 
-    # ===============================
-    # Audit Log - Task 13
-    # ===============================
+    # ---------------------------------
+    # Audit Log
+    # ---------------------------------
 
     create_audit_log(
         db=db,
@@ -275,17 +275,17 @@ def add_stock(
         action="Stock Added",
         entity_name="Inventory",
         resource_type="Inventory",
-        resource_id=str(inventory.id),
+        resource_id=inventory.id,
         description=(
             f"{quantity} units added to "
-            f"inventory for product "
-            f"'{inventory.product.name}'"
+            f"'{inventory.product.name}' inventory. "
+            f"Reason: {reason}"
         ),
         status="SUCCESS",
         before_values={
             "current_stock": previous_quantity,
             "available_stock": previous_available_stock,
-            "stock_status": previous_status,
+            "stock_status": old_status,
         },
         after_values={
             "current_stock": inventory.current_stock,
@@ -295,15 +295,19 @@ def add_stock(
             "reason": reason,
             "remarks": remarks,
         },
+        commit=False,
     )
 
-    # ===============================
-    # Notification
-    # ===============================
+    # ---------------------------------
+    # Status Notifications
+    # ---------------------------------
 
-    if previous_status != inventory.stock_status:
+    if old_status != inventory.stock_status:
 
-        if inventory.stock_status == "LOW_STOCK":
+        if inventory.stock_status in (
+            "LOW_STOCK",
+            "Low Stock",
+        ):
             create_inventory_notification(
                 db=db,
                 inventory=inventory,
@@ -316,7 +320,10 @@ def add_stock(
                 notification_type="LOW_STOCK",
             )
 
-        elif inventory.stock_status == "OUT_OF_STOCK":
+        elif inventory.stock_status in (
+            "OUT_OF_STOCK",
+            "Out of Stock",
+        ):
             create_inventory_notification(
                 db=db,
                 inventory=inventory,
@@ -329,7 +336,9 @@ def add_stock(
                 notification_type="OUT_OF_STOCK",
             )
 
-    # Manual stock adjustment notification
+    # ---------------------------------
+    # Stock Addition Notification
+    # ---------------------------------
 
     create_inventory_notification(
         db=db,
@@ -342,6 +351,10 @@ def add_stock(
         ),
         notification_type="STOCK_ADDITION",
     )
+
+    # ---------------------------------
+    # Single transaction commit
+    # ---------------------------------
 
     db.commit()
     db.refresh(inventory)
@@ -380,14 +393,22 @@ def remove_stock(
             "Stock Out quantity cannot exceed available stock."
         )
 
-    if not reason.strip():
+    if not reason or not reason.strip():
         raise ValueError(
             "Reason is required."
         )
 
+    # ---------------------------------
+    # Capture previous state
+    # ---------------------------------
+
     previous_quantity = inventory.current_stock
     previous_available_stock = inventory.available_stock
-    previous_status = inventory.stock_status
+    old_status = inventory.stock_status
+
+    # ---------------------------------
+    # Update inventory
+    # ---------------------------------
 
     inventory.current_stock -= quantity
 
@@ -401,9 +422,9 @@ def remove_stock(
         inventory.reorder_level,
     )
 
-    # ===============================
+    # ---------------------------------
     # Movement History
-    # ===============================
+    # ---------------------------------
 
     movement = InventoryMovement(
         inventory_id=inventory.id,
@@ -418,9 +439,9 @@ def remove_stock(
 
     db.add(movement)
 
-    # ===============================
-    # Audit Log - Task 13
-    # ===============================
+    # ---------------------------------
+    # Audit Log
+    # ---------------------------------
 
     create_audit_log(
         db=db,
@@ -429,17 +450,17 @@ def remove_stock(
         action="Stock Removed",
         entity_name="Inventory",
         resource_type="Inventory",
-        resource_id=str(inventory.id),
+        resource_id=inventory.id,
         description=(
             f"{quantity} units removed from "
-            f"inventory for product "
-            f"'{inventory.product.name}'"
+            f"'{inventory.product.name}' inventory. "
+            f"Reason: {reason}"
         ),
         status="SUCCESS",
         before_values={
             "current_stock": previous_quantity,
             "available_stock": previous_available_stock,
-            "stock_status": previous_status,
+            "stock_status": old_status,
         },
         after_values={
             "current_stock": inventory.current_stock,
@@ -449,15 +470,19 @@ def remove_stock(
             "reason": reason,
             "remarks": remarks,
         },
+        commit=False,
     )
 
-    # ===============================
+    # ---------------------------------
     # Status Notifications
-    # ===============================
+    # ---------------------------------
 
-    if previous_status != inventory.stock_status:
+    if old_status != inventory.stock_status:
 
-        if inventory.stock_status == "LOW_STOCK":
+        if inventory.stock_status in (
+            "LOW_STOCK",
+            "Low Stock",
+        ):
             create_inventory_notification(
                 db=db,
                 inventory=inventory,
@@ -470,7 +495,10 @@ def remove_stock(
                 notification_type="LOW_STOCK",
             )
 
-        elif inventory.stock_status == "OUT_OF_STOCK":
+        elif inventory.stock_status in (
+            "OUT_OF_STOCK",
+            "Out of Stock",
+        ):
             create_inventory_notification(
                 db=db,
                 inventory=inventory,
@@ -483,9 +511,9 @@ def remove_stock(
                 notification_type="OUT_OF_STOCK",
             )
 
-    # ===============================
+    # ---------------------------------
     # Stock Removal Notification
-    # ===============================
+    # ---------------------------------
 
     create_inventory_notification(
         db=db,
@@ -498,6 +526,10 @@ def remove_stock(
         ),
         notification_type="STOCK_REMOVAL",
     )
+
+    # ---------------------------------
+    # Single transaction commit
+    # ---------------------------------
 
     db.commit()
     db.refresh(inventory)
@@ -526,23 +558,27 @@ def adjust_stock(
     if not inventory:
         return None
 
-    if quantity <= 0:
+    if quantity < 0:
         raise ValueError(
-            "Adjustment quantity must be greater than zero."
+            "Adjustment quantity cannot be negative."
         )
 
-    if not reason.strip():
+    if not reason or not reason.strip():
         raise ValueError(
             "Reason is required."
         )
 
+    # ---------------------------------
+    # Capture previous state
+    # ---------------------------------
+
     previous_quantity = inventory.current_stock
     previous_available_stock = inventory.available_stock
-    previous_status = inventory.stock_status
+    old_status = inventory.stock_status
 
-    quantity_difference = (
-        quantity - previous_quantity
-    )
+    # ---------------------------------
+    # Update inventory
+    # ---------------------------------
 
     inventory.current_stock = quantity
 
@@ -556,9 +592,13 @@ def adjust_stock(
         inventory.reorder_level,
     )
 
-    # ===============================
+    quantity_difference = (
+        quantity - previous_quantity
+    )
+
+    # ---------------------------------
     # Movement
-    # ===============================
+    # ---------------------------------
 
     movement = InventoryMovement(
         inventory_id=inventory.id,
@@ -573,9 +613,9 @@ def adjust_stock(
 
     db.add(movement)
 
-    # ===============================
-    # Audit Log - Task 13
-    # ===============================
+    # ---------------------------------
+    # Audit Log
+    # ---------------------------------
 
     create_audit_log(
         db=db,
@@ -584,17 +624,17 @@ def adjust_stock(
         action="Stock Adjusted",
         entity_name="Inventory",
         resource_type="Inventory",
-        resource_id=str(inventory.id),
+        resource_id=inventory.id,
         description=(
             f"Inventory stock manually adjusted "
-            f"for product "
-            f"'{inventory.product.name}'"
+            f"for '{inventory.product.name}'. "
+            f"Reason: {reason}"
         ),
         status="SUCCESS",
         before_values={
             "current_stock": previous_quantity,
             "available_stock": previous_available_stock,
-            "stock_status": previous_status,
+            "stock_status": old_status,
         },
         after_values={
             "current_stock": inventory.current_stock,
@@ -604,11 +644,12 @@ def adjust_stock(
             "reason": reason,
             "remarks": remarks,
         },
+        commit=False,
     )
 
-    # ===============================
+    # ---------------------------------
     # Adjustment Notification
-    # ===============================
+    # ---------------------------------
 
     create_inventory_notification(
         db=db,
@@ -622,11 +663,11 @@ def adjust_stock(
         notification_type="STOCK_ADJUSTMENT",
     )
 
-    # ===============================
+    # ---------------------------------
     # Status Change Notification
-    # ===============================
+    # ---------------------------------
 
-    if previous_status != inventory.stock_status:
+    if old_status != inventory.stock_status:
 
         create_inventory_notification(
             db=db,
@@ -634,12 +675,15 @@ def adjust_stock(
             current_user=current_user,
             title=inventory.stock_status,
             message=(
-                f"{inventory.product.name} "
-                f"status changed to "
-                f"{inventory.stock_status}."
+                f"{inventory.product.name} status "
+                f"changed to {inventory.stock_status}."
             ),
             notification_type="STOCK_STATUS",
         )
+
+    # ---------------------------------
+    # Single transaction commit
+    # ---------------------------------
 
     db.commit()
     db.refresh(inventory)
@@ -670,8 +714,7 @@ def search_inventory(
         )
         .join(Product)
         .filter(
-            Inventory.company_id
-            == current_user.company_id
+            Inventory.company_id == current_user.company_id
         )
     )
 
@@ -709,28 +752,31 @@ def search_inventory(
 
     if stock_status:
         query = query.filter(
-            Inventory.stock_status
-            == stock_status
+            Inventory.stock_status == stock_status
         )
 
     # Sorting
 
     if sort_by == "name":
+
         query = query.order_by(
             asc(Product.name)
         )
 
     elif sort_by == "stock":
+
         query = query.order_by(
             desc(Inventory.current_stock)
         )
 
     elif sort_by == "recent":
+
         query = query.order_by(
             desc(Inventory.updated_at)
         )
 
     else:
+
         query = query.order_by(
             asc(Product.name)
         )
@@ -758,8 +804,7 @@ def get_movement_history(
         .options(
             joinedload(
                 InventoryMovement.inventory
-            )
-            .joinedload(
+            ).joinedload(
                 Inventory.product
             ),
             joinedload(
@@ -819,10 +864,8 @@ def get_inventory_by_product(
     return (
         db.query(Inventory)
         .filter(
-            Inventory.product_id
-            == product_id,
-            Inventory.company_id
-            == current_user.company_id,
+            Inventory.product_id == product_id,
+            Inventory.company_id == current_user.company_id,
         )
         .first()
     )
@@ -852,11 +895,16 @@ def update_reorder_level(
             "Reorder level cannot be negative."
         )
 
-    previous_reorder_level = (
-        inventory.reorder_level
-    )
+    # ---------------------------------
+    # Capture previous state
+    # ---------------------------------
 
+    previous_reorder_level = inventory.reorder_level
     previous_status = inventory.stock_status
+
+    # ---------------------------------
+    # Update reorder level
+    # ---------------------------------
 
     inventory.reorder_level = reorder_level
 
@@ -865,9 +913,9 @@ def update_reorder_level(
         reorder_level,
     )
 
-    # ===============================
-    # Audit Log - Task 13
-    # ===============================
+    # ---------------------------------
+    # Audit Log
+    # ---------------------------------
 
     create_audit_log(
         db=db,
@@ -876,10 +924,12 @@ def update_reorder_level(
         action="Reorder Level Updated",
         entity_name="Inventory",
         resource_type="Inventory",
-        resource_id=str(inventory.id),
+        resource_id=inventory.id,
         description=(
             f"Reorder level updated for "
-            f"product '{inventory.product.name}'"
+            f"'{inventory.product.name}' "
+            f"from {previous_reorder_level} "
+            f"to {reorder_level}."
         ),
         status="SUCCESS",
         before_values={
@@ -890,11 +940,12 @@ def update_reorder_level(
             "reorder_level": inventory.reorder_level,
             "stock_status": inventory.stock_status,
         },
+        commit=False,
     )
 
-    # ===============================
+    # ---------------------------------
     # Notification
-    # ===============================
+    # ---------------------------------
 
     create_inventory_notification(
         db=db,
@@ -908,8 +959,11 @@ def update_reorder_level(
         notification_type="REORDER_UPDATE",
     )
 
+    # ---------------------------------
+    # Single transaction commit
+    # ---------------------------------
+
     db.commit()
     db.refresh(inventory)
 
     return inventory
-

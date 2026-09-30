@@ -1,25 +1,17 @@
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+
 import csv
 import io
 import json
-
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    HTTPException,
-    Query,
-    Request,
-    UploadFile,
-)
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import require_roles
 from app.models.import_error import ImportError as ImportErrorModel
 from app.models.import_history import ImportHistory
 from app.schemas.data_import import ImportHistoryResponse
-from app.services.audit_service import create_audit_log
+from app.services.notification_service import create_import_notification
 from app.services.import_service import (
     ImportValidationException,
     normalize_type,
@@ -28,7 +20,6 @@ from app.services.import_service import (
     process_import,
     PREVIEW_ROWS,
 )
-
 
 router = APIRouter(
     prefix="/import",
@@ -67,42 +58,17 @@ def get_owned_import(
     return item
 
 
-def get_request_details(request: Request):
-    """
-    Get client IP address and User-Agent safely.
-    """
-    forwarded_for = request.headers.get("X-Forwarded-For")
-
-    if forwarded_for:
-        ip_address = forwarded_for.split(",")[0].strip()
-    else:
-        ip_address = (
-            request.client.host
-            if request.client
-            else ""
-        )
-
-    user_agent = request.headers.get(
-        "User-Agent",
-        "",
-    )
-
-    return ip_address, user_agent
-
-
 # ============================================================
 # UPLOAD CSV
 # ============================================================
+
 @router.post("/upload")
 def upload(
-    request: Request,
     import_type: str = Query(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user=Depends(get_admin),
 ):
-    ip_address, user_agent = get_request_details(request)
-
     try:
         item, columns, rows = upload_csv(
             db,
@@ -110,31 +76,6 @@ def upload(
             current_user.id,
             import_type,
             file,
-        )
-
-        create_audit_log(
-            db=db,
-            company_id=current_user.company_id,
-            user_id=current_user.id,
-            action="Data Import Upload",
-            entity_name="ImportHistory",
-            ip_address=ip_address,
-            browser=user_agent,
-            resource_type="Data Import",
-            resource_id=str(item.id),
-            description=(
-                f"CSV file '{item.filename}' uploaded "
-                f"for {item.import_type} import"
-            ),
-            user_agent=user_agent,
-            status="SUCCESS",
-            after_values={
-                "import_id": item.id,
-                "import_type": item.import_type,
-                "filename": item.filename,
-                "total_records": len(rows),
-                "columns": columns,
-            },
         )
 
         return {
@@ -152,27 +93,6 @@ def upload(
         }
 
     except ImportValidationException as exc:
-        create_audit_log(
-            db=db,
-            company_id=current_user.company_id,
-            user_id=current_user.id,
-            action="Data Import Upload Failed",
-            entity_name="ImportHistory",
-            ip_address=ip_address,
-            browser=user_agent,
-            resource_type="Data Import",
-            description=(
-                f"CSV upload failed: {str(exc)}"
-            ),
-            user_agent=user_agent,
-            status="FAILED",
-            after_values={
-                "import_type": import_type,
-                "filename": file.filename,
-                "error": str(exc),
-            },
-        )
-
         raise HTTPException(
             status_code=400,
             detail=str(exc),
@@ -182,15 +102,13 @@ def upload(
 # ============================================================
 # VALIDATE IMPORT
 # ============================================================
+
 @router.post("/validate")
 def validate(
-    request: Request,
     import_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_admin),
 ):
-    ip_address, user_agent = get_request_details(request)
-
     item = get_owned_import(
         db,
         import_id,
@@ -212,36 +130,6 @@ def validate(
             current_user.company_id,
         )
 
-        create_audit_log(
-            db=db,
-            company_id=current_user.company_id,
-            user_id=current_user.id,
-            action="Data Import Validation",
-            entity_name="ImportHistory",
-            ip_address=ip_address,
-            browser=user_agent,
-            resource_type="Data Import",
-            resource_id=str(item.id),
-            description=(
-                f"Validation completed for import "
-                f"'{item.filename}'"
-            ),
-            user_agent=user_agent,
-            status=(
-                "SUCCESS"
-                if invalid == 0 and duplicates == 0
-                else "COMPLETED_WITH_ERRORS"
-            ),
-            after_values={
-                "import_id": item.id,
-                "import_type": item.import_type,
-                "total_records": len(rows),
-                "valid_records": valid,
-                "invalid_records": invalid,
-                "duplicate_records": duplicates,
-            },
-        )
-
         return {
             "success": True,
             "import_id": item.id,
@@ -257,28 +145,6 @@ def validate(
         }
 
     except ImportValidationException as exc:
-        create_audit_log(
-            db=db,
-            company_id=current_user.company_id,
-            user_id=current_user.id,
-            action="Data Import Validation Failed",
-            entity_name="ImportHistory",
-            ip_address=ip_address,
-            browser=user_agent,
-            resource_type="Data Import",
-            resource_id=str(item.id),
-            description=(
-                f"Validation failed for import "
-                f"'{item.filename}': {str(exc)}"
-            ),
-            user_agent=user_agent,
-            status="FAILED",
-            after_values={
-                "import_id": item.id,
-                "error": str(exc),
-            },
-        )
-
         raise HTTPException(
             status_code=400,
             detail=str(exc),
@@ -288,15 +154,13 @@ def validate(
 # ============================================================
 # PROCESS IMPORT
 # ============================================================
+
 @router.post("/process")
 def process(
-    request: Request,
     import_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_admin),
 ):
-    ip_address, user_agent = get_request_details(request)
-
     item = get_owned_import(
         db,
         import_id,
@@ -315,42 +179,15 @@ def process(
             current_user.id,
         )
 
-        audit_status = (
-            "SUCCESS"
-            if item.status == "Completed"
-            else "COMPLETED_WITH_ERRORS"
-        )
-
-        create_audit_log(
-            db=db,
+        # Task 14: notify authorized company admins after the real import result.
+        create_import_notification(
+            db,
             company_id=current_user.company_id,
-            user_id=current_user.id,
-            action="Data Import Processed",
-            entity_name="ImportHistory",
-            ip_address=ip_address,
-            browser=user_agent,
-            resource_type="Data Import",
-            resource_id=str(item.id),
-            description=(
-                f"Import processing completed for "
-                f"'{item.filename}' with status "
-                f"'{item.status}'"
-            ),
-            user_agent=user_agent,
-            status=audit_status,
-            after_values={
-                "import_id": item.id,
-                "import_type": item.import_type,
-                "status": item.status,
-                "total_records": item.total_records,
-                "successful_records": item.successful_records,
-                "failed_records": item.failed_records,
-                "duplicate_records": duplicates,
-                "validation_failures": len(
-                    validation_failures
-                ),
-            },
+            import_id=item.id,
+            import_type=item.import_type,
+            status=item.status,
         )
+        db.commit()
 
         return {
             "success": True,
@@ -369,68 +206,16 @@ def process(
         }
 
     except ImportValidationException as exc:
-        # process_import() already handles its own
-        # transaction rollback/failure state.
-        create_audit_log(
-            db=db,
-            company_id=current_user.company_id,
-            user_id=current_user.id,
-            action="Data Import Processing Failed",
-            entity_name="ImportHistory",
-            ip_address=ip_address,
-            browser=user_agent,
-            resource_type="Data Import",
-            resource_id=str(item.id),
-            description=(
-                f"Import processing failed for "
-                f"'{item.filename}': {str(exc)}"
-            ),
-            user_agent=user_agent,
-            status="FAILED",
-            after_values={
-                "import_id": item.id,
-                "import_type": item.import_type,
-                "error": str(exc),
-            },
-        )
-
         raise HTTPException(
             status_code=400,
             detail=str(exc),
         )
 
-    except Exception as exc:
-        # Keep the original API behavior while recording
-        # unexpected processing failures.
-        create_audit_log(
-            db=db,
-            company_id=current_user.company_id,
-            user_id=current_user.id,
-            action="Data Import Processing Failed",
-            entity_name="ImportHistory",
-            ip_address=ip_address,
-            browser=user_agent,
-            resource_type="Data Import",
-            resource_id=str(item.id),
-            description=(
-                f"Unexpected import processing failure "
-                f"for '{item.filename}': {str(exc)}"
-            ),
-            user_agent=user_agent,
-            status="FAILED",
-            after_values={
-                "import_id": item.id,
-                "import_type": item.import_type,
-                "error": str(exc),
-            },
-        )
-
-        raise
-
 
 # ============================================================
 # IMPORT HISTORY
 # ============================================================
+
 @router.get(
     "/history",
     response_model=list[ImportHistoryResponse],
@@ -455,6 +240,7 @@ def history(
 # ============================================================
 # IMPORT DETAILS
 # ============================================================
+
 @router.get("/{import_id}")
 def details(
     import_id: int,
@@ -512,15 +298,13 @@ def details(
 # ============================================================
 # DOWNLOAD IMPORT ERRORS
 # ============================================================
+
 @router.get("/{import_id}/errors")
 def errors(
-    request: Request,
     import_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_admin),
 ):
-    ip_address, user_agent = get_request_details(request)
-
     item = get_owned_import(
         db,
         import_id,
@@ -540,6 +324,7 @@ def errors(
     )
 
     output = io.StringIO()
+
     writer = csv.writer(output)
 
     writer.writerow(
@@ -565,29 +350,6 @@ def errors(
 
     output.seek(0)
 
-    create_audit_log(
-        db=db,
-        company_id=current_user.company_id,
-        user_id=current_user.id,
-        action="Import Error CSV Export",
-        entity_name="ImportHistory",
-        ip_address=ip_address,
-        browser=user_agent,
-        resource_type="Data Import",
-        resource_id=str(item.id),
-        description=(
-            f"Validation error CSV downloaded for "
-            f"import '{item.filename}'"
-        ),
-        user_agent=user_agent,
-        status="SUCCESS",
-        after_values={
-            "import_id": item.id,
-            "filename": item.filename,
-            "error_records": len(rows),
-        },
-    )
-
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
@@ -603,9 +365,9 @@ def errors(
 # ============================================================
 # DELETE IMPORT HISTORY
 # ============================================================
+
 @router.delete("/{import_id}")
 def delete_import(
-    request: Request,
     import_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(get_admin),
@@ -621,31 +383,17 @@ def delete_import(
     such as products, customers, or sales.
     """
 
-    ip_address, user_agent = get_request_details(request)
-
     item = get_owned_import(
         db,
         import_id,
         current_user.company_id,
     )
 
-    # Capture information before deleting the record.
-    audit_before_values = {
-        "import_id": item.id,
-        "import_type": item.import_type,
-        "filename": item.filename,
-        "uploaded_by": item.uploaded_by,
-        "total_records": item.total_records,
-        "successful_records": item.successful_records,
-        "failed_records": item.failed_records,
-        "duplicate_records": item.duplicate_records,
-        "status": item.status,
-    }
-
     try:
         # ----------------------------------------------------
         # Delete related validation/error records first
         # ----------------------------------------------------
+
         (
             db.query(ImportErrorModel)
             .filter(
@@ -660,36 +408,14 @@ def delete_import(
         # ----------------------------------------------------
         # Delete import history
         # ----------------------------------------------------
+
         db.delete(item)
 
         # ----------------------------------------------------
         # Commit transaction
         # ----------------------------------------------------
-        db.commit()
 
-        # ----------------------------------------------------
-        # Create audit AFTER successful deletion.
-        # This avoids the audit service commit affecting
-        # the deletion transaction.
-        # ----------------------------------------------------
-        create_audit_log(
-            db=db,
-            company_id=current_user.company_id,
-            user_id=current_user.id,
-            action="Import History Deleted",
-            entity_name="ImportHistory",
-            ip_address=ip_address,
-            browser=user_agent,
-            resource_type="Data Import",
-            resource_id=str(import_id),
-            description=(
-                f"Import history record '{import_id}' "
-                f"was deleted"
-            ),
-            user_agent=user_agent,
-            status="SUCCESS",
-            before_values=audit_before_values,
-        )
+        db.commit()
 
         return {
             "success": True,

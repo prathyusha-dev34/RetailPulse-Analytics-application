@@ -17,7 +17,7 @@ class AuditLogResponse(BaseModel):
     ip_address: str | None = None
     browser: str | None = None
 
-    # Task 13 fields
+    
     resource_type: str | None = None
     resource_id: str | None = None
     description: str | None = None

@@ -1,4 +1,3 @@
-
 from sqlalchemy import func, asc, desc
 from sqlalchemy.orm import Session
 
@@ -14,6 +13,44 @@ from app.schemas.product import (
 
 from app.services.audit_service import create_audit_log
 from app.services.inventory_service import create_inventory
+
+
+# ==========================================
+# PRODUCT AUDIT SNAPSHOT
+# ==========================================
+
+def _product_snapshot(product: Product):
+    """
+    Creates a JSON-safe snapshot of important Product fields
+    for Audit Log before/after values.
+    """
+
+    if not product:
+        return None
+
+    return {
+        "id": product.id,
+        "company_id": product.company_id,
+        "category_id": product.category_id,
+        "name": product.name,
+        "sku": product.sku,
+        "brand": product.brand,
+        "description": product.description,
+        "unit_price": (
+            float(product.unit_price)
+            if product.unit_price is not None
+            else None
+        ),
+        "cost_price": (
+            float(product.cost_price)
+            if product.cost_price is not None
+            else None
+        ),
+        "stock_quantity": product.stock_quantity,
+        "reorder_threshold": product.reorder_threshold,
+        "unit_of_measure": product.unit_of_measure,
+        "status": product.status,
+    }
 
 
 # ==========================================
@@ -103,10 +140,15 @@ def create_product(
     db.commit()
     db.refresh(new_product)
 
+    # Create corresponding inventory record
     create_inventory(
         db=db,
         product=new_product,
     )
+
+    # ------------------------------------------
+    # AUDIT: PRODUCT CREATED
+    # ------------------------------------------
 
     create_audit_log(
         db=db,
@@ -115,30 +157,14 @@ def create_product(
         action="Product Created",
         entity_name="Product",
         resource_type="Product",
-        resource_id=str(new_product.id),
+        resource_id=new_product.id,
         description=(
             f"Product '{new_product.name}' "
-            f"(SKU: {new_product.sku}) was created"
+            f"(SKU: {new_product.sku}) was created."
         ),
         status="SUCCESS",
         before_values=None,
-        after_values={
-            "id": new_product.id,
-            "name": new_product.name,
-            "sku": new_product.sku,
-            "category_id": new_product.category_id,
-            "brand": new_product.brand,
-            "unit_price": float(new_product.unit_price)
-            if new_product.unit_price is not None
-            else None,
-            "cost_price": float(new_product.cost_price)
-            if new_product.cost_price is not None
-            else None,
-            "stock_quantity": new_product.stock_quantity,
-            "reorder_threshold": new_product.reorder_threshold,
-            "unit_of_measure": new_product.unit_of_measure,
-            "status": new_product.status,
-        },
+        after_values=_product_snapshot(new_product),
     )
 
     return new_product
@@ -199,32 +225,15 @@ def update_product(
     if not product:
         return None
 
+    # ------------------------------------------
+    # Capture BEFORE state
+    # ------------------------------------------
+
+    before_values = _product_snapshot(product)
+
     update_data = data.model_dump(
         exclude_unset=True
     )
-
-    # ------------------------------------------
-    # Capture BEFORE values
-    # ------------------------------------------
-
-    before_values = {
-        "id": product.id,
-        "name": product.name,
-        "sku": product.sku,
-        "category_id": product.category_id,
-        "brand": product.brand,
-        "description": product.description,
-        "unit_price": float(product.unit_price)
-        if product.unit_price is not None
-        else None,
-        "cost_price": float(product.cost_price)
-        if product.cost_price is not None
-        else None,
-        "stock_quantity": product.stock_quantity,
-        "reorder_threshold": product.reorder_threshold,
-        "unit_of_measure": product.unit_of_measure,
-        "status": product.status,
-    }
 
     # ------------------------------------------
     # CATEGORY VALIDATION
@@ -363,27 +372,14 @@ def update_product(
     db.refresh(product)
 
     # ------------------------------------------
-    # Capture AFTER values
+    # Capture AFTER state
     # ------------------------------------------
 
-    after_values = {
-        "id": product.id,
-        "name": product.name,
-        "sku": product.sku,
-        "category_id": product.category_id,
-        "brand": product.brand,
-        "description": product.description,
-        "unit_price": float(product.unit_price)
-        if product.unit_price is not None
-        else None,
-        "cost_price": float(product.cost_price)
-        if product.cost_price is not None
-        else None,
-        "stock_quantity": product.stock_quantity,
-        "reorder_threshold": product.reorder_threshold,
-        "unit_of_measure": product.unit_of_measure,
-        "status": product.status,
-    }
+    after_values = _product_snapshot(product)
+
+    # ------------------------------------------
+    # AUDIT: PRODUCT UPDATED
+    # ------------------------------------------
 
     create_audit_log(
         db=db,
@@ -392,10 +388,10 @@ def update_product(
         action="Product Updated",
         entity_name="Product",
         resource_type="Product",
-        resource_id=str(product.id),
+        resource_id=product.id,
         description=(
             f"Product '{product.name}' "
-            f"(SKU: {product.sku}) was updated"
+            f"(SKU: {product.sku}) was updated."
         ),
         status="SUCCESS",
         before_values=before_values,
@@ -424,29 +420,6 @@ def delete_product(
         return False
 
     # ------------------------------------------
-    # Capture values BEFORE deletion
-    # ------------------------------------------
-
-    before_values = {
-        "id": product.id,
-        "name": product.name,
-        "sku": product.sku,
-        "category_id": product.category_id,
-        "brand": product.brand,
-        "description": product.description,
-        "unit_price": float(product.unit_price)
-        if product.unit_price is not None
-        else None,
-        "cost_price": float(product.cost_price)
-        if product.cost_price is not None
-        else None,
-        "stock_quantity": product.stock_quantity,
-        "reorder_threshold": product.reorder_threshold,
-        "unit_of_measure": product.unit_of_measure,
-        "status": product.status,
-    }
-
-    # ------------------------------------------
     # CHECK SALES HISTORY
     # ------------------------------------------
 
@@ -464,12 +437,26 @@ def delete_product(
             "Sales history exists for this product."
         )
 
+    # ------------------------------------------
+    # Capture BEFORE state
+    # ------------------------------------------
+
+    before_values = _product_snapshot(product)
+
+    product_id_value = product.id
     product_name = product.name
     product_sku = product.sku
-    product_id_value = product.id
+
+    # ------------------------------------------
+    # DELETE PRODUCT
+    # ------------------------------------------
 
     db.delete(product)
     db.commit()
+
+    # ------------------------------------------
+    # AUDIT: PRODUCT DELETED
+    # ------------------------------------------
 
     create_audit_log(
         db=db,
@@ -478,10 +465,10 @@ def delete_product(
         action="Product Deleted",
         entity_name="Product",
         resource_type="Product",
-        resource_id=str(product_id_value),
+        resource_id=product_id_value,
         description=(
             f"Product '{product_name}' "
-            f"(SKU: {product_sku}) was deleted"
+            f"(SKU: {product_sku}) was deleted."
         ),
         status="SUCCESS",
         before_values=before_values,
@@ -598,18 +585,20 @@ def activate_product(
     if not product:
         return None
 
-    before_values = {
-        "status": product.status
-    }
+    # ------------------------------------------
+    # Capture BEFORE state
+    # ------------------------------------------
+
+    before_values = _product_snapshot(product)
 
     product.status = "ACTIVE"
 
     db.commit()
     db.refresh(product)
 
-    after_values = {
-        "status": product.status
-    }
+    # ------------------------------------------
+    # AUDIT
+    # ------------------------------------------
 
     create_audit_log(
         db=db,
@@ -618,14 +607,14 @@ def activate_product(
         action="Product Activated",
         entity_name="Product",
         resource_type="Product",
-        resource_id=str(product.id),
+        resource_id=product.id,
         description=(
             f"Product '{product.name}' "
-            f"(SKU: {product.sku}) was activated"
+            f"(SKU: {product.sku}) was activated."
         ),
         status="SUCCESS",
         before_values=before_values,
-        after_values=after_values,
+        after_values=_product_snapshot(product),
     )
 
     return product
@@ -649,18 +638,20 @@ def deactivate_product(
     if not product:
         return None
 
-    before_values = {
-        "status": product.status
-    }
+    # ------------------------------------------
+    # Capture BEFORE state
+    # ------------------------------------------
+
+    before_values = _product_snapshot(product)
 
     product.status = "INACTIVE"
 
     db.commit()
     db.refresh(product)
 
-    after_values = {
-        "status": product.status
-    }
+    # ------------------------------------------
+    # AUDIT
+    # ------------------------------------------
 
     create_audit_log(
         db=db,
@@ -669,14 +660,14 @@ def deactivate_product(
         action="Product Deactivated",
         entity_name="Product",
         resource_type="Product",
-        resource_id=str(product.id),
+        resource_id=product.id,
         description=(
             f"Product '{product.name}' "
-            f"(SKU: {product.sku}) was deactivated"
+            f"(SKU: {product.sku}) was deactivated."
         ),
         status="SUCCESS",
         before_values=before_values,
-        after_values=after_values,
+        after_values=_product_snapshot(product),
     )
 
     return product
@@ -730,23 +721,14 @@ def get_dashboard_summary(
 
     # ------------------------------------------
     # LOW STOCK
-    #
-    # Product is low stock when:
-    #
-    # current stock <= product reorder threshold
-    #
-    # Example:
-    # stock = 4
-    # threshold = 10
-    # => LOW STOCK
-    #
     # ------------------------------------------
 
     low_stock = (
         db.query(Product)
         .filter(
             Product.company_id == current_user.company_id,
-            Product.stock_quantity <= Product.reorder_threshold,
+            Product.stock_quantity
+            <= Product.reorder_threshold,
             Product.stock_quantity > 0,
         )
         .count()

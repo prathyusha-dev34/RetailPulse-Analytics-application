@@ -1,6 +1,4 @@
-
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -12,80 +10,95 @@ class AuditLog(Base):
     id = Column(
         Integer,
         primary_key=True,
-        index=True
+        index=True,
     )
 
     company_id = Column(
         Integer,
         ForeignKey("companies.id"),
-        nullable=True
+        nullable=True,
+        index=True,
     )
 
     user_id = Column(
         Integer,
         ForeignKey("users.id"),
-        nullable=True
+        nullable=True,
+        index=True,
     )
 
-    entity_name = Column(
-        String,
-        nullable=True
-    )
-
+    # What happened
     action = Column(
         String,
-        nullable=False
+        nullable=False,
+        index=True,
     )
 
-    # Existing fields
+    # Main entity affected
+    entity_name = Column(
+        String,
+        nullable=True,
+        index=True,
+    )
+
+    # Generic resource information
+    resource_type = Column(
+        String,
+        nullable=True,
+        index=True,
+    )
+
+    resource_id = Column(
+        String,
+        nullable=True,
+        index=True,
+    )
+
+    # Human-readable explanation
+    description = Column(
+        String,
+        nullable=True,
+    )
+
+    # Request information
     ip_address = Column(
         String,
-        nullable=True
+        nullable=True,
     )
 
     browser = Column(
         String,
-        nullable=True
-    )
-
-    # Task 13 fields
-    resource_type = Column(
-        String(100),
-        nullable=True
-    )
-
-    resource_id = Column(
-        String(100),
-        nullable=True
-    )
-
-    description = Column(
-        Text,
-        nullable=True
+        nullable=True,
     )
 
     user_agent = Column(
-        Text,
-        nullable=True
+        String,
+        nullable=True,
     )
 
+    # SUCCESS / FAILED
     status = Column(
-        String(50),
-        nullable=True
+        String,
+        nullable=True,
+        default="SUCCESS",
+        index=True,
     )
 
+    # State before the operation
     before_values = Column(
-        JSONB,
-        nullable=True
+        JSON,
+        nullable=True,
     )
 
+    # State after the operation
     after_values = Column(
-        JSONB,
-        nullable=True
+        JSON,
+        nullable=True,
     )
 
     created_at = Column(
         DateTime(timezone=True),
-        server_default=func.now()
+        server_default=func.now(),
+        nullable=False,
+        index=True,
     )
-

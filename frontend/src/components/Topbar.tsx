@@ -21,7 +21,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 import { useEffect, useState } from "react";
-import { getUnreadNotifications } from "../api/notificationApi";
+import { getUnreadCount } from "../api/notificationApi";
 
 const SIDEBAR_WIDTH = 280;
 
@@ -34,13 +34,8 @@ export default function Topbar() {
   useEffect(() => {
     const fetchUnreadNotifications = async () => {
       try {
-        const data = await getUnreadNotifications();
-
-        const notifications = Array.isArray(data)
-          ? data
-          : data.notifications || data.data || [];
-
-        setUnreadCount(notifications.length);
+        const count = await getUnreadCount();
+        setUnreadCount(count);
       } catch (error) {
         console.error(
           "Failed to fetch unread notifications",
