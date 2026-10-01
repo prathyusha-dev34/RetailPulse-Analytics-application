@@ -3306,7 +3306,6 @@ def create_forecast_notifications(
     db: Session,
     company_id: int,
 ) -> list[Any]:
-
     rows = get_inventory_recommendations(
         db=db,
         company_id=company_id,
@@ -3315,65 +3314,61 @@ def create_forecast_notifications(
 
     notifications = []
 
-    try:
-
-        from app.models.notification import (
-            Notification
-        )
-
-    except Exception:
-
-        Notification = None
-
     for row in rows:
+        risk = row.get("stock_risk")
 
-        risk = row.get(
-            "stock_risk"
-        )
-
+        # Task 14 notification types
         if risk not in {
             OUT_OF_STOCK,
             STOCKOUT_RISK,
             LOW_STOCK,
+            OVERSTOCK,
         }:
             continue
 
-        product_name = row.get(
-            "product",
-            "Product",
-        )
+        product_id = row.get("product_id")
+        product_name = row.get("product", "Product")
 
         recommended = _safe_int(
-            row.get(
-                "recommended_quantity"
-            )
+            row.get("recommended_quantity")
         )
 
+        # ----------------------------------------------------
+        # OUT OF STOCK
+        # ----------------------------------------------------
         if risk == OUT_OF_STOCK:
+            notification_type = "STOCKOUT"
+            priority = "CRITICAL"
 
-            title = (
-                "Product Out of Stock"
-            )
+            title = "Product Out of Stock"
 
             message = (
-                f"{product_name} is currently "
-                f"out of stock. Recommended "
-                f"reorder quantity: "
+                f"{product_name} is currently out of stock. "
+                f"Recommended reorder quantity: "
                 f"{recommended}."
             )
 
+        # ----------------------------------------------------
+        # STOCKOUT RISK
+        # ----------------------------------------------------
         elif risk == STOCKOUT_RISK:
+            notification_type = "STOCKOUT_RISK"
+            priority = "HIGH"
 
             title = "Stockout Risk"
 
             message = (
-                f"{product_name} is at risk "
-                f"of stockout. Recommended "
-                f"reorder quantity: "
+                f"{product_name} is at risk of stockout. "
+                f"Recommended reorder quantity: "
                 f"{recommended}."
             )
 
-        else:
+        # ----------------------------------------------------
+        # LOW STOCK
+        # ----------------------------------------------------
+        elif risk == LOW_STOCK:
+            notification_type = "LOW_STOCK"
+            priority = "MEDIUM"
 
             title = "Low Stock Alert"
 
@@ -3383,113 +3378,43 @@ def create_forecast_notifications(
                 f"{recommended}."
             )
 
-        if Notification is None:
+        # ----------------------------------------------------
+        # OVERSTOCK
+        # ----------------------------------------------------
+        else:
+            notification_type = "OVERSTOCK"
+            priority = "LOW"
 
-            notifications.append(
-                {
-                    "product_id": row.get(
-                        "product_id"
-                    ),
-                    "title": title,
-                    "message": message,
-                    "type": (
-                        "INVENTORY_FORECAST"
-                    ),
-                    "stock_risk": risk,
-                }
+            title = "Overstock Alert"
+
+            message = (
+                f"{product_name} has excess inventory "
+                f"based on the current forecast."
             )
 
-            continue
-
+        # ----------------------------------------------------
+        # CREATE THROUGH CENTRALIZED TASK 14 SERVICE
+        # ----------------------------------------------------
         try:
-
-            available_fields = {
-                column.name
-                for column
-                in Notification.__table__.columns
-            }
-
-            notification_data = {}
-
-            if "company_id" in available_fields:
-
-                notification_data[
-                    "company_id"
-                ] = company_id
-
-            if "title" in available_fields:
-
-                notification_data[
-                    "title"
-                ] = title
-
-            if "message" in available_fields:
-
-                notification_data[
-                    "message"
-                ] = message
-
-            if "type" in available_fields:
-
-                notification_data[
-                    "type"
-                ] = "INVENTORY_FORECAST"
-
-            if (
-                "notification_type"
-                in available_fields
-            ):
-
-                notification_data[
-                    "notification_type"
-                ] = "INVENTORY_FORECAST"
-
-            if "is_read" in available_fields:
-
-                notification_data[
-                    "is_read"
-                ] = False
-
-            if "read" in available_fields:
-
-                notification_data[
-                    "read"
-                ] = False
-
-            if "created_at" in available_fields:
-
-                notification_data[
-                    "created_at"
-                ] = datetime.utcnow()
-
-            notification = Notification(
-                **notification_data
+            notification = create_inventory_alert(
+                db=db,
+                company_id=company_id,
+                product_id=product_id,
+                notification_type=notification_type,
+                title=title,
+                message=message,
+                priority=priority,
             )
 
-            db.add(
-                notification
-            )
-
-            notifications.append(
-                notification
-            )
+            if notification:
+                notifications.append(notification)
 
         except Exception:
-
+            # Do not break forecast generation because
+            # notification creation failed.
             continue
-
-    if Notification is not None:
-
-        try:
-
-            db.commit()
-
-        except Exception:
-
-            db.rollback()
 
     return notifications
-
 
 # ============================================================
 # AUDIT LOG

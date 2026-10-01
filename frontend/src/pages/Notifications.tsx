@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -81,11 +82,23 @@ export default function Notifications() {
   >([]);
 
   const [loading, setLoading] = useState<boolean>(true);
+
   const [error, setError] = useState<string>("");
+
   const [tab, setTab] = useState<NotificationTab>("all");
+
   const [type, setType] = useState<string>("");
+
   const [priority, setPriority] = useState<string>("");
+
   const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  const [markingReadId, setMarkingReadId] = useState<number | null>(
+    null
+  );
+
+  const [markingAllRead, setMarkingAllRead] =
+    useState<boolean>(false);
 
   const readFilter = useMemo(() => {
     if (tab === "unread") {
@@ -115,10 +128,7 @@ export default function Notifications() {
       setNotifications(result.items || []);
       setUnreadCount(result.unread_count || 0);
     } catch (err) {
-      console.error(
-        "Failed to load notifications:",
-        err
-      );
+      console.error("Failed to load notifications:", err);
 
       setError(
         "Unable to load notifications. Please try again."
@@ -160,10 +170,23 @@ export default function Notifications() {
   };
 
   const handleRead = async (id: number) => {
+    if (markingReadId !== null) {
+      return;
+    }
+
     try {
+      setMarkingReadId(id);
+      setError("");
+
       await markNotificationRead(id);
 
       setNotifications((current) => {
+        if (tab === "unread") {
+          return current.filter(
+            (notification) => notification.id !== id
+          );
+        }
+
         return current.map((notification) => {
           if (notification.id !== id) {
             return notification;
@@ -187,19 +210,32 @@ export default function Notifications() {
       setError(
         "Unable to mark the notification as read."
       );
+    } finally {
+      setMarkingReadId(null);
     }
   };
 
   const handleReadAll = async () => {
-    if (unreadCount === 0) {
+    if (unreadCount === 0 || markingAllRead) {
       return;
     }
 
     try {
-      await markAllNotificationsRead();
+      setMarkingAllRead(true);
+      setError("");
+
+      const result = await markAllNotificationsRead();
 
       setNotifications((current) => {
+        if (tab === "unread") {
+          return [];
+        }
+
         return current.map((notification) => {
+          if (notification.is_read) {
+            return notification;
+          }
+
           return {
             ...notification,
             is_read: true,
@@ -211,6 +247,11 @@ export default function Notifications() {
       });
 
       setUnreadCount(0);
+
+      console.log(
+        "Notifications marked as read:",
+        result.updated_count
+      );
     } catch (err) {
       console.error(
         "Failed to mark all notifications as read:",
@@ -220,6 +261,8 @@ export default function Notifications() {
       setError(
         "Unable to mark all notifications as read."
       );
+    } finally {
+      setMarkingAllRead(false);
     }
   };
 
@@ -258,11 +301,21 @@ export default function Notifications() {
 
         <Button
           variant="outlined"
-          startIcon={<DoneAllIcon />}
-          disabled={unreadCount === 0}
+          startIcon={
+            markingAllRead ? (
+              <CircularProgress size={18} />
+            ) : (
+              <DoneAllIcon />
+            )
+          }
+          disabled={
+            unreadCount === 0 || markingAllRead
+          }
           onClick={() => void handleReadAll()}
         >
-          Mark All as Read
+          {markingAllRead
+            ? "Marking..."
+            : "Mark All as Read"}
         </Button>
       </Box>
 
@@ -442,7 +495,8 @@ export default function Notifications() {
               </Typography>
 
               <Typography color="text.secondary">
-                No notifications match the selected filters.
+                No notifications match the selected
+                filters.
               </Typography>
             </CardContent>
           </Card>
@@ -463,6 +517,7 @@ export default function Notifications() {
                     ? 0.82
                     : 1,
                   transition: "0.2s",
+
                   "&:hover": {
                     transform: "translateY(-2px)",
                   },
@@ -537,9 +592,7 @@ export default function Notifications() {
                             label={
                               notification.resource_id !=
                               null
-                                ? notification.resource_type +
-                                  " " +
-                                  notification.resource_id
+                                ? `${notification.resource_type} ${notification.resource_id}`
                                 : notification.resource_type
                             }
                           />
@@ -564,13 +617,24 @@ export default function Notifications() {
                       <Button
                         size="small"
                         variant="contained"
+                        disabled={
+                          markingReadId === notification.id
+                        }
                         onClick={() =>
                           void handleRead(
                             notification.id
                           )
                         }
                       >
-                        Mark as Read
+                        {markingReadId ===
+                        notification.id ? (
+                          <CircularProgress
+                            size={18}
+                            color="inherit"
+                          />
+                        ) : (
+                          "Mark as Read"
+                        )}
                       </Button>
                     )}
                   </Box>
@@ -582,3 +646,4 @@ export default function Notifications() {
     </Container>
   );
 }
+

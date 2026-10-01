@@ -1,3 +1,4 @@
+
 import {
   Dashboard,
   Category,
@@ -12,6 +13,7 @@ import {
   Insights,
   TrendingUp,
   CloudUpload,
+  NotificationsActive,
 } from "@mui/icons-material";
 
 import {
@@ -53,6 +55,11 @@ const menus = [
     text: "Demand Forecast",
     icon: <TrendingUp />,
     path: "/forecast",
+  },
+  {
+    text: "Notifications",
+    icon: <NotificationsActive />,
+    path: "/notifications",
   },
   { text: "Profile", icon: <Person />, path: "/profile" },
 ];
@@ -276,6 +283,7 @@ export default function Sidebar() {
                 }}
               >
                 <ListItemIcon>{item.icon}</ListItemIcon>
+
                 <ListItemText primary={item.text} />
               </ListItemButton>
             );

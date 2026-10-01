@@ -5,9 +5,11 @@ from app.models.inventory import Inventory
 from app.models.inventory_movement import InventoryMovement
 from app.models.product import Product
 from app.models.user import User
-from app.models.notification import Notification
-
 from app.services.audit_service import create_audit_log
+from app.services.notification_service import (
+    create_inventory_alert,
+    expire_inventory_alerts,
+)
 
 
 # =====================================
@@ -28,27 +30,105 @@ def calculate_stock_status(
 
 
 # =====================================
-# Notification Helper
+# Task 14 - Inventory Alert Evaluation
 # =====================================
 
-def create_inventory_notification(
+def create_inventory_alert_for_condition(
     db: Session,
     inventory: Inventory,
+    previous_available_stock: int,
     current_user: User,
-    title: str,
-    message: str,
-    notification_type: str,
 ):
-    notification = Notification(
-        company_id=current_user.company_id,
-        user_id=current_user.id,
-        title=title,
-        message=message,
-        notification_type=notification_type,
-        is_read=False,
+    """
+    Evaluate the current inventory condition and create
+    Task 14 notifications.
+
+    Rules:
+    - available_stock == 0
+        -> STOCKOUT / CRITICAL
+
+    - 0 < available_stock <= reorder_level
+        -> LOW_STOCK / MEDIUM
+
+    - available_stock > reorder_level
+        -> inventory recovered, expire previous alerts
+
+    Notification creation is handled by notification_service
+    so that duplicate prevention, company isolation and
+    role-based notification delivery are centralized.
+    """
+
+    available_stock = inventory.available_stock
+    reorder_level = inventory.reorder_level
+
+    product_name = (
+        inventory.product.name
+        if inventory.product
+        else f"Product {inventory.product_id}"
     )
 
-    db.add(notification)
+    # ---------------------------------
+    # Stockout
+    # ---------------------------------
+
+    if available_stock == 0:
+        create_inventory_alert(
+            db,
+            company_id=inventory.company_id,
+            product_id=inventory.product_id,
+            title="Stockout Alert",
+            message=(
+                f"{product_name} is out of stock. "
+                "Immediate replenishment is required."
+            ),
+            notification_type="STOCKOUT",
+            priority="CRITICAL",
+        )
+        return
+
+    # ---------------------------------
+    # Low Stock
+    # ---------------------------------
+
+    # Keep this condition consistent with
+    # calculate_stock_status():
+    #
+    # available_stock <= reorder_level
+    #
+    # Example:
+    # stock = 10
+    # reorder level = 10
+    # => Low Stock
+    #
+    if available_stock <= reorder_level:
+        create_inventory_alert(
+            db,
+            company_id=inventory.company_id,
+            product_id=inventory.product_id,
+            title="Low Stock Alert",
+            message=(
+                f"{product_name} has low available stock "
+                f"({available_stock}). "
+                f"Reorder level is {reorder_level}."
+            ),
+            notification_type="LOW_STOCK",
+            priority="MEDIUM",
+        )
+        return
+
+    # ---------------------------------
+    # Stock Recovered
+    # ---------------------------------
+
+    # If stock was previously at/below the reorder
+    # level and is now above it, expire old inventory
+    # alerts for this product.
+    if previous_available_stock <= reorder_level:
+        expire_inventory_alerts(
+            db,
+            company_id=inventory.company_id,
+            product_id=inventory.product_id,
+        )
 
 
 # =====================================
@@ -73,7 +153,6 @@ def create_inventory(
     )
 
     db.add(inventory)
-
     db.commit()
     db.refresh(inventory)
 
@@ -299,57 +378,14 @@ def add_stock(
     )
 
     # ---------------------------------
-    # Status Notifications
+    # Task 14 Inventory Alert
     # ---------------------------------
 
-    if old_status != inventory.stock_status:
-
-        if inventory.stock_status in (
-            "LOW_STOCK",
-            "Low Stock",
-        ):
-            create_inventory_notification(
-                db=db,
-                inventory=inventory,
-                current_user=current_user,
-                title="Low Stock Alert",
-                message=(
-                    f"{inventory.product.name} "
-                    f"reached low stock level."
-                ),
-                notification_type="LOW_STOCK",
-            )
-
-        elif inventory.stock_status in (
-            "OUT_OF_STOCK",
-            "Out of Stock",
-        ):
-            create_inventory_notification(
-                db=db,
-                inventory=inventory,
-                current_user=current_user,
-                title="Out of Stock Alert",
-                message=(
-                    f"{inventory.product.name} "
-                    f"is out of stock."
-                ),
-                notification_type="OUT_OF_STOCK",
-            )
-
-    # ---------------------------------
-    # Stock Addition Notification
-    # ---------------------------------
-
-    create_inventory_notification(
+    create_inventory_alert_for_condition(
         db=db,
         inventory=inventory,
+        previous_available_stock=previous_available_stock,
         current_user=current_user,
-        title="Stock Added",
-        message=(
-            f"{quantity} units added for "
-            f"{inventory.product.name}."
-        ),
-        notification_type="STOCK_ADDITION",
     )
 
     # ---------------------------------
@@ -474,57 +510,14 @@ def remove_stock(
     )
 
     # ---------------------------------
-    # Status Notifications
+    # Task 14 Inventory Alert
     # ---------------------------------
 
-    if old_status != inventory.stock_status:
-
-        if inventory.stock_status in (
-            "LOW_STOCK",
-            "Low Stock",
-        ):
-            create_inventory_notification(
-                db=db,
-                inventory=inventory,
-                current_user=current_user,
-                title="Low Stock Alert",
-                message=(
-                    f"{inventory.product.name} "
-                    f"stock is low."
-                ),
-                notification_type="LOW_STOCK",
-            )
-
-        elif inventory.stock_status in (
-            "OUT_OF_STOCK",
-            "Out of Stock",
-        ):
-            create_inventory_notification(
-                db=db,
-                inventory=inventory,
-                current_user=current_user,
-                title="Out of Stock Alert",
-                message=(
-                    f"{inventory.product.name} "
-                    f"is out of stock."
-                ),
-                notification_type="OUT_OF_STOCK",
-            )
-
-    # ---------------------------------
-    # Stock Removal Notification
-    # ---------------------------------
-
-    create_inventory_notification(
+    create_inventory_alert_for_condition(
         db=db,
         inventory=inventory,
+        previous_available_stock=previous_available_stock,
         current_user=current_user,
-        title="Stock Removed",
-        message=(
-            f"{quantity} units removed from "
-            f"{inventory.product.name}."
-        ),
-        notification_type="STOCK_REMOVAL",
     )
 
     # ---------------------------------
@@ -648,38 +641,15 @@ def adjust_stock(
     )
 
     # ---------------------------------
-    # Adjustment Notification
+    # Task 14 Inventory Alert
     # ---------------------------------
 
-    create_inventory_notification(
+    create_inventory_alert_for_condition(
         db=db,
         inventory=inventory,
+        previous_available_stock=previous_available_stock,
         current_user=current_user,
-        title="Stock Adjusted",
-        message=(
-            f"Inventory adjusted manually for "
-            f"{inventory.product.name}."
-        ),
-        notification_type="STOCK_ADJUSTMENT",
     )
-
-    # ---------------------------------
-    # Status Change Notification
-    # ---------------------------------
-
-    if old_status != inventory.stock_status:
-
-        create_inventory_notification(
-            db=db,
-            inventory=inventory,
-            current_user=current_user,
-            title=inventory.stock_status,
-            message=(
-                f"{inventory.product.name} status "
-                f"changed to {inventory.stock_status}."
-            ),
-            notification_type="STOCK_STATUS",
-        )
 
     # ---------------------------------
     # Single transaction commit
@@ -718,7 +688,9 @@ def search_inventory(
         )
     )
 
+    # ---------------------------------
     # Search Product Name / SKU
+    # ---------------------------------
 
     if search:
         query = query.filter(
@@ -732,14 +704,18 @@ def search_inventory(
             )
         )
 
+    # ---------------------------------
     # Category Filter
+    # ---------------------------------
 
     if category_id:
         query = query.filter(
             Product.category_id == category_id
         )
 
+    # ---------------------------------
     # Brand Filter
+    # ---------------------------------
 
     if brand:
         query = query.filter(
@@ -748,35 +724,35 @@ def search_inventory(
             )
         )
 
+    # ---------------------------------
     # Stock Status Filter
+    # ---------------------------------
 
     if stock_status:
         query = query.filter(
             Inventory.stock_status == stock_status
         )
 
+    # ---------------------------------
     # Sorting
+    # ---------------------------------
 
     if sort_by == "name":
-
         query = query.order_by(
             asc(Product.name)
         )
 
     elif sort_by == "stock":
-
         query = query.order_by(
             desc(Inventory.current_stock)
         )
 
     elif sort_by == "recent":
-
         query = query.order_by(
             desc(Inventory.updated_at)
         )
 
     else:
-
         query = query.order_by(
             asc(Product.name)
         )
@@ -900,6 +876,7 @@ def update_reorder_level(
     # ---------------------------------
 
     previous_reorder_level = inventory.reorder_level
+    previous_available_stock = inventory.available_stock
     previous_status = inventory.stock_status
 
     # ---------------------------------
@@ -944,19 +921,14 @@ def update_reorder_level(
     )
 
     # ---------------------------------
-    # Notification
+    # Task 14 Inventory Alert
     # ---------------------------------
 
-    create_inventory_notification(
+    create_inventory_alert_for_condition(
         db=db,
         inventory=inventory,
+        previous_available_stock=previous_available_stock,
         current_user=current_user,
-        title="Reorder Level Updated",
-        message=(
-            f"Reorder level updated for "
-            f"{inventory.product.name}."
-        ),
-        notification_type="REORDER_UPDATE",
     )
 
     # ---------------------------------
