@@ -26,3 +26,5 @@ from .customer import Customer
 from .demand_forecast import DemandForecast
 from .forecast_history import ForecastHistory
 
+from .report_history import ReportHistory
+from .scheduled_report import ScheduledReport

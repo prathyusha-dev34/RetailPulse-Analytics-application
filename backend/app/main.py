@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,6 +24,8 @@ from app.models.demand_forecast import DemandForecast
 from app.models.forecast_history import ForecastHistory
 from app.models.import_history import ImportHistory
 from app.models.import_error import ImportError
+from app.models.report_history import ReportHistory
+from app.models.scheduled_report import ScheduledReport
 
 from app.routes.auth import router as auth_router
 from app.routes.profile import router as profile_router
@@ -41,8 +44,10 @@ from app.routes.customer import router as customer_router
 from app.routes.analytics import router as analytics_router
 from app.routes.forecast import router as forecast_router
 from app.routes.data_import import router as data_import_router
+from app.routes.reports import router as reports_router
 
 
+# Create database tables
 Base.metadata.create_all(bind=engine)
 
 
@@ -51,6 +56,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+# ============================================================
+# CORS
+# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,6 +75,10 @@ app.add_middleware(
 
 API_PREFIX = "/api"
 
+
+# ============================================================
+# ROUTES
+# ============================================================
 
 app.include_router(
     auth_router,
@@ -152,6 +165,15 @@ app.include_router(
     prefix=API_PREFIX,
 )
 
+app.include_router(
+    reports_router,
+    prefix=API_PREFIX,
+)
+
+
+# ============================================================
+# ROOT
+# ============================================================
 
 @app.get("/")
 def root():
@@ -161,6 +183,10 @@ def root():
         "status": "success",
     }
 
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.get("/health")
 def health_check():
@@ -184,5 +210,8 @@ def health_check():
             "analytics",
             "forecast",
             "data_import",
+            "reports",
+            "scheduled_reports",
         ],
     }
+
