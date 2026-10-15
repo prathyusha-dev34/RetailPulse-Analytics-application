@@ -1,0 +1,7 @@
+"Invoice Number","Sale Date","Customer","Product","SKU","Quantity","Unit Price","Discount","Tax","Line Total"
+"INV-20260807-0001","2026-08-07T07:17:02.154881+05:30","Ananya Rao","Office Chair","CHR-001","1","300","0","18","318"
+
+"Subtotal","300"
+"Discount","0"
+"Tax","18"
+"Grand Total","318"
