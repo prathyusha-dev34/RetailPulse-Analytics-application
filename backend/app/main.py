@@ -4,6 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import Base, engine
 
+
+# ============================================================
+# DATABASE MODELS
+# ============================================================
+
 from app.models import (
     Company,
     User,
@@ -27,6 +32,17 @@ from app.models.import_error import ImportError
 from app.models.report_history import ReportHistory
 from app.models.scheduled_report import ScheduledReport
 
+# Task 16: Data Quality Models
+from app.models.data_quality import (
+    DataQualityIssue,
+    ReconciliationRun,
+)
+
+
+# ============================================================
+# EXISTING ROUTERS
+# ============================================================
+
 from app.routes.auth import router as auth_router
 from app.routes.profile import router as profile_router
 from app.routes.admin import router as admin_router
@@ -44,16 +60,33 @@ from app.routes.customer import router as customer_router
 from app.routes.analytics import router as analytics_router
 from app.routes.forecast import router as forecast_router
 from app.routes.data_import import router as data_import_router
+
+# Task 15: Reports
 from app.routes.reports import router as reports_router
 
+# Task 16: Data Quality
+from app.routes.data_quality import router as data_quality_router
 
-# Create database tables
+
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
+
 Base.metadata.create_all(bind=engine)
 
+
+# ============================================================
+# FASTAPI APPLICATION
+# ============================================================
 
 app = FastAPI(
     title="RetailPulse Analytics API",
     version="1.0.0",
+    description=(
+        "RetailPulse Analytics API with Sales, Inventory, "
+        "Customers, Reports, Scheduled Reports, and "
+        "Data Quality Reconciliation."
+    ),
 )
 
 
@@ -77,93 +110,31 @@ API_PREFIX = "/api"
 
 
 # ============================================================
-# ROUTES
+# REGISTER EXISTING ROUTERS
 # ============================================================
 
-app.include_router(
-    auth_router,
-    prefix=API_PREFIX,
-)
+app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(profile_router, prefix=API_PREFIX)
+app.include_router(admin_router, prefix=API_PREFIX)
+app.include_router(token_router, prefix=API_PREFIX)
+app.include_router(audit.router, prefix=API_PREFIX)
+app.include_router(logout_router, prefix=API_PREFIX)
+app.include_router(password_router, prefix=API_PREFIX)
+app.include_router(category_router, prefix=API_PREFIX)
+app.include_router(product_router, prefix=API_PREFIX)
+app.include_router(sales.router, prefix=API_PREFIX)
+app.include_router(inventory.router, prefix=API_PREFIX)
+app.include_router(notification.router, prefix=API_PREFIX)
+app.include_router(inventory_seed.router, prefix=API_PREFIX)
+app.include_router(customer_router, prefix=API_PREFIX)
+app.include_router(analytics_router, prefix=API_PREFIX)
+app.include_router(forecast_router, prefix=API_PREFIX)
+app.include_router(data_import_router, prefix=API_PREFIX)
 
-app.include_router(
-    profile_router,
-    prefix=API_PREFIX,
-)
 
-app.include_router(
-    admin_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    token_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    audit.router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    logout_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    password_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    category_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    product_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    sales.router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    inventory.router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    notification.router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    inventory_seed.router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    customer_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    analytics_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    forecast_router,
-    prefix=API_PREFIX,
-)
-
-app.include_router(
-    data_import_router,
-    prefix=API_PREFIX,
-)
+# ============================================================
+# TASK 15: REPORTING & SCHEDULED REPORTS
+# ============================================================
 
 app.include_router(
     reports_router,
@@ -172,7 +143,17 @@ app.include_router(
 
 
 # ============================================================
-# ROOT
+# TASK 16: DATA QUALITY & RECONCILIATION
+# ============================================================
+
+app.include_router(
+    data_quality_router,
+    prefix=API_PREFIX,
+)
+
+
+# ============================================================
+# ROOT ENDPOINT
 # ============================================================
 
 @app.get("/")
@@ -193,6 +174,7 @@ def health_check():
     return {
         "status": "healthy",
         "application": "RetailPulse Analytics",
+        "version": "1.0.0",
         "modules": [
             "auth",
             "profile",
@@ -212,6 +194,7 @@ def health_check():
             "data_import",
             "reports",
             "scheduled_reports",
+            "data_quality",
         ],
     }
 

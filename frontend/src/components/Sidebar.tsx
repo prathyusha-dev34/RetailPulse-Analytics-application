@@ -14,6 +14,7 @@ import {
   TrendingUp,
   CloudUpload,
   NotificationsActive,
+  FactCheck,
 } from "@mui/icons-material";
 
 import {
@@ -33,24 +34,61 @@ import { useAuth } from "../context/AuthContext";
 const SIDEBAR_WIDTH = 280;
 
 const menus = [
-  { text: "Dashboard", icon: <Dashboard />, path: "/" },
-  { text: "Categories", icon: <Category />, path: "/categories" },
-  { text: "Products", icon: <Inventory2 />, path: "/products" },
+  {
+    text: "Dashboard",
+    icon: <Dashboard />,
+    path: "/",
+  },
+  {
+    text: "Categories",
+    icon: <Category />,
+    path: "/categories",
+  },
+  {
+    text: "Products",
+    icon: <Inventory2 />,
+    path: "/products",
+  },
   {
     text: "Product Dashboard",
     icon: <Assessment />,
     path: "/product-dashboard",
   },
-  { text: "Inventory", icon: <Warehouse />, path: "/inventory" },
-  { text: "Sales", icon: <PointOfSale />, path: "/sales" },
-  { text: "Customers", icon: <People />, path: "/customers" },
+  {
+    text: "Inventory",
+    icon: <Warehouse />,
+    path: "/inventory",
+  },
+  {
+    text: "Sales",
+    icon: <PointOfSale />,
+    path: "/sales",
+  },
+  {
+    text: "Customers",
+    icon: <People />,
+    path: "/customers",
+  },
   {
     text: "Customer Analytics",
     icon: <Insights />,
     path: "/customers/analytics",
   },
-  { text: "Reports", icon: <Assessment />, path: "/reports" },
-  { text: "Analytics", icon: <Analytics />, path: "/analytics" },
+  {
+    text: "Reports",
+    icon: <Assessment />,
+    path: "/reports",
+  },
+  {
+    text: "Data Quality",
+    icon: <FactCheck />,
+    path: "/data-quality",
+  },
+  {
+    text: "Analytics",
+    icon: <Analytics />,
+    path: "/analytics",
+  },
   {
     text: "Demand Forecast",
     icon: <TrendingUp />,
@@ -61,7 +99,11 @@ const menus = [
     icon: <NotificationsActive />,
     path: "/notifications",
   },
-  { text: "Profile", icon: <Person />, path: "/profile" },
+  {
+    text: "Profile",
+    icon: <Person />,
+    path: "/profile",
+  },
 ];
 
 const auditMenu = {
@@ -83,7 +125,8 @@ export default function Sidebar() {
   const { user } = useAuth();
 
   const isAdmin =
-    user?.role === "COMPANY_ADMIN" || user?.role === "SUPER_ADMIN";
+    user?.role === "COMPANY_ADMIN" ||
+    user?.role === "SUPER_ADMIN";
 
   const visibleMenus = [
     ...menus,
@@ -120,6 +163,7 @@ export default function Sidebar() {
         overflow: "hidden",
       }}
     >
+      {/* BRAND HEADER */}
       <Toolbar
         sx={{
           minHeight: "72px !important",
@@ -135,7 +179,8 @@ export default function Sidebar() {
             alignItems: "center",
             justifyContent: "center",
             mr: 1.5,
-            background: "linear-gradient(135deg, #2563EB, #4F46E5)",
+            background:
+              "linear-gradient(135deg, #2563EB, #4F46E5)",
             boxShadow: "0 8px 20px rgba(37,99,235,0.3)",
           }}
         >
@@ -177,6 +222,7 @@ export default function Sidebar() {
 
       <Divider sx={{ borderColor: "#1E293B" }} />
 
+      {/* NAVIGATION MENU */}
       <Box
         sx={{
           flex: 1,
@@ -254,7 +300,8 @@ export default function Sidebar() {
                     background:
                       "linear-gradient(90deg, rgba(37,99,235,0.95), rgba(79,70,229,0.9))",
                     color: "#FFFFFF",
-                    boxShadow: "0 8px 22px rgba(37,99,235,0.22)",
+                    boxShadow:
+                      "0 8px 22px rgba(37,99,235,0.22)",
 
                     "& .MuiListItemIcon-root": {
                       color: "#FFFFFF",
@@ -283,7 +330,6 @@ export default function Sidebar() {
                 }}
               >
                 <ListItemIcon>{item.icon}</ListItemIcon>
-
                 <ListItemText primary={item.text} />
               </ListItemButton>
             );
@@ -291,6 +337,7 @@ export default function Sidebar() {
         </List>
       </Box>
 
+      {/* FOOTER */}
       <Box
         sx={{
           p: 1.5,
@@ -332,3 +379,4 @@ export default function Sidebar() {
     </Box>
   );
 }
+

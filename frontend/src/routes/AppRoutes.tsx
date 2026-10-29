@@ -1,23 +1,19 @@
+
 import { Routes, Route } from "react-router-dom";
 
 import Layout from "../layouts/Layout";
 
 import Login from "../pages/Login";
 import RegisterCompany from "../pages/RegisterCompany";
-
 import Dashboard from "../pages/Dashboard";
 import Profile from "../pages/Profile";
-
 import Categories from "../pages/Categories";
 import Products from "../pages/Products";
 import ProductDashboard from "../pages/ProductDashboard";
-
 import Inventory from "../pages/Inventory";
 import InventoryMovements from "../pages/InventoryMovements";
-
 import Reports from "../pages/Reports";
 import Analytics from "../pages/Analytics";
-
 import Sales from "../pages/Sales";
 import AddSale from "../pages/AddSale";
 import EditSale from "../pages/EditSale";
@@ -35,36 +31,23 @@ import AuditLogs from "../pages/AuditLogs";
 import Forecast from "../pages/Forecast";
 import DataImport from "../pages/DataImport";
 
+// Task 16: Data Quality
+import DataQuality from "../pages/DataQuality";
+
 import ProtectedRoute from "../components/ProtectedRoute";
-
-
-// ==========================================================
-// APP ROUTES
-// ==========================================================
 
 export default function AppRoutes() {
   return (
     <Routes>
-
-      {/* =====================================================
-          PUBLIC ROUTES
-      ===================================================== */}
-
-      <Route
-        path="/login"
-        element={<Login />}
-      />
+      {/* PUBLIC ROUTES */}
+      <Route path="/login" element={<Login />} />
 
       <Route
         path="/register"
         element={<RegisterCompany />}
       />
 
-
-      {/* =====================================================
-          DASHBOARD
-      ===================================================== */}
-
+      {/* DASHBOARD */}
       <Route
         path="/"
         element={
@@ -87,11 +70,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          PROFILE
-      ===================================================== */}
-
+      {/* PROFILE */}
       <Route
         path="/profile"
         element={
@@ -103,11 +82,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          CATEGORIES
-      ===================================================== */}
-
+      {/* CATEGORIES */}
       <Route
         path="/categories"
         element={
@@ -119,11 +94,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          PRODUCTS
-      ===================================================== */}
-
+      {/* PRODUCTS */}
       <Route
         path="/products"
         element={
@@ -146,11 +117,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          INVENTORY
-      ===================================================== */}
-
+      {/* INVENTORY */}
       <Route
         path="/inventory"
         element={
@@ -173,11 +140,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          SALES
-      ===================================================== */}
-
+      {/* SALES */}
       <Route
         path="/sales"
         element={
@@ -200,16 +163,6 @@ export default function AppRoutes() {
         }
       />
 
-      {/* =====================================================
-          EDIT SALE
-
-          Correct URL:
-          /sales/:id/edit
-
-          Example:
-          /sales/8/edit
-      ===================================================== */}
-
       <Route
         path="/sales/:id/edit"
         element={
@@ -220,13 +173,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-      {/* =====================================================
-          SALE DETAILS
-
-          Example:
-          /sales/8
-      ===================================================== */}
 
       <Route
         path="/sales/:id"
@@ -239,11 +185,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          CUSTOMERS
-      ===================================================== */}
-
+      {/* CUSTOMERS */}
       <Route
         path="/customers"
         element={
@@ -310,11 +252,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          REPORTS
-      ===================================================== */}
-
+      {/* TASK 15: REPORTS */}
       <Route
         path="/reports"
         element={
@@ -326,38 +264,42 @@ export default function AppRoutes() {
         }
       />
 
+      {/* TASK 16: DATA QUALITY */}
+      <Route
+        path="/data-quality"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <DataQuality />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
 
-      {/* =====================================================
-    ANALYTICS
-===================================================== */}
+      {/* ANALYTICS */}
+      <Route
+        path="/analytics/sales"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Analytics />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
 
-<Route
-  path="/analytics/sales"
-  element={
-    <ProtectedRoute>
-      <Layout>
-        <Analytics />
-      </Layout>
-    </ProtectedRoute>
-  }
-/>
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Analytics />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
 
-<Route
-  path="/analytics"
-  element={
-    <ProtectedRoute>
-      <Layout>
-        <Analytics />
-      </Layout>
-    </ProtectedRoute>
-  }
-/>
-
-
-      {/* =====================================================
-          AUDIT LOGS
-      ===================================================== */}
-
+      {/* AUDIT LOGS */}
       <Route
         path="/audit-logs"
         element={
@@ -369,11 +311,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          FORECAST
-      ===================================================== */}
-
+      {/* FORECAST */}
       <Route
         path="/forecast"
         element={
@@ -385,11 +323,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          DATA IMPORT - COMPANY ADMIN ONLY
-      ===================================================== */}
-
+      {/* DATA IMPORT */}
       <Route
         path="/data-import"
         element={
@@ -401,11 +335,7 @@ export default function AppRoutes() {
         }
       />
 
-
-      {/* =====================================================
-          NOTIFICATIONS
-      ===================================================== */}
-
+      {/* NOTIFICATIONS */}
       <Route
         path="/notifications"
         element={
@@ -416,7 +346,7 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
     </Routes>
   );
 }
+
