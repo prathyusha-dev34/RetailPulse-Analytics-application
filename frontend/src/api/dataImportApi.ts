@@ -1,3 +1,4 @@
+
 import api from "./axios";
 
 /* =========================================================
@@ -6,12 +7,9 @@ import api from "./axios";
 
 export type ImportType =
   | "products"
+  | "inventory"
   | "customers"
   | "sales";
-
-/* =========================================================
-   VALIDATION ERROR
-========================================================= */
 
 export interface ImportErrorRow {
   row_number: number;
@@ -19,11 +17,8 @@ export interface ImportErrorRow {
   field?: string | null;
   message: string;
   raw_data?: Record<string, string>;
+  status?: string;
 }
-
-/* =========================================================
-   UPLOAD RESPONSE
-========================================================= */
 
 export interface UploadResponse {
   success: boolean;
@@ -36,21 +31,12 @@ export interface UploadResponse {
   message: string;
 }
 
-/* =========================================================
-   VALIDATE RESPONSE
-========================================================= */
-
-export interface ValidateResponse
-  extends UploadResponse {
+export interface ValidateResponse extends UploadResponse {
   valid_records: number;
   invalid_records: number;
   duplicate_records: number;
   errors: ImportErrorRow[];
 }
-
-/* =========================================================
-   PROCESS RESPONSE
-========================================================= */
 
 export interface ProcessResponse {
   success: boolean;
@@ -64,10 +50,6 @@ export interface ProcessResponse {
   message: string;
 }
 
-/* =========================================================
-   IMPORT HISTORY
-========================================================= */
-
 export interface ImportHistoryItem {
   id: number;
   import_type: ImportType;
@@ -80,6 +62,26 @@ export interface ImportHistoryItem {
   status: string;
   created_at: string;
   completed_at?: string | null;
+  progress_percentage?: number;
+  duration_seconds?: number;
+}
+
+export interface DeleteImportResponse {
+  success: boolean;
+  import_id: number;
+  message: string;
+}
+
+export interface ImportStatusResponse {
+  import_id: number;
+  status: string;
+  total_records: number;
+  processed_records: number;
+  successful_records: number;
+  failed_records: number;
+  duplicate_records: number;
+  progress_percentage: number;
+  message?: string;
 }
 
 /* =========================================================
@@ -95,16 +97,15 @@ export async function uploadImport(
 
   form.append("file", file);
 
-  const response =
-    await api.post<UploadResponse>(
-      "/import/upload",
-      form,
-      {
-        params: {
-          import_type: importType,
-        },
-      }
-    );
+  const response = await api.post<UploadResponse>(
+    "/import/upload",
+    form,
+    {
+      params: {
+        import_type: importType,
+      },
+    }
+  );
 
   return response.data;
 }
@@ -117,38 +118,105 @@ export async function uploadImport(
 export async function validateImport(
   importId: number
 ): Promise<ValidateResponse> {
-  const response =
-    await api.post<ValidateResponse>(
-      "/import/validate",
-      null,
-      {
-        params: {
-          import_id: importId,
-        },
-      }
-    );
+  const response = await api.post<ValidateResponse>(
+    "/import/validate",
+    null,
+    {
+      params: {
+        import_id: importId,
+      },
+    }
+  );
 
   return response.data;
 }
 
 /* =========================================================
-   PROCESS
+   PROCESS - EXISTING API
    POST /api/import/process
 ========================================================= */
 
 export async function processImport(
   importId: number
 ): Promise<ProcessResponse> {
-  const response =
-    await api.post<ProcessResponse>(
-      "/import/process",
-      null,
-      {
-        params: {
-          import_id: importId,
-        },
-      }
-    );
+  const response = await api.post<ProcessResponse>(
+    "/import/process",
+    null,
+    {
+      params: {
+        import_id: importId,
+      },
+    }
+  );
+
+  return response.data;
+}
+
+/* =========================================================
+   START IMPORT
+   POST /api/import/start
+========================================================= */
+
+export async function startImport(
+  importId: number
+): Promise<ProcessResponse> {
+  const response = await api.post<ProcessResponse>(
+    "/import/start",
+    null,
+    {
+      params: {
+        import_id: importId,
+      },
+    }
+  );
+
+  return response.data;
+}
+
+/* =========================================================
+   IMPORT STATUS
+   GET /api/import/status/{import_id}
+========================================================= */
+
+export async function getImportStatus(
+  importId: number
+): Promise<ImportStatusResponse> {
+  const response = await api.get<ImportStatusResponse>(
+    `/import/status/${importId}`
+  );
+
+  return response.data;
+}
+
+/* =========================================================
+   CANCEL IMPORT
+   POST /api/import/cancel/{import_id}
+========================================================= */
+
+export async function cancelImport(
+  importId: number
+): Promise<{ success: boolean; message: string }> {
+  const response = await api.post(
+    `/import/cancel/${importId}`
+  );
+
+  return response.data;
+}
+
+/* =========================================================
+   TEMPLATE DOWNLOAD
+   GET /api/import/templates/{import_type}
+========================================================= */
+
+export async function downloadImportTemplate(
+  importType: ImportType
+): Promise<Blob> {
+  const response = await api.get(
+    `/import/templates/${importType}`,
+    {
+      responseType: "blob",
+    }
+  );
 
   return response.data;
 }
@@ -161,12 +229,14 @@ export async function processImport(
 export async function getImportHistory(): Promise<
   ImportHistoryItem[]
 > {
-  const response =
-    await api.get<ImportHistoryItem[]>(
-      "/import/history"
-    );
+  const response = await api.get(
+    "/import/history"
+  );
 
-  return response.data;
+  // Supports both array and paginated API responses.
+  return Array.isArray(response.data)
+    ? response.data
+    : response.data.items ?? [];
 }
 
 /* =========================================================
@@ -177,10 +247,9 @@ export async function getImportHistory(): Promise<
 export async function getImportDetails(
   importId: number
 ): Promise<ImportHistoryItem> {
-  const response =
-    await api.get<ImportHistoryItem>(
-      `/import/${importId}`
-    );
+  const response = await api.get<ImportHistoryItem>(
+    `/import/${importId}`
+  );
 
   return response.data;
 }
@@ -190,38 +259,57 @@ export async function getImportDetails(
    DELETE /api/import/{import_id}
 ========================================================= */
 
-export interface DeleteImportResponse {
-  success: boolean;
-  import_id: number;
-  message: string;
-}
-
 export async function deleteImport(
   importId: number
 ): Promise<DeleteImportResponse> {
-  const response =
-    await api.delete<DeleteImportResponse>(
-      `/import/${importId}`
-    );
+  const response = await api.delete<DeleteImportResponse>(
+    `/import/${importId}`
+  );
 
   return response.data;
 }
 
 /* =========================================================
-   DOWNLOAD ERRORS
+   ERRORS
    GET /api/import/{import_id}/errors
+========================================================= */
+
+export async function getImportErrors(
+  importId: number
+): Promise<ImportErrorRow[]> {
+  const response = await api.get(
+    `/import/${importId}/errors`
+  );
+
+  return Array.isArray(response.data)
+    ? response.data
+    : response.data.items ?? [];
+}
+
+/* =========================================================
+   DOWNLOAD ERROR CSV
 ========================================================= */
 
 export async function downloadImportErrors(
   importId: number
 ): Promise<Blob> {
-  const response =
-    await api.get<Blob>(
-      `/import/${importId}/errors`,
-      {
-        responseType: "blob",
-      }
-    );
+  const response = await api.get(
+    `/import/${importId}/errors/download`,
+    {
+      responseType: "blob",
+    }
+  );
 
   return response.data;
+}
+
+
+/* =========================================================
+   TEMPLATE DOWNLOAD - COMPATIBILITY FUNCTION
+========================================================= */
+
+export async function downloadTemplate(
+  importType: ImportType
+): Promise<Blob> {
+  return downloadImportTemplate(importType);
 }

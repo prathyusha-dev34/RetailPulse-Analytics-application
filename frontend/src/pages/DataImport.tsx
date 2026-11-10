@@ -45,6 +45,7 @@ import {
   downloadImportErrors,
   getImportHistory,
   processImport,
+  downloadImportTemplate,
   uploadImport,
   validateImport,
 } from "../api/dataImportApi";
@@ -60,7 +61,14 @@ import {
   parseCsvPreview,
 } from "../utils/csvUtils";
 
+
+/* =====================================================
+   IMPORT CONFIGURATION
+===================================================== */
+
 const REQUIRED: Record<ImportType, string[]> = {
+  inventory: ["SKU", "Current Stock"],
+
   products: [
     "Product Name",
     "SKU",
@@ -68,7 +76,13 @@ const REQUIRED: Record<ImportType, string[]> = {
     "Unit Price",
     "Stock Quantity",
   ],
-  customers: ["Name", "Email", "Phone"],
+
+  customers: [
+    "Name",
+    "Email",
+    "Phone",
+  ],
+
   sales: [
     "Customer",
     "Product",
@@ -85,6 +99,106 @@ const STEPS = [
   "Complete",
 ];
 
+
+/* =====================================================
+   SAFE ERROR HANDLING
+===================================================== */
+
+const getApiErrorMessage = (
+  error: any,
+  fallback: string
+): string => {
+  const detail = error?.response?.data?.detail;
+
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item: any) => {
+        if (typeof item === "string") {
+          return item;
+        }
+
+        if (item && typeof item === "object") {
+          const location = Array.isArray(item.loc)
+            ? item.loc
+                .filter(Boolean)
+                .join(" → ")
+            : "Validation";
+
+          return `${location}: ${
+            item.msg || item.message || "Invalid value"
+          }`;
+        }
+
+        return String(item);
+      })
+      .join("\n");
+  }
+
+  if (detail && typeof detail === "object") {
+    return (
+      detail.message ||
+      detail.msg ||
+      fallback
+    );
+  }
+
+  if (typeof error?.message === "string") {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+
+/* =====================================================
+   SAFE DISPLAY VALUE
+===================================================== */
+
+const safeText = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => safeText(item))
+      .join(", ");
+  }
+
+  if (typeof value === "object") {
+    const item = value as Record<string, unknown>;
+
+    return String(
+      item.message ||
+      item.msg ||
+      item.detail ||
+      JSON.stringify(value)
+    );
+  }
+
+  return String(value);
+};
+
+
+/* =====================================================
+   STEPPER
+===================================================== */
+
 function stepFor(
   hasUpload: boolean,
   hasValidation: boolean,
@@ -93,8 +207,14 @@ function stepFor(
   if (hasResult) return 3;
   if (hasValidation) return 2;
   if (hasUpload) return 1;
+
   return 0;
 }
+
+
+/* =====================================================
+   VALIDATION SUMMARY
+===================================================== */
 
 function ValidationSummary({
   total,
@@ -200,6 +320,11 @@ function ValidationSummary({
   );
 }
 
+
+/* =====================================================
+   MAIN COMPONENT
+===================================================== */
+
 export default function DataImport() {
   const { user } = useAuth();
 
@@ -265,16 +390,26 @@ export default function DataImport() {
       "warning"
     >("success");
 
+
+  /* =====================================================
+     SNACKBAR
+  ===================================================== */
+
   const show = (
-    text: string,
+    text: unknown,
     level:
       | "success"
       | "error"
       | "warning" = "success"
   ) => {
-    setMessage(text);
+    setMessage(safeText(text));
     setSeverity(level);
   };
+
+
+  /* =====================================================
+     LOAD IMPORT HISTORY
+  ===================================================== */
 
   const loadHistory = async () => {
     if (!isAdmin) return;
@@ -282,26 +417,35 @@ export default function DataImport() {
     try {
       setBusy("history");
 
-      const data =
-        await getImportHistory();
+      const data = await getImportHistory();
 
       setHistory(
         Array.isArray(data) ? data : []
       );
+
     } catch (error: any) {
       show(
-        error?.response?.data?.detail ||
-          "Unable to load import history.",
+        getApiErrorMessage(
+          error,
+          "Unable to load import history."
+        ),
         "error"
       );
+
     } finally {
       setBusy(null);
     }
   };
 
+
   useEffect(() => {
     void loadHistory();
   }, [isAdmin]);
+
+
+  /* =====================================================
+     CLEAR FORM
+  ===================================================== */
 
   const clear = () => {
     setFile(null);
@@ -312,6 +456,11 @@ export default function DataImport() {
     setValidation(null);
     setResult(null);
   };
+
+
+  /* =====================================================
+     FILE SELECTION
+  ===================================================== */
 
   const onFile = async (
     selected: File | null
@@ -330,10 +479,15 @@ export default function DataImport() {
       return;
     }
 
-    if (
-      selected.size >
-      10 * 1024 * 1024
-    ) {
+    if (selected.size === 0) {
+      show(
+        "CSV file is empty.",
+        "error"
+      );
+      return;
+    }
+
+    if (selected.size > 10 * 1024 * 1024) {
       show(
         "File size must be less than 10 MB.",
         "error"
@@ -342,18 +496,24 @@ export default function DataImport() {
     }
 
     try {
-      const local =
-        await parseCsvPreview(selected);
+      const local = await parseCsvPreview(selected);
 
-      const missing =
-        getMissingColumns(
-          local.columns,
-          REQUIRED[type]
+      if (!local.columns || local.columns.length === 0) {
+        show(
+          "CSV file does not contain valid column headers.",
+          "error"
         );
+        return;
+      }
+
+      const missing = getMissingColumns(
+        local.columns,
+        REQUIRED[type]
+      );
 
       setFile(selected);
       setColumns(local.columns);
-      setPreview(local.rows);
+      setPreview(local.rows || []);
       setImportId(null);
       setValidation(null);
       setResult(null);
@@ -361,9 +521,15 @@ export default function DataImport() {
 
       if (missing.length > 0) {
         show(
-          `Missing required columns: ${missing.join(
-            ", "
-          )}`,
+          `Missing required columns: ${missing.join(", ")}`,
+          "error"
+        );
+        return;
+      }
+
+      if (!local.rows || local.rows.length === 0) {
+        show(
+          "CSV file does not contain any data rows.",
           "error"
         );
         return;
@@ -373,14 +539,22 @@ export default function DataImport() {
         "CSV file selected successfully.",
         "success"
       );
+
     } catch (error: any) {
       show(
-        error?.message ||
-          "Unable to read the CSV file.",
+        getApiErrorMessage(
+          error,
+          "Unable to read the CSV file."
+        ),
         "error"
       );
     }
   };
+
+
+  /* =====================================================
+     UPLOAD CSV
+  ===================================================== */
 
   const doUpload = async () => {
     if (!file) {
@@ -402,18 +576,22 @@ export default function DataImport() {
     try {
       setBusy("upload");
 
-      const data =
-        await uploadImport(
-          file,
-          type
-        );
-
-      setImportId(
-        data.import_id
+      const data = await uploadImport(
+        file,
+        type
       );
 
-      setColumns(data.columns);
-      setPreview(data.preview);
+      if (!data?.success || !data?.import_id) {
+        throw new Error(
+          data?.message || "Upload failed."
+        );
+      }
+
+      setImportId(data.import_id);
+
+      setColumns(data.columns || []);
+      setPreview(data.preview || []);
+
       setMissingColumns([]);
       setValidation(null);
       setResult(null);
@@ -424,16 +602,25 @@ export default function DataImport() {
       );
 
       await loadHistory();
+
     } catch (error: any) {
       show(
-        error?.response?.data?.detail ||
-          "File upload failed.",
+        getApiErrorMessage(
+          error,
+          "File upload failed."
+        ),
         "error"
       );
+
     } finally {
       setBusy(null);
     }
   };
+
+
+  /* =====================================================
+     VALIDATE IMPORT
+  ===================================================== */
 
   const doValidate = async () => {
     if (!importId) {
@@ -447,31 +634,33 @@ export default function DataImport() {
     try {
       setBusy("validate");
 
-      const data =
-        await validateImport(
-          importId
-        );
+      const data = await validateImport(
+        importId
+      );
 
-      setColumns(data.columns);
-      setPreview(data.preview);
+      setColumns(data.columns || []);
+      setPreview(data.preview || []);
+
+      const errors = Array.isArray(data.errors)
+        ? data.errors
+        : [];
 
       setValidation({
-        total: data.total_records,
-        valid: data.valid_records,
-        invalid: data.invalid_records,
-        duplicates:
-          data.duplicate_records,
-        errors: data.errors || [],
+        total: Number(data.total_records || 0),
+        valid: Number(data.valid_records || 0),
+        invalid: Number(data.invalid_records || 0),
+        duplicates: Number(data.duplicate_records || 0),
+        errors,
       });
 
       setResult(null);
 
       if (
-        data.invalid_records > 0 ||
-        data.duplicate_records > 0
+        Number(data.invalid_records || 0) > 0 ||
+        Number(data.duplicate_records || 0) > 0
       ) {
         show(
-          "Validation completed with errors.",
+          "Validation completed with errors. Review the validation report.",
           "warning"
         );
       } else {
@@ -482,18 +671,27 @@ export default function DataImport() {
       }
 
       await loadHistory();
+
     } catch (error: any) {
       show(
-        error?.response?.data?.detail ||
-          "Validation failed.",
+        getApiErrorMessage(
+          error,
+          "Validation failed."
+        ),
         "error"
       );
 
       await loadHistory();
+
     } finally {
       setBusy(null);
     }
   };
+
+
+  /* =====================================================
+     PROCESS IMPORT
+  ===================================================== */
 
   const doProcess = async () => {
     if (
@@ -511,28 +709,25 @@ export default function DataImport() {
     try {
       setBusy("process");
 
-      const data =
-        await processImport(
-          importId
-        );
+      const data = await processImport(
+        importId
+      );
 
       setResult({
-        status: data.status,
-        total: data.total_records,
-        success:
-          data.successful_records,
-        failed:
-          data.failed_records,
-        duplicates:
-          data.duplicate_records,
-        validationFailures:
-          data.validation_failures,
+        status: safeText(data.status),
+        total: Number(data.total_records || 0),
+        success: Number(data.successful_records || 0),
+        failed: Number(data.failed_records || 0),
+        duplicates: Number(data.duplicate_records || 0),
+        validationFailures: Number(
+          data.validation_failures || 0
+        ),
       });
 
       const hasErrors =
-        data.failed_records > 0 ||
-        data.duplicate_records > 0 ||
-        data.validation_failures > 0;
+        Number(data.failed_records || 0) > 0 ||
+        Number(data.duplicate_records || 0) > 0 ||
+        Number(data.validation_failures || 0) > 0;
 
       if (
         data.success &&
@@ -551,70 +746,128 @@ export default function DataImport() {
       }
 
       await loadHistory();
+
     } catch (error: any) {
       show(
-        error?.response?.data?.detail ||
-          "Import processing failed.",
+        getApiErrorMessage(
+          error,
+          "Import processing failed."
+        ),
         "error"
       );
 
       await loadHistory();
+
     } finally {
       setBusy(null);
     }
   };
 
+
+  /* =====================================================
+     DOWNLOAD ERROR CSV
+  ===================================================== */
+
   const downloadErrors = async (
     id: number
   ) => {
     try {
-      const blob =
-        await downloadImportErrors(id);
+      const blob = await downloadImportErrors(id);
 
-      const url =
-        window.URL.createObjectURL(
-          blob
+      if (!(blob instanceof Blob)) {
+        throw new Error(
+          "Invalid error report response."
         );
+      }
 
-      const anchor =
-        document.createElement("a");
+      const url = window.URL.createObjectURL(blob);
+
+      const anchor = document.createElement("a");
 
       anchor.href = url;
-      anchor.download =
-        `import_${id}_errors.csv`;
+      anchor.download = `import_${id}_errors.csv`;
 
-      document.body.appendChild(
-        anchor
-      );
+      document.body.appendChild(anchor);
 
       anchor.click();
 
       anchor.remove();
 
-      window.URL.revokeObjectURL(
-        url
-      );
+      window.URL.revokeObjectURL(url);
 
       show(
         "Error file downloaded successfully.",
         "success"
       );
+
     } catch (error: any) {
       show(
-        error?.response?.data?.detail ||
-          "Unable to download error file.",
+        getApiErrorMessage(
+          error,
+          "Unable to download error file."
+        ),
         "error"
       );
     }
   };
 
+
+  /* =====================================================
+     DOWNLOAD TEMPLATE
+  ===================================================== */
+
+  const downloadTemplate = async () => {
+    try {
+      const blob = await downloadImportTemplate(type);
+
+      if (!(blob instanceof Blob)) {
+        throw new Error(
+          "Invalid template response."
+        );
+      }
+
+      const url = window.URL.createObjectURL(blob);
+
+      const anchor = document.createElement("a");
+
+      anchor.href = url;
+      anchor.download = `${type}_import_template.csv`;
+
+      document.body.appendChild(anchor);
+
+      anchor.click();
+
+      anchor.remove();
+
+      window.URL.revokeObjectURL(url);
+
+      show(
+        `${type} template downloaded successfully.`,
+        "success"
+      );
+
+    } catch (error: any) {
+      show(
+        getApiErrorMessage(
+          error,
+          "Unable to download template."
+        ),
+        "error"
+      );
+    }
+  };
+
+
+  /* =====================================================
+     DELETE IMPORT
+  ===================================================== */
+
   const handleDelete = async (
     item: ImportHistoryItem
   ) => {
-    const confirmed =
-      window.confirm(
-        `Are you sure you want to delete Import #${item.id}?`
-      );
+    const confirmed = window.confirm(
+      `Are you sure you want to delete Import #${item.id}?`
+    );
 
     if (!confirmed) return;
 
@@ -633,16 +886,25 @@ export default function DataImport() {
       );
 
       await loadHistory();
+
     } catch (error: any) {
       show(
-        error?.response?.data?.detail ||
-          "Unable to delete import record.",
+        getApiErrorMessage(
+          error,
+          "Unable to delete import record."
+        ),
         "error"
       );
+
     } finally {
       setBusy(null);
     }
   };
+
+
+  /* =====================================================
+     CURRENT STEP
+  ===================================================== */
 
   const currentStep = useMemo(
     () =>
@@ -657,6 +919,11 @@ export default function DataImport() {
       result,
     ]
   );
+
+
+  /* =====================================================
+     AUTHORIZATION
+  ===================================================== */
 
   if (!isAdmin) {
     return (
@@ -674,6 +941,11 @@ export default function DataImport() {
       </Box>
     );
   }
+
+
+  /* =====================================================
+     MAIN UI
+  ===================================================== */
 
   return (
     <Box
@@ -694,6 +966,7 @@ export default function DataImport() {
           mx: "auto",
         }}
       >
+
         {/* HEADER */}
 
         <Stack
@@ -771,20 +1044,19 @@ export default function DataImport() {
             sx={{
               background: "#123322",
               color: "#86efac",
-              border:
-                "1px solid #166534",
+              border: "1px solid #166534",
               fontWeight: 700,
             }}
           />
         </Stack>
+
 
         {/* STEPPER */}
 
         <Paper
           sx={{
             background: "#111827",
-            border:
-              "1px solid #1f2937",
+            border: "1px solid #1f2937",
             borderRadius: 3,
             p: 2.5,
             mb: 3,
@@ -823,13 +1095,13 @@ export default function DataImport() {
           </Stepper>
         </Paper>
 
+
         {/* START NEW IMPORT */}
 
         <Paper
           sx={{
             background: "#111827",
-            border:
-              "1px solid #1f2937",
+            border: "1px solid #1f2937",
             borderRadius: 3,
             p: {
               xs: 2,
@@ -864,6 +1136,9 @@ export default function DataImport() {
             spacing={2}
             mb={2.5}
           >
+
+            {/* IMPORT TYPE */}
+
             <FormControl
               size="small"
               sx={{
@@ -886,8 +1161,7 @@ export default function DataImport() {
                 label="Import Type"
                 onChange={(event) => {
                   setType(
-                    event.target
-                      .value as ImportType
+                    event.target.value as ImportType
                   );
 
                   clear();
@@ -896,18 +1170,15 @@ export default function DataImport() {
                   color: "#f8fafc",
 
                   ".MuiOutlinedInput-notchedOutline": {
-                    borderColor:
-                      "#334155",
+                    borderColor: "#334155",
                   },
 
                   "&:hover .MuiOutlinedInput-notchedOutline": {
-                    borderColor:
-                      "#22c55e",
+                    borderColor: "#22c55e",
                   },
 
                   "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                    borderColor:
-                      "#22c55e",
+                    borderColor: "#22c55e",
                   },
 
                   ".MuiSvgIcon-root": {
@@ -923,17 +1194,40 @@ export default function DataImport() {
                   Customers
                 </MenuItem>
 
+                <MenuItem value="inventory">
+                  Inventory
+                </MenuItem>
+
                 <MenuItem value="sales">
                   Sales
                 </MenuItem>
               </Select>
             </FormControl>
 
+
+            {/* TEMPLATE */}
+
+            <Button
+              variant="outlined"
+              startIcon={<Download />}
+              onClick={() => void downloadTemplate()}
+              disabled={busy !== null}
+              sx={{
+                color: "#86efac",
+                borderColor: "#166534",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Download Template
+            </Button>
+
+
+            {/* REQUIRED COLUMNS */}
+
             <Box
               sx={{
                 flex: 1,
-                border:
-                  "1px solid #263244",
+                border: "1px solid #263244",
                 borderRadius: 2,
                 px: 2,
                 py: 1.2,
@@ -958,12 +1252,11 @@ export default function DataImport() {
                   fontWeight: 600,
                 }}
               >
-                {REQUIRED[type].join(
-                  " • "
-                )}
+                {REQUIRED[type].join(" • ")}
               </Typography>
             </Box>
           </Stack>
+
 
           {/* UPLOAD AREA */}
 
@@ -975,8 +1268,7 @@ export default function DataImport() {
                 ? "#16a34a"
                 : "#334155",
               borderRadius: 3,
-              background:
-                "rgba(15,23,42,.55)",
+              background: "rgba(15,23,42,.55)",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -1024,12 +1316,7 @@ export default function DataImport() {
                     mt: 0.5,
                   }}
                 >
-                  {(
-                    file.size /
-                    1024 /
-                    1024
-                  ).toFixed(2)}{" "}
-                  MB
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
                 </Typography>
               </>
             ) : (
@@ -1066,18 +1353,13 @@ export default function DataImport() {
               <Button
                 component="label"
                 variant="outlined"
-                startIcon={
-                  <CloudUpload />
-                }
+                startIcon={<CloudUpload />}
                 sx={{
                   color: "#86efac",
-                  borderColor:
-                    "#16a34a",
+                  borderColor: "#16a34a",
                   "&:hover": {
-                    borderColor:
-                      "#22c55e",
-                    background:
-                      "rgba(34,197,94,.08)",
+                    borderColor: "#22c55e",
+                    background: "rgba(34,197,94,.08)",
                   },
                 }}
               >
@@ -1089,16 +1371,11 @@ export default function DataImport() {
                   accept=".csv,text/csv"
                   onChange={(event) => {
                     const selected =
-                      event.target
-                        .files?.[0] ||
-                      null;
+                      event.target.files?.[0] || null;
 
-                    void onFile(
-                      selected
-                    );
+                    void onFile(selected);
 
-                    event.target.value =
-                      "";
+                    event.target.value = "";
                   }}
                 />
               </Button>
@@ -1106,20 +1383,11 @@ export default function DataImport() {
               {file && (
                 <Button
                   variant="outlined"
-                  startIcon={
-                    <DeleteOutlined />
-                  }
+                  startIcon={<DeleteOutlined />}
                   onClick={clear}
                   sx={{
                     color: "#fca5a5",
-                    borderColor:
-                      "#7f1d1d",
-                    "&:hover": {
-                      borderColor:
-                        "#ef4444",
-                      background:
-                        "rgba(239,68,68,.08)",
-                    },
+                    borderColor: "#7f1d1d",
                   }}
                 >
                   Remove
@@ -1133,9 +1401,7 @@ export default function DataImport() {
                     busy === "upload" ? (
                       <CircularProgress
                         size={18}
-                        sx={{
-                          color: "#fff",
-                        }}
+                        sx={{ color: "#fff" }}
                       />
                     ) : (
                       <CloudUpload />
@@ -1143,28 +1409,15 @@ export default function DataImport() {
                   }
                   disabled={
                     busy !== null ||
-                    missingColumns.length >
-                      0
+                    missingColumns.length > 0
                   }
-                  onClick={() =>
-                    void doUpload()
-                  }
+                  onClick={() => void doUpload()}
                   sx={{
-                    background:
-                      "#16a34a",
+                    background: "#16a34a",
                     color: "#fff",
                     fontWeight: 800,
-
                     "&:hover": {
-                      background:
-                        "#15803d",
-                    },
-
-                    "&.Mui-disabled": {
-                      background:
-                        "#1f2937",
-                      color:
-                        "#64748b",
+                      background: "#15803d",
                     },
                   }}
                 >
@@ -1173,8 +1426,7 @@ export default function DataImport() {
               )}
             </Stack>
 
-            {missingColumns.length >
-              0 && (
+            {missingColumns.length > 0 && (
               <Alert
                 severity="error"
                 sx={{
@@ -1182,42 +1434,26 @@ export default function DataImport() {
                   width: "100%",
                   maxWidth: 900,
                   textAlign: "left",
-                  borderRadius: 2,
-                  background:
-                    "rgba(239,68,68,.08)",
-                  color: "#fecaca",
-                  border:
-                    "1px solid #7f1d1d",
-
-                  "& .MuiAlert-icon": {
-                    color: "#f87171",
-                  },
                 }}
               >
                 <Typography
                   variant="body2"
-                  sx={{
-                    fontWeight: 700,
-                  }}
+                  sx={{ fontWeight: 700 }}
                 >
                   Missing required columns
                 </Typography>
 
                 <Typography
                   variant="body2"
-                  sx={{
-                    mt: 0.4,
-                    color: "#fca5a5",
-                  }}
+                  sx={{ mt: 0.4 }}
                 >
-                  {missingColumns.join(
-                    " • "
-                  )}
+                  {missingColumns.join(" • ")}
                 </Typography>
               </Alert>
             )}
           </Box>
         </Paper>
+
 
         {/* CSV PREVIEW */}
 
@@ -1225,8 +1461,7 @@ export default function DataImport() {
           <Paper
             sx={{
               background: "#111827",
-              border:
-                "1px solid #1f2937",
+              border: "1px solid #1f2937",
               borderRadius: 3,
               p: {
                 xs: 2,
@@ -1264,11 +1499,8 @@ export default function DataImport() {
                   size="small"
                   sx={{
                     color: "#86efac",
-                    background:
-                      "#123322",
-                    border:
-                      "1px solid #166534",
-                    fontWeight: 700,
+                    background: "#123322",
+                    border: "1px solid #166534",
                   }}
                 />
               )}
@@ -1276,133 +1508,84 @@ export default function DataImport() {
 
             <TableContainer
               sx={{
-                border:
-                  "1px solid #263244",
+                border: "1px solid #263244",
                 borderRadius: 2,
                 maxHeight: 420,
               }}
             >
-              <Table
-                stickyHeader
-                size="small"
-              >
+              <Table stickyHeader size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell
                       sx={{
-                        background:
-                          "#0c121c",
+                        background: "#0c121c",
                         color: "#94a3b8",
                         fontWeight: 800,
-                        borderColor:
-                          "#263244",
+                        borderColor: "#263244",
                       }}
                     >
                       #
                     </TableCell>
 
-                    {columns.map(
-                      (column) => (
-                        <TableCell
-                          key={column}
-                          sx={{
-                            background:
-                              "#0c121c",
-                            color:
-                              "#94a3b8",
-                            fontWeight:
-                              800,
-                            borderColor:
-                              "#263244",
-                            whiteSpace:
-                              "nowrap",
-                            minWidth: 130,
-                          }}
-                        >
-                          {column}
-                        </TableCell>
-                      )
-                    )}
+                    {columns.map((column) => (
+                      <TableCell
+                        key={column}
+                        sx={{
+                          background: "#0c121c",
+                          color: "#94a3b8",
+                          fontWeight: 800,
+                          borderColor: "#263244",
+                          whiteSpace: "nowrap",
+                          minWidth: 130,
+                        }}
+                      >
+                        {column}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
 
                 <TableBody>
-                  {preview.length ===
-                  0 ? (
+                  {preview.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={
-                          columns.length +
-                          1
-                        }
+                        colSpan={columns.length + 1}
                         sx={{
-                          color:
-                            "#64748b",
-                          borderColor:
-                            "#263244",
-                          textAlign:
-                            "center",
+                          color: "#64748b",
+                          textAlign: "center",
                           py: 3,
+                          borderColor: "#263244",
                         }}
                       >
-                        No preview
-                        records
-                        available.
+                        No preview records available.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    preview.map(
-                      (
-                        row,
-                        index
-                      ) => (
-                        <TableRow
-                          key={index}
-                          hover
+                    preview.map((row, index) => (
+                      <TableRow key={index}>
+                        <TableCell
                           sx={{
-                            "&:hover": {
-                              background:
-                                "#151e2c",
-                            },
+                            color: "#64748b",
+                            borderColor: "#263244",
                           }}
                         >
+                          {index + 1}
+                        </TableCell>
+
+                        {columns.map((column) => (
                           <TableCell
+                            key={column}
                             sx={{
-                              color:
-                                "#64748b",
-                              borderColor:
-                                "#263244",
+                              color: "#cbd5e1",
+                              borderColor: "#263244",
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            {index + 1}
+                            {safeText(row[column])}
                           </TableCell>
-
-                          {columns.map(
-                            (
-                              column
-                            ) => (
-                              <TableCell
-                                key={
-                                  column
-                                }
-                                sx={{
-                                  color:
-                                    "#cbd5e1",
-                                  borderColor:
-                                    "#263244",
-                                  whiteSpace:
-                                    "nowrap",
-                                }}
-                              >
-                                {row[
-                                  column
-                                ] ?? ""}
-                              </TableCell>
-                            )
-                          )}
-                        </TableRow>
-                      )
-                    )
+                        ))}
+                      </TableRow>
+                    ))
                   )}
                 </TableBody>
               </Table>
@@ -1410,14 +1593,14 @@ export default function DataImport() {
           </Paper>
         )}
 
-        {/* VALIDATION & IMPORT */}
+
+        {/* VALIDATION AND IMPORT */}
 
         {importId && (
           <Paper
             sx={{
               background: "#111827",
-              border:
-                "1px solid #1f2937",
+              border: "1px solid #1f2937",
               borderRadius: 3,
               p: {
                 xs: 2,
@@ -1474,40 +1657,17 @@ export default function DataImport() {
                     busy === "validate" ? (
                       <CircularProgress
                         size={18}
-                        sx={{
-                          color:
-                            "#86efac",
-                        }}
+                        sx={{ color: "#86efac" }}
                       />
                     ) : (
                       <FactCheck />
                     )
                   }
-                  disabled={
-                    busy !== null
-                  }
-                  onClick={() =>
-                    void doValidate()
-                  }
+                  disabled={busy !== null}
+                  onClick={() => void doValidate()}
                   sx={{
                     color: "#86efac",
-                    borderColor:
-                      "#16a34a",
-                    fontWeight: 700,
-
-                    "&:hover": {
-                      borderColor:
-                        "#22c55e",
-                      background:
-                        "rgba(34,197,94,.08)",
-                    },
-
-                    "&.Mui-disabled": {
-                      color:
-                        "#64748b",
-                      borderColor:
-                        "#334155",
-                    },
+                    borderColor: "#16a34a",
                   }}
                 >
                   Validate File
@@ -1519,9 +1679,7 @@ export default function DataImport() {
                     busy === "process" ? (
                       <CircularProgress
                         size={18}
-                        sx={{
-                          color: "#fff",
-                        }}
+                        sx={{ color: "#fff" }}
                       />
                     ) : (
                       <PlayArrow />
@@ -1530,28 +1688,15 @@ export default function DataImport() {
                   disabled={
                     busy !== null ||
                     !validation ||
-                    validation.valid ===
-                      0
+                    validation.valid === 0
                   }
-                  onClick={() =>
-                    void doProcess()
-                  }
+                  onClick={() => void doProcess()}
                   sx={{
-                    background:
-                      "#2563eb",
+                    background: "#2563eb",
                     color: "#fff",
                     fontWeight: 800,
-
                     "&:hover": {
-                      background:
-                        "#1d4ed8",
-                    },
-
-                    "&.Mui-disabled": {
-                      background:
-                        "#1f2937",
-                      color:
-                        "#64748b",
+                      background: "#1d4ed8",
                     },
                   }}
                 >
@@ -1563,30 +1708,19 @@ export default function DataImport() {
             {validation && (
               <>
                 <ValidationSummary
-                  total={
-                    validation.total
-                  }
-                  valid={
-                    validation.valid
-                  }
-                  invalid={
-                    validation.invalid
-                  }
-                  duplicates={
-                    validation.duplicates
-                  }
+                  total={validation.total}
+                  valid={validation.valid}
+                  invalid={validation.invalid}
+                  duplicates={validation.duplicates}
                 />
 
-                {validation.errors
-                  .length > 0 && (
+                {validation.errors.length > 0 && (
                   <Box sx={{ mt: 3 }}>
                     <Typography
                       variant="subtitle1"
                       sx={{
-                        color:
-                          "#f8fafc",
-                        fontWeight:
-                          800,
+                        color: "#f8fafc",
+                        fontWeight: 800,
                         mb: 1.5,
                       }}
                     >
@@ -1595,16 +1729,12 @@ export default function DataImport() {
 
                     <TableContainer
                       sx={{
-                        border:
-                          "1px solid #263244",
+                        border: "1px solid #263244",
                         borderRadius: 2,
                         maxHeight: 420,
                       }}
                     >
-                      <Table
-                        stickyHeader
-                        size="small"
-                      >
+                      <Table stickyHeader size="small">
                         <TableHead>
                           <TableRow>
                             {[
@@ -1612,103 +1742,67 @@ export default function DataImport() {
                               "Error Type",
                               "Field",
                               "Message",
-                            ].map(
-                              (
-                                heading
-                              ) => (
-                                <TableCell
-                                  key={
-                                    heading
-                                  }
-                                  sx={{
-                                    background:
-                                      "#0c121c",
-                                    color:
-                                      "#94a3b8",
-                                    fontWeight:
-                                      800,
-                                    borderColor:
-                                      "#263244",
-                                  }}
-                                >
-                                  {
-                                    heading
-                                  }
-                                </TableCell>
-                              )
-                            )}
+                            ].map((heading) => (
+                              <TableCell
+                                key={heading}
+                                sx={{
+                                  background: "#0c121c",
+                                  color: "#94a3b8",
+                                  fontWeight: 800,
+                                  borderColor: "#263244",
+                                }}
+                              >
+                                {heading}
+                              </TableCell>
+                            ))}
                           </TableRow>
                         </TableHead>
 
                         <TableBody>
                           {validation.errors.map(
-                            (
-                              error,
-                              index
-                            ) => (
-                              <TableRow
-                                key={`${error.row_number}-${index}`}
-                              >
+                            (error, index) => (
+                              <TableRow key={index}>
                                 <TableCell
                                   sx={{
-                                    color:
-                                      "#cbd5e1",
-                                    borderColor:
-                                      "#263244",
+                                    color: "#cbd5e1",
+                                    borderColor: "#263244",
                                   }}
                                 >
-                                  {
-                                    error.row_number
-                                  }
+                                  {safeText(error.row_number)}
                                 </TableCell>
 
                                 <TableCell
                                   sx={{
-                                    borderColor:
-                                      "#263244",
+                                    borderColor: "#263244",
                                   }}
                                 >
                                   <Chip
-                                    label={
-                                      error.error_type
-                                    }
+                                    label={safeText(error.error_type)}
                                     size="small"
                                     sx={{
-                                      background:
-                                        "rgba(239,68,68,.12)",
-                                      color:
-                                        "#fca5a5",
-                                      border:
-                                        "1px solid #7f1d1d",
-                                      fontWeight:
-                                        700,
+                                      background: "rgba(239,68,68,.12)",
+                                      color: "#fca5a5",
+                                      border: "1px solid #7f1d1d",
                                     }}
                                   />
                                 </TableCell>
 
                                 <TableCell
                                   sx={{
-                                    color:
-                                      "#cbd5e1",
-                                    borderColor:
-                                      "#263244",
+                                    color: "#cbd5e1",
+                                    borderColor: "#263244",
                                   }}
                                 >
-                                  {error.field ||
-                                    "-"}
+                                  {safeText(error.field)}
                                 </TableCell>
 
                                 <TableCell
                                   sx={{
-                                    color:
-                                      "#cbd5e1",
-                                    borderColor:
-                                      "#263244",
+                                    color: "#cbd5e1",
+                                    borderColor: "#263244",
                                   }}
                                 >
-                                  {
-                                    error.message
-                                  }
+                                  {safeText(error.message)}
                                 </TableCell>
                               </TableRow>
                             )
@@ -1723,21 +1817,14 @@ export default function DataImport() {
           </Paper>
         )}
 
-        {/* RESULT */}
+
+        {/* IMPORT RESULT */}
 
         {result && (
           <Paper
             sx={{
               background: "#111827",
-              border: `1px solid ${
-                result.failed === 0 &&
-                result.duplicates ===
-                  0 &&
-                result.validationFailures ===
-                  0
-                  ? "#166534"
-                  : "#854d0e"
-              }`,
+              border: "1px solid #166534",
               borderRadius: 3,
               p: {
                 xs: 2,
@@ -1770,82 +1857,30 @@ export default function DataImport() {
                 </Typography>
 
                 <Chip
-                  label={
-                    result.failed ===
-                      0 &&
-                    result.duplicates ===
-                      0 &&
-                    result.validationFailures ===
-                      0
-                      ? "Completed Successfully"
-                      : result.status
-                  }
+                  label={result.status}
                   size="small"
                   sx={{
                     mt: 1,
-                    background:
-                      result.failed ===
-                        0 &&
-                      result.duplicates ===
-                        0 &&
-                      result.validationFailures ===
-                        0
-                        ? "#123322"
-                        : "#3a2b10",
-                    color:
-                      result.failed ===
-                        0 &&
-                      result.duplicates ===
-                        0 &&
-                      result.validationFailures ===
-                        0
-                        ? "#86efac"
-                        : "#fde68a",
-                    border:
-                      result.failed ===
-                        0 &&
-                      result.duplicates ===
-                        0 &&
-                      result.validationFailures ===
-                        0
-                        ? "1px solid #166534"
-                        : "1px solid #854d0e",
+                    background: "#123322",
+                    color: "#86efac",
+                    border: "1px solid #166534",
                     fontWeight: 800,
                   }}
                 />
               </Box>
 
               {(result.failed > 0 ||
-                result.validationFailures >
-                  0 ||
-                result.duplicates >
-                  0) && (
+                result.validationFailures > 0 ||
+                result.duplicates > 0) && (
                 <Button
                   variant="outlined"
-                  startIcon={
-                    <Download />
-                  }
+                  startIcon={<Download />}
                   onClick={() =>
-                    void downloadErrors(
-                      importId!
-                    )
+                    void downloadErrors(importId!)
                   }
                   sx={{
                     color: "#fde68a",
-                    borderColor:
-                      "#a16207",
-                    background:
-                      "rgba(161,98,7,.08)",
-                    fontWeight: 800,
-
-                    "&:hover": {
-                      color:
-                        "#fff7ed",
-                      borderColor:
-                        "#eab308",
-                      background:
-                        "rgba(234,179,8,.14)",
-                    },
+                    borderColor: "#a16207",
                   }}
                 >
                   Download Errors
@@ -1866,75 +1901,51 @@ export default function DataImport() {
               }}
             >
               {[
-                [
-                  "Total",
-                  result.total,
-                ],
-                [
-                  "Successful",
-                  result.success,
-                ],
-                [
-                  "Failed",
-                  result.failed,
-                ],
-                [
-                  "Duplicates",
-                  result.duplicates,
-                ],
-                [
-                  "Validation Failures",
-                  result.validationFailures,
-                ],
-              ].map(
-                ([label, value]) => (
-                  <Box
-                    key={String(label)}
+                ["Total", result.total],
+                ["Successful", result.success],
+                ["Failed", result.failed],
+                ["Duplicates", result.duplicates],
+                ["Validation Failures", result.validationFailures],
+              ].map(([label, value]) => (
+                <Box
+                  key={String(label)}
+                  sx={{
+                    background: "#0c121c",
+                    border: "1px solid #263244",
+                    borderRadius: 2,
+                    p: 2,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{ color: "#64748b" }}
+                  >
+                    {label}
+                  </Typography>
+
+                  <Typography
+                    variant="h6"
                     sx={{
-                      background:
-                        "#0c121c",
-                      border:
-                        "1px solid #263244",
-                      borderRadius: 2,
-                      p: 2,
+                      color: "#f8fafc",
+                      fontWeight: 800,
+                      mt: 0.5,
                     }}
                   >
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        color:
-                          "#64748b",
-                      }}
-                    >
-                      {label}
-                    </Typography>
-
-                    <Typography
-                      variant="h6"
-                      sx={{
-                        color:
-                          "#f8fafc",
-                        fontWeight:
-                          800,
-                        mt: 0.5,
-                      }}
-                    >
-                      {value}
-                    </Typography>
-                  </Box>
-                )
-              )}
+                    {value}
+                  </Typography>
+                </Box>
+              ))}
             </Box>
           </Paper>
         )}
 
-        {/* HISTORY */}
+
+        {/* IMPORT HISTORY */}
 
         <Paper
           sx={{
             background: "#111827",
-            border:
-              "1px solid #1f2937",
+            border: "1px solid #1f2937",
             borderRadius: 3,
             p: {
               xs: 2,
@@ -1973,8 +1984,7 @@ export default function DataImport() {
                   mt: 0.4,
                 }}
               >
-                View previous CSV imports
-                and manage import records.
+                View previous CSV imports and manage import records.
               </Typography>
             </Box>
 
@@ -1982,43 +1992,16 @@ export default function DataImport() {
               variant="outlined"
               startIcon={
                 busy === "history" ? (
-                  <CircularProgress
-                    size={18}
-                    sx={{
-                      color: "#cbd5e1",
-                    }}
-                  />
+                  <CircularProgress size={18} />
                 ) : (
                   <Refresh />
                 )
               }
-              disabled={
-                busy === "history"
-              }
-              onClick={() =>
-                void loadHistory()
-              }
+              disabled={busy === "history"}
+              onClick={() => void loadHistory()}
               sx={{
                 color: "#cbd5e1",
-                borderColor:
-                  "#475569",
-                background:
-                  "rgba(71,85,105,.08)",
-                fontWeight: 700,
-
-                "&:hover": {
-                  color: "#fff",
-                  borderColor:
-                    "#94a3b8",
-                  background:
-                    "rgba(148,163,184,.12)",
-                },
-
-                "&.Mui-disabled": {
-                  color: "#64748b",
-                  borderColor:
-                    "#334155",
-                },
+                borderColor: "#475569",
               }}
             >
               Refresh
@@ -2027,17 +2010,14 @@ export default function DataImport() {
 
           <TableContainer
             sx={{
-              border:
-                "1px solid #263244",
+              border: "1px solid #263244",
               borderRadius: 2,
               overflowX: "auto",
             }}
           >
             <Table
               size="small"
-              sx={{
-                minWidth: 1250,
-              }}
+              sx={{ minWidth: 1250 }}
             >
               <TableHead>
                 <TableRow>
@@ -2057,15 +2037,11 @@ export default function DataImport() {
                     <TableCell
                       key={heading}
                       sx={{
-                        background:
-                          "#0c121c",
-                        color:
-                          "#94a3b8",
+                        background: "#0c121c",
+                        color: "#94a3b8",
                         fontWeight: 800,
-                        borderColor:
-                          "#263244",
-                        whiteSpace:
-                          "nowrap",
+                        borderColor: "#263244",
+                        whiteSpace: "nowrap",
                         px: 1.5,
                         py: 1.5,
                       }}
@@ -2077,379 +2053,262 @@ export default function DataImport() {
               </TableHead>
 
               <TableBody>
-                {history.length ===
-                0 ? (
+                {history.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={11}
                       sx={{
-                        textAlign:
-                          "center",
-                        color:
-                          "#64748b",
-                        borderColor:
-                          "#263244",
+                        textAlign: "center",
+                        color: "#64748b",
+                        borderColor: "#263244",
                         py: 4,
                       }}
                     >
-                      No import history
-                      available.
+                      No import history available.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  history.map(
-                    (item) => {
-                      const isPending =
-                        item.status
-                          ?.toLowerCase() ===
-                        "pending";
+                  history.map((item) => {
+                    const statusLower =
+                      safeText(item.status).toLowerCase();
 
-                      const statusLower =
-                        item.status
-                          ?.toLowerCase() ||
-                        "";
+                    const isPending =
+                      statusLower === "pending" ||
+                      statusLower === "uploaded";
 
-                      const hasErrors =
-                        item.failed_records >
-                          0 ||
-                        item.duplicate_records >
-                          0 ||
-                        statusLower.includes(
-                          "error"
-                        ) ||
-                        statusLower.includes(
-                          "failed"
-                        );
+                    const hasErrors =
+                      Number(item.failed_records || 0) > 0 ||
+                      Number(item.duplicate_records || 0) > 0 ||
+                      statusLower.includes("error") ||
+                      statusLower.includes("failed");
 
-                      return (
-                        <TableRow
-                          key={item.id}
-                          hover
+                    return (
+                      <TableRow
+                        key={item.id}
+                        hover
+                        sx={{
+                          "&:hover": {
+                            background: "#151e2c",
+                          },
+                        }}
+                      >
+                        <TableCell
                           sx={{
-                            "&:hover": {
-                              background:
-                                "#151e2c",
-                            },
+                            color: "#cbd5e1",
+                            borderColor: "#263244",
+                            fontWeight: 700,
                           }}
                         >
-                          <TableCell
+                          #{item.id}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color: "#cbd5e1",
+                            borderColor: "#263244",
+                          }}
+                        >
+                          {safeText(item.import_type)}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color: "#f8fafc",
+                            borderColor: "#263244",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {safeText(item.filename)}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color: "#94a3b8",
+                            borderColor: "#263244",
+                          }}
+                        >
+                          {safeText(item.uploaded_by)}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color: "#cbd5e1",
+                            borderColor: "#263244",
+                          }}
+                        >
+                          {safeText(item.total_records)}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color: "#86efac",
+                            borderColor: "#263244",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {isPending
+                            ? 0
+                            : safeText(item.successful_records)}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color:
+                              Number(item.failed_records || 0) > 0
+                                ? "#fca5a5"
+                                : "#cbd5e1",
+                            borderColor: "#263244",
+                          }}
+                        >
+                          {isPending
+                            ? 0
+                            : safeText(item.failed_records)}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color:
+                              Number(item.duplicate_records || 0) > 0
+                                ? "#fde68a"
+                                : "#cbd5e1",
+                            borderColor: "#263244",
+                          }}
+                        >
+                          {isPending
+                            ? 0
+                            : safeText(item.duplicate_records)}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{ borderColor: "#263244" }}
+                        >
+                          <Chip
+                            label={safeText(item.status)}
+                            size="small"
                             sx={{
-                              color:
-                                "#cbd5e1",
-                              borderColor:
-                                "#263244",
-                              fontWeight:
-                                700,
+                              background: isPending
+                                ? "#1e293b"
+                                : hasErrors
+                                ? "#3a2b10"
+                                : "#123322",
+
+                              color: isPending
+                                ? "#cbd5e1"
+                                : hasErrors
+                                ? "#fde68a"
+                                : "#86efac",
+
+                              border: isPending
+                                ? "1px solid #475569"
+                                : hasErrors
+                                ? "1px solid #854d0e"
+                                : "1px solid #166534",
+
+                              fontWeight: 700,
                             }}
+                          />
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            color: "#94a3b8",
+                            borderColor: "#263244",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {item.created_at
+                            ? new Date(
+                                item.created_at
+                              ).toLocaleString()
+                            : "-"}
+                        </TableCell>
+
+                        <TableCell
+                          sx={{
+                            borderColor: "#263244",
+                            minWidth: 205,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
                           >
-                            #{item.id}
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              color:
-                                "#cbd5e1",
-                              borderColor:
-                                "#263244",
-                            }}
-                          >
-                            {item.import_type}
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              color:
-                                "#f8fafc",
-                              borderColor:
-                                "#263244",
-                              fontWeight:
-                                600,
-                            }}
-                          >
-                            {item.filename}
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              color:
-                                "#94a3b8",
-                              borderColor:
-                                "#263244",
-                            }}
-                          >
-                            {
-                              item.uploaded_by
-                            }
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              color:
-                                "#cbd5e1",
-                              borderColor:
-                                "#263244",
-                            }}
-                          >
-                            {
-                              item.total_records
-                            }
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              color:
-                                "#86efac",
-                              borderColor:
-                                "#263244",
-                              fontWeight:
-                                700,
-                            }}
-                          >
-                            {isPending
-                              ? 0
-                              : item.successful_records}
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              color:
-                                item.failed_records >
-                                0
-                                  ? "#fca5a5"
-                                  : "#cbd5e1",
-                              borderColor:
-                                "#263244",
-                              fontWeight:
-                                item.failed_records >
-                                0
-                                  ? 700
-                                  : 400,
-                            }}
-                          >
-                            {isPending
-                              ? 0
-                              : item.failed_records}
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              color:
-                                item.duplicate_records >
-                                0
-                                  ? "#fde68a"
-                                  : "#cbd5e1",
-                              borderColor:
-                                "#263244",
-                              fontWeight:
-                                item.duplicate_records >
-                                0
-                                  ? 700
-                                  : 400,
-                            }}
-                          >
-                            {isPending
-                              ? 0
-                              : item.duplicate_records}
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              borderColor:
-                                "#263244",
-                            }}
-                          >
-                            <Chip
-                              label={
-                                item.status
-                              }
-                              size="small"
-                              sx={{
-                                background:
-                                  isPending
-                                    ? "#1e293b"
-                                    : hasErrors
-                                    ? "#3a2b10"
-                                    : "#123322",
-
-                                color:
-                                  isPending
-                                    ? "#cbd5e1"
-                                    : hasErrors
-                                    ? "#fde68a"
-                                    : "#86efac",
-
-                                border:
-                                  isPending
-                                    ? "1px solid #475569"
-                                    : hasErrors
-                                    ? "1px solid #854d0e"
-                                    : "1px solid #166534",
-
-                                fontWeight:
-                                  700,
-                              }}
-                            />
-                          </TableCell>
-
-                          <TableCell
-                            sx={{
-                              color:
-                                "#94a3b8",
-                              borderColor:
-                                "#263244",
-                              whiteSpace:
-                                "nowrap",
-                            }}
-                          >
-                            {new Date(
-                              item.created_at
-                            ).toLocaleString()}
-                          </TableCell>
-
-                          {/* ACTIONS */}
-
-                          <TableCell
-                            sx={{
-                              borderColor:
-                                "#263244",
-                              minWidth: 205,
-                              whiteSpace:
-                                "nowrap",
-                            }}
-                          >
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                            >
-                              {hasErrors && (
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={
-                                    <Download fontSize="small" />
-                                  }
-                                  onClick={() =>
-                                    void downloadErrors(
-                                      item.id
-                                    )
-                                  }
-                                  sx={{
-                                    minWidth: 82,
-                                    color:
-                                      "#fde68a",
-                                    borderColor:
-                                      "#a16207",
-                                    background:
-                                      "rgba(161,98,7,.10)",
-                                    fontWeight:
-                                      800,
-                                    textTransform:
-                                      "none",
-
-                                    "&:hover":
-                                      {
-                                        color:
-                                          "#fff7ed",
-                                        borderColor:
-                                          "#eab308",
-                                        background:
-                                          "rgba(234,179,8,.18)",
-                                      },
-                                  }}
-                                >
-                                  Errors
-                                </Button>
-                              )}
-
+                            {hasErrors && (
                               <Button
                                 size="small"
                                 variant="outlined"
-                                startIcon={
-                                  <DeleteOutlined fontSize="small" />
-                                }
-                                disabled={
-                                  busy !== null
-                                }
+                                startIcon={<Download />}
                                 onClick={() =>
-                                  void handleDelete(
-                                    item
-                                  )
+                                  void downloadErrors(item.id)
                                 }
                                 sx={{
-                                  minWidth:
-                                    88,
-                                  color:
-                                    "#fca5a5",
-                                  borderColor:
-                                    "#dc2626",
-                                  background:
-                                    "rgba(220,38,38,.08)",
-                                  fontWeight:
-                                    800,
-                                  textTransform:
-                                    "none",
-
-                                  "&:hover":
-                                    {
-                                      color:
-                                        "#fff",
-                                      borderColor:
-                                        "#ef4444",
-                                      background:
-                                        "rgba(239,68,68,.20)",
-                                    },
-
-                                  "&.Mui-disabled":
-                                    {
-                                      color:
-                                        "#64748b",
-                                      borderColor:
-                                        "#334155",
-                                    },
+                                  minWidth: 82,
+                                  color: "#fde68a",
+                                  borderColor: "#a16207",
+                                  textTransform: "none",
                                 }}
                               >
-                                Delete
+                                Errors
                               </Button>
-                            </Stack>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    }
-                  )
+                            )}
+
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<DeleteOutlined />}
+                              disabled={busy !== null}
+                              onClick={() =>
+                                void handleDelete(item)
+                              }
+                              sx={{
+                                minWidth: 88,
+                                color: "#fca5a5",
+                                borderColor: "#dc2626",
+                                textTransform: "none",
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
           </TableContainer>
         </Paper>
+
       </Box>
+
 
       {/* SNACKBAR */}
 
       <Snackbar
         open={!!message}
-        autoHideDuration={4000}
-        onClose={() =>
-          setMessage("")
-        }
+        autoHideDuration={5000}
+        onClose={() => setMessage("")}
         anchorOrigin={{
           vertical: "bottom",
           horizontal: "right",
         }}
       >
         <Alert
-          onClose={() =>
-            setMessage("")
-          }
+          onClose={() => setMessage("")}
           severity={severity}
           variant="filled"
           sx={{
             width: "100%",
+            whiteSpace: "pre-line",
           }}
         >
           {message}
         </Alert>
       </Snackbar>
+
     </Box>
   );
 }

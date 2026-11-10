@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -17,6 +17,9 @@ class ImportHistory(Base):
     successful_records = Column(Integer, nullable=False, default=0)
     failed_records = Column(Integer, nullable=False, default=0)
     duplicate_records = Column(Integer, nullable=False, default=0)
+    skipped_records = Column(Integer, nullable=False, default=0)
+    processing_duration_seconds = Column(Float, nullable=False, default=0.0)
+    started_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(40), nullable=False, default="Pending", index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)

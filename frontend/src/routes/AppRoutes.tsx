@@ -1,24 +1,32 @@
-
 import { Routes, Route } from "react-router-dom";
 
 import Layout from "../layouts/Layout";
+import ProtectedRoute from "../components/ProtectedRoute";
 
+// Authentication
 import Login from "../pages/Login";
 import RegisterCompany from "../pages/RegisterCompany";
+
+// Dashboard
 import Dashboard from "../pages/Dashboard";
 import Profile from "../pages/Profile";
+
+// Products and Categories
 import Categories from "../pages/Categories";
 import Products from "../pages/Products";
 import ProductDashboard from "../pages/ProductDashboard";
+
+// Inventory
 import Inventory from "../pages/Inventory";
 import InventoryMovements from "../pages/InventoryMovements";
-import Reports from "../pages/Reports";
-import Analytics from "../pages/Analytics";
+
+// Sales
 import Sales from "../pages/Sales";
 import AddSale from "../pages/AddSale";
 import EditSale from "../pages/EditSale";
 import SaleDetails from "../pages/SaleDetails";
 
+// Customers
 import Customers from "../pages/customers/Customers";
 import AddCustomer from "../pages/customers/AddCustomer";
 import EditCustomer from "../pages/customers/EditCustomer";
@@ -26,20 +34,27 @@ import CustomerProfile from "../pages/customers/CustomerProfile";
 import CustomerAnalytics from "../pages/customers/CustomerAnalytics";
 import TopCustomers from "../pages/customers/TopCustomers";
 
+// Reports and Analytics
+import Reports from "../pages/Reports";
+import Analytics from "../pages/Analytics";
+import Forecast from "../pages/Forecast";
+
+// Notifications and Audit
 import Notifications from "../pages/Notifications";
 import AuditLogs from "../pages/AuditLogs";
-import Forecast from "../pages/Forecast";
-import DataImport from "../pages/DataImport";
 
 // Task 16: Data Quality
 import DataQuality from "../pages/DataQuality";
 
-import ProtectedRoute from "../components/ProtectedRoute";
+// Task 17: Advanced Data Import
+import DataImport from "../pages/DataImport";
 
 export default function AppRoutes() {
   return (
     <Routes>
+
       {/* PUBLIC ROUTES */}
+
       <Route path="/login" element={<Login />} />
 
       <Route
@@ -48,6 +63,7 @@ export default function AppRoutes() {
       />
 
       {/* DASHBOARD */}
+
       <Route
         path="/"
         element={
@@ -71,6 +87,7 @@ export default function AppRoutes() {
       />
 
       {/* PROFILE */}
+
       <Route
         path="/profile"
         element={
@@ -83,6 +100,7 @@ export default function AppRoutes() {
       />
 
       {/* CATEGORIES */}
+
       <Route
         path="/categories"
         element={
@@ -95,6 +113,7 @@ export default function AppRoutes() {
       />
 
       {/* PRODUCTS */}
+
       <Route
         path="/products"
         element={
@@ -118,6 +137,7 @@ export default function AppRoutes() {
       />
 
       {/* INVENTORY */}
+
       <Route
         path="/inventory"
         element={
@@ -141,6 +161,7 @@ export default function AppRoutes() {
       />
 
       {/* SALES */}
+
       <Route
         path="/sales"
         element={
@@ -186,6 +207,7 @@ export default function AppRoutes() {
       />
 
       {/* CUSTOMERS */}
+
       <Route
         path="/customers"
         element={
@@ -253,6 +275,7 @@ export default function AppRoutes() {
       />
 
       {/* TASK 15: REPORTS */}
+
       <Route
         path="/reports"
         element={
@@ -264,29 +287,7 @@ export default function AppRoutes() {
         }
       />
 
-      {/* TASK 16: DATA QUALITY */}
-      <Route
-        path="/data-quality"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <DataQuality />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-
       {/* ANALYTICS */}
-      <Route
-        path="/analytics/sales"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <Analytics />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
 
       <Route
         path="/analytics"
@@ -299,7 +300,45 @@ export default function AppRoutes() {
         }
       />
 
+      <Route
+        path="/analytics/sales"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Analytics />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* TASK 16: DATA QUALITY */}
+
+      <Route
+        path="/data-quality"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <DataQuality />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* TASK 17: DATA IMPORT */}
+
+      <Route
+        path="/data-import"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <DataImport />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
       {/* AUDIT LOGS */}
+
       <Route
         path="/audit-logs"
         element={
@@ -312,6 +351,7 @@ export default function AppRoutes() {
       />
 
       {/* FORECAST */}
+
       <Route
         path="/forecast"
         element={
@@ -323,19 +363,8 @@ export default function AppRoutes() {
         }
       />
 
-      {/* DATA IMPORT */}
-      <Route
-        path="/data-import"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <DataImport />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-
       {/* NOTIFICATIONS */}
+
       <Route
         path="/notifications"
         element={
@@ -346,7 +375,7 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
     </Routes>
   );
 }
-

@@ -49,6 +49,8 @@ class ImportHistoryResponse(BaseModel):
     failed_records: int
     duplicate_records: int
     status: str
+    skipped_records: int = 0
+    processing_duration_seconds: float = 0.0
     created_at: Any
     completed_at: Optional[Any] = None
 

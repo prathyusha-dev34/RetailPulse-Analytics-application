@@ -19,6 +19,8 @@ from app.models.customer_purchase_summary import CustomerPurchaseSummary
 from app.models.import_error import ImportError as ImportErrorModel
 from app.models.import_history import ImportHistory
 from app.models.product import Product
+from app.models.inventory import Inventory
+from app.models.inventory_movement import InventoryMovement
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 
@@ -65,6 +67,10 @@ REQUIRED_COLUMNS = {
         "name",
         "email",
         "phone",
+    ],
+    "inventory": [
+        "sku",
+        "current stock",
     ],
     "sales": [
         "customer",
@@ -135,6 +141,8 @@ def normalize_type(value: str) -> str:
     ).strip().lower().replace("_", " ").replace("-", " ")
 
     aliases = {
+        "inventory": "inventory",
+        "inventories": "inventory",
         "product": "products",
         "products": "products",
         "customer": "customers",
@@ -150,7 +158,7 @@ def normalize_type(value: str) -> str:
     if value not in aliases:
         raise ImportValidationException(
             "Invalid import type. "
-            "Allowed types: products, customers, sales."
+            "Allowed types: products, inventory, customers, sales."
         )
 
     return aliases[value]
@@ -450,6 +458,11 @@ def db_duplicate_sets(
             if row[0]
         }
 
+    if import_type == "inventory":
+        # Inventory is keyed by the company's product SKU. Existing inventory
+        # is intentionally UPDATED rather than treated as a duplicate.
+        return set()
+
     if import_type == "customers":
         emails = (
             db.query(Customer.email)
@@ -697,6 +710,40 @@ def validate_rows(
 
                 if sku:
                     seen.add(normalized_sku)
+
+            # ==================================================
+            # INVENTORY (existing SKU rows are updates, not duplicates)
+            # ==================================================
+
+            elif import_type == "inventory":
+                sku = row.get("sku", "").strip()
+                if not sku:
+                    row_errors.append(("SKU", "SKU is required."))
+                else:
+                    product = (db.query(Product).filter(
+                        Product.company_id == company_id,
+                        Product.sku.ilike(sku),
+                    ).first())
+                    if not product:
+                        row_errors.append(("SKU", f"Product SKU not found: {sku}"))
+                    normalized_sku = sku.casefold()
+                    if normalized_sku in seen:
+                        duplicate_row = True
+                        row_errors.append(("SKU", f"Duplicate SKU in uploaded file: {sku}"))
+                    seen.add(normalized_sku)
+                try:
+                    stock = parse_int(row.get("current stock", ""), "Current Stock")
+                    if stock < 0:
+                        row_errors.append(("Current Stock", "Current Stock cannot be negative."))
+                except ValueError as exc:
+                    row_errors.append(("Current Stock", str(exc)))
+                reorder = row.get("reorder level", "").strip()
+                if reorder:
+                    try:
+                        if parse_int(reorder, "Reorder Level") < 0:
+                            row_errors.append(("Reorder Level", "Reorder Level cannot be negative."))
+                    except ValueError as exc:
+                        row_errors.append(("Reorder Level", str(exc)))
 
             # ==================================================
             # CUSTOMERS
@@ -1091,7 +1138,9 @@ def upload_csv(
         )
 
     try:
-        content = file.file.read()
+        # Read at most the configured limit plus one byte to avoid
+        # unbounded memory consumption from oversized multipart uploads.
+        content = file.file.read(MAX_FILE_SIZE + 1)
     except Exception as exc:
         raise ImportValidationException(
             f"Unable to read uploaded file: {exc}"
@@ -1278,9 +1327,9 @@ def validate_import(
             "This import is currently being processed."
         )
 
-    if item.status == "Completed":
+    if item.status in {"Completed", "Completed with Errors", "Failed", "Cancelled"}:
         raise ImportValidationException(
-            "This import has already been completed."
+            "This import is already in a terminal state and cannot be processed again."
         )
 
     path = get_import_file_path(
@@ -1656,6 +1705,60 @@ def _create_product(
     db.flush()
 
     return product
+
+
+# ============================================================
+# INVENTORY UPDATE (existing SKU is updated; a movement is recorded)
+# ============================================================
+
+def _upsert_inventory(db: Session, row: dict, company_id: int, user_id: int):
+    sku = row.get("sku", "").strip()
+    product = (db.query(Product).filter(
+        Product.company_id == company_id, Product.sku.ilike(sku)
+    ).first())
+    if not product:
+        raise ImportValidationException(f"Product SKU not found: {sku}")
+
+    quantity = parse_int(row.get("current stock", ""), "Current Stock")
+    if quantity < 0:
+        raise ImportValidationException("Current Stock cannot be negative.")
+    reorder_value = row.get("reorder level", "").strip()
+    reorder_level = parse_int(reorder_value, "Reorder Level") if reorder_value else int(product.reorder_threshold or 0)
+    if reorder_level < 0:
+        raise ImportValidationException("Reorder Level cannot be negative.")
+
+    inventory = db.query(Inventory).filter(
+        Inventory.company_id == company_id, Inventory.product_id == product.id
+    ).first()
+    if inventory is None:
+        inventory = Inventory(
+            company_id=company_id, product_id=product.id, current_stock=quantity,
+            reserved_stock=0, available_stock=quantity, reorder_level=reorder_level,
+            stock_status=("Out of Stock" if quantity == 0 else "Low Stock" if quantity <= reorder_level else "In Stock"),
+        )
+        db.add(inventory)
+        db.flush()
+        previous = 0
+    else:
+        previous = int(inventory.current_stock or 0)
+        inventory.current_stock = quantity
+        inventory.available_stock = max(quantity - int(inventory.reserved_stock or 0), 0)
+        inventory.reorder_level = reorder_level
+        inventory.stock_status = ("Out of Stock" if inventory.available_stock == 0 else "Low Stock" if inventory.available_stock <= reorder_level else "In Stock")
+        db.flush()
+
+    if previous != quantity:
+        db.add(InventoryMovement(
+            inventory_id=inventory.id, movement_type="IMPORT",
+            quantity_changed=quantity - previous, previous_quantity=previous,
+            updated_quantity=quantity, reason="Bulk inventory import",
+            remarks=f"Inventory import for SKU {sku}", performed_by=user_id,
+        ))
+    # Keep the product-level stock snapshot consistent with Task 16 checks.
+    product.stock_quantity = quantity
+    product.reorder_threshold = reorder_level
+    db.flush()
+    return inventory
 
 
 # ============================================================
@@ -2036,45 +2139,17 @@ def process_import(
         item.failed_records = invalid
         item.duplicate_records = duplicates
 
-        # ====================================================
-        # VALIDATION FAILED
-        # ====================================================
-
-        if invalid > 0:
-            item.status = "Completed with Errors"
-            item.completed_at = datetime.now()
-
-            # IMPORTANT:
-            # Add audit to SAME transaction.
-            _create_import_audit(
-                db=db,
-                item=item,
-                company_id=company_id,
-                user_id=user_id,
-                before_values=before_values,
-                status="FAILED",
-                error_message=(
-                    f"{invalid} validation record(s) failed."
-                ),
-                commit=False,
-            )
-
-            # Import history + errors + audit
-            # are committed together.
-            db.commit()
-            db.refresh(item)
-
-            return (
-                item,
-                invalid,
-                duplicates,
-            )
+        # Process valid rows even when other rows fail validation.
+        # Row-level errors remain attached to the import and failed rows
+        # are skipped rather than aborting the entire batch.
+        failed_row_numbers = {int(error["row_number"]) for error in errors}
 
         # ====================================================
         # PROCESSING START
         # ====================================================
 
         item.status = "Processing"
+        item.started_at = datetime.now()
         item.completed_at = None
 
         db.commit()
@@ -2097,7 +2172,9 @@ def process_import(
         # ====================================================
 
         if item.import_type == "products":
-            for row in rows:
+            for row_number, row in enumerate(rows, start=2):
+                if row_number in failed_row_numbers:
+                    continue
                 _create_product(
                     db=db,
                     row=row,
@@ -2108,11 +2185,24 @@ def process_import(
                 success += 1
 
         # ====================================================
+        # INVENTORY
+        # ====================================================
+
+        elif item.import_type == "inventory":
+            for row_number, row in enumerate(rows, start=2):
+                if row_number in failed_row_numbers:
+                    continue
+                _upsert_inventory(db, row, company_id, user_id)
+                success += 1
+
+        # ====================================================
         # CUSTOMERS
         # ====================================================
 
         elif item.import_type == "customers":
-            for row in rows:
+            for row_number, row in enumerate(rows, start=2):
+                if row_number in failed_row_numbers:
+                    continue
                 _create_customer(
                     db=db,
                     row=row,
@@ -2127,7 +2217,9 @@ def process_import(
         # ====================================================
 
         elif item.import_type == "sales":
-            for row in rows:
+            for row_number, row in enumerate(rows, start=2):
+                if row_number in failed_row_numbers:
+                    continue
                 (
                     sale,
                     sale_item,
@@ -2193,6 +2285,25 @@ def process_import(
             )
 
         # ====================================================
+        # TASK 16 - POST-IMPORT DATA QUALITY RECONCILIATION
+        # ====================================================
+        # Run the same company-scoped checks used by Task 16 after the
+        # imported business records have been flushed. The reconciliation
+        # writes issue records in this transaction and never accepts a
+        # company_id supplied by the client.
+        try:
+            from app.routes.data_quality import scan_company_data
+            scan_company_data(db, company_id)
+            db.flush()
+        except Exception as reconciliation_error:
+            # Preserve import atomicity: do not silently claim that a
+            # required consistency scan ran when it did not.
+            raise ImportValidationException(
+                "Import data was validated, but post-import data-quality "
+                "reconciliation failed. No imported data was committed."
+            ) from reconciliation_error
+
+        # ====================================================
         # FINAL RESULT
         # ====================================================
 
@@ -2202,6 +2313,11 @@ def process_import(
         item.successful_records = success
         item.failed_records = failed
         item.duplicate_records = duplicates
+        item.skipped_records = 0
+        if item.started_at:
+            item.processing_duration_seconds = max(
+                0.0, (datetime.now() - item.started_at.replace(tzinfo=None)).total_seconds()
+            )
 
         if failed == 0:
             item.status = "Completed"
